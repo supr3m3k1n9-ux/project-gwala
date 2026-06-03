@@ -64,6 +64,7 @@ from run_promotion_review import build_review as build_promotion_review
 from run_research_confidence import build_rows as build_research_confidence_rows, readiness_status
 from run_regime_review import build_regime_review
 from run_shadow_samples import shadow_status_for_row
+from run_strategy_evidence_accumulator import summarize_lane
 from run_strategy_overlap_audit import build_audit_rows, priority_plan
 from run_strategy_vault import build_selector
 from run_walk_forward_review import build_walk_forward_review
@@ -716,6 +717,40 @@ class ResearchSelectionTests(unittest.TestCase):
         self.assertEqual(selector["paper_watch_strategy"], "VWAP + EMA Trend Continuation")
         self.assertEqual(selector["research_strategy"], "Opening Range Failure")
         self.assertIn("Do not paper-trade Opening Range Failure", selector["blocked_actions"][0])
+
+    def test_strategy_evidence_accumulator_counts_today_and_matured_rows(self) -> None:
+        with TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            journal = base / "journal.csv"
+            outcomes = base / "outcomes.csv"
+            pd.DataFrame(
+                [
+                    {"scan_date": "2026-06-02", "observed_at_et": "2026-06-02 10:30:00 EDT"},
+                    {"scan_date": "2026-06-01", "observed_at_et": "2026-06-01 10:30:00 EDT"},
+                ]
+            ).to_csv(journal, index=False)
+            pd.DataFrame(
+                [
+                    {"evaluation_status": "matured", "hypothetical_r": 0.5},
+                    {"evaluation_status": "awaiting_complete_session_data", "hypothetical_r": ""},
+                ]
+            ).to_csv(outcomes, index=False)
+
+            lane = summarize_lane(
+                strategy="Test Strategy",
+                lane="test_lane",
+                journal_path=journal,
+                outcomes_path=outcomes,
+                today="2026-06-02",
+                market_is_open=True,
+                note="test lane",
+            )
+
+        self.assertEqual(lane["status"], "collecting_today")
+        self.assertEqual(lane["total_rows"], 2)
+        self.assertEqual(lane["today_rows"], 1)
+        self.assertEqual(lane["matured_outcomes"], 1)
+        self.assertAlmostEqual(lane["average_r"], 0.5)
 
     def test_research_confidence_scores_broad_universe_without_live_approval(self) -> None:
         with TemporaryDirectory() as temporary:

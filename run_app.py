@@ -87,6 +87,7 @@ ALLOWED_REPORTS = {
     "vwap_mean_reversion_forward_observations": "vwap_mean_reversion_forward_observations.md",
     "vwap_mean_reversion_paper_watch_gate": "vwap_mean_reversion_paper_watch_gate.md",
     "opening_range_failure": "opening_range_failure.md",
+    "strategy_evidence_accumulator": "strategy_evidence_accumulator.md",
     "strategy_improvement_plan": "strategy_improvement_plan.md",
     "feature_wiring_audit": "feature_wiring_audit.md",
     "research_confidence": "universe_expansion/research_confidence.md",

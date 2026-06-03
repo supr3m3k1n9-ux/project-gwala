@@ -188,6 +188,17 @@ Open the full report from:
 Reports -> Research -> Strategy Vault
 ```
 
+The evidence accumulation status is available from:
+
+```text
+Reports -> Research -> Strategy Evidence Accumulator
+```
+
+Use this report to confirm whether the market-hours workflow is collecting
+generic forward observations, generic shadow samples, and strategy-specific
+mean-reversion evidence. It also marks research strategies that do not yet have
+their own forward evidence lane.
+
 The vault does not approve trades, import paper entries, place orders, create
 broker alerts, or bypass the paper gate. It only helps decide which strategy
 family deserves research or manual paper-review attention.
@@ -469,6 +480,7 @@ logs/vwap_mean_reversion_shadow_samples.md
 logs/vwap_mean_reversion_forward_observations.md
 logs/vwap_mean_reversion_paper_watch_gate.md
 logs/opening_range_failure.md
+logs/strategy_evidence_accumulator.md
 logs/regime_review.md
 logs/deeper_research/controlled_variant_review.md
 logs/deeper_research/walk_forward_review.md
