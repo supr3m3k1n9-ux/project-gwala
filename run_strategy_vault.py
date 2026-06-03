@@ -173,12 +173,15 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
     """Summarize the latest VWAP mean-reversion research review."""
 
     summary = read_csv_or_empty(output_dir / "vwap_mean_reversion_summary.csv")
+    walk_forward = read_csv_or_empty(output_dir / "vwap_mean_reversion_walk_forward.csv")
     if summary.empty:
         return {
             "evidence_status": "missing",
             "tightened_pass_rows": 0,
             "promising_rows": 0,
             "best_symbols": "",
+            "walk_forward_holding_rows": 0,
+            "walk_forward_status": "missing",
             "evidence_note": "Run python run_vwap_mean_reversion.py --output-dir logs.",
         }
     pass_rows = (
@@ -203,11 +206,38 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
     else:
         status = "not_ready"
         note = "No mean-reversion row passed the current research floors."
+
+    holding_rows = (
+        walk_forward[walk_forward["decision"] == "holding_up"].copy()
+        if not walk_forward.empty and "decision" in walk_forward.columns
+        else pd.DataFrame()
+    )
+    fading_rows = (
+        walk_forward[walk_forward["decision"] == "fading"].copy()
+        if not walk_forward.empty and "decision" in walk_forward.columns
+        else pd.DataFrame()
+    )
+    if walk_forward.empty:
+        walk_status = "missing"
+        note = f"{note} Walk-forward review has not run yet."
+    elif not holding_rows.empty:
+        walk_status = "holding_up"
+        sorted_holding = holding_rows.sort_values(["newer_expectancy_r", "full_trades"], ascending=[False, False])
+        holding_symbols = ", ".join(dict.fromkeys(sorted_holding["symbol"].astype(str).head(8)).keys())
+        note = f"{note} Walk-forward holding up: {holding_symbols}."
+    elif not fading_rows.empty:
+        walk_status = "fading"
+        note = f"{note} Walk-forward warning: at least one newer half is fading."
+    else:
+        walk_status = "needs_more_sample"
+        note = f"{note} Walk-forward still needs more sample."
     return {
         "evidence_status": status,
         "tightened_pass_rows": int(len(pass_rows)),
         "promising_rows": int(len(promising)),
         "best_symbols": best_symbols,
+        "walk_forward_holding_rows": int(len(holding_rows)),
+        "walk_forward_status": walk_status,
         "evidence_note": note,
     }
 
@@ -222,6 +252,8 @@ def evidence_for_strategy(strategy: VaultStrategy, output_dir: Path) -> dict[str
         "tightened_pass_rows": 0,
         "promising_rows": 0,
         "best_symbols": "",
+        "walk_forward_holding_rows": 0,
+        "walk_forward_status": "not_applicable",
         "evidence_note": strategy.evidence_source,
     }
 
@@ -269,10 +301,16 @@ def strategy_decision(strategy: VaultStrategy, regime: dict[str, Any], output_di
         action = "Keep in vault, but do not prioritize today."
 
     if strategy.strategy_id == "vwap_mean_reversion" and evidence["tightened_pass_rows"] > 0 and decision == "research_priority":
-        action = (
-            f"{evidence['evidence_note']} Next: run walk-forward, strategy-specific shadow samples, "
-            "and forward observation before paper-watch promotion."
-        )
+        if evidence["walk_forward_status"] == "holding_up":
+            action = (
+                f"{evidence['evidence_note']} Next: collect strategy-specific shadow samples and forward "
+                "observations before paper-watch promotion."
+            )
+        else:
+            action = (
+                f"{evidence['evidence_note']} Next: run walk-forward, strategy-specific shadow samples, "
+                "and forward observation before paper-watch promotion."
+            )
 
     return {
         "strategy_id": strategy.strategy_id,
@@ -288,6 +326,8 @@ def strategy_decision(strategy: VaultStrategy, regime: dict[str, Any], output_di
         "tightened_pass_rows": evidence["tightened_pass_rows"],
         "promising_rows": evidence["promising_rows"],
         "best_symbols": evidence["best_symbols"],
+        "walk_forward_holding_rows": evidence["walk_forward_holding_rows"],
+        "walk_forward_status": evidence["walk_forward_status"],
         "evidence_note": evidence["evidence_note"],
         "next_research_step": strategy.next_research_step,
         "reason": " ".join(reasons),

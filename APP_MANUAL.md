@@ -204,6 +204,16 @@ Open the report from:
 Reports -> Research -> VWAP Mean Reversion
 ```
 
+The next evidence layer is the walk-forward report:
+
+```text
+Reports -> Research -> VWAP Mean Reversion Walk-Forward
+```
+
+Walk-forward splits each promising row into older trades and newer trades. A
+`holding_up` decision means the newer half still meets the early durability
+floor. It is a good sign, but it is still not paper-watch approval by itself.
+
 This strategy is backtest/research only until it has enough evidence,
 walk-forward stability, shadow samples, and forward paper-validation results.
 
@@ -381,6 +391,7 @@ The controlled and walk-forward tests are available in the Reports tab too:
 ```text
 logs/controlled_variant_review.md
 logs/walk_forward_review.md
+logs/vwap_mean_reversion_walk_forward.md
 logs/regime_review.md
 logs/deeper_research/controlled_variant_review.md
 logs/deeper_research/walk_forward_review.md

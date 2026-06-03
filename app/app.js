@@ -47,6 +47,7 @@ const reports = [
   ["setup_replay", "Setup Replay"],
   ["strategy_vault", "Strategy Vault"],
   ["vwap_mean_reversion", "VWAP Mean Reversion"],
+  ["vwap_mean_reversion_walk_forward", "VWAP Mean Reversion Walk-Forward"],
   ["strategy_improvement_plan", "Strategy Improvement Plan"],
   ["feature_wiring_audit", "Feature Wiring Audit"],
   ["research_confidence", "Research Confidence"],
@@ -88,7 +89,7 @@ const reportGroups = [
   },
   {
     label: "Research",
-    reports: ["strategy_vault", "vwap_mean_reversion", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
+    reports: ["strategy_vault", "vwap_mean_reversion", "vwap_mean_reversion_walk_forward", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
   },
   {
     label: "Deep Research",
@@ -1593,7 +1594,12 @@ function renderStrategyVault(state) {
   setText("strategy-vault-action", selected.name || "No strategy selected");
   setText("strategy-vault-action-detail", selected.action || vault.guardrail || "Research routing only.");
   setText("strategy-vault-evidence", `${passRows} pass row${passRows === 1 ? "" : "s"}`);
-  setText("strategy-vault-evidence-detail", selected.evidence_note || "Evidence appears after strategy-specific reports run.");
+  setText(
+    "strategy-vault-evidence-detail",
+    selected.walk_forward_status
+      ? `${titleCase(selected.walk_forward_status)} / ${selected.evidence_note || "Evidence appears after strategy-specific reports run."}`
+      : selected.evidence_note || "Evidence appears after strategy-specific reports run.",
+  );
 
   $("strategy-vault-table").innerHTML = strategies.length
     ? strategies
@@ -1603,7 +1609,7 @@ function renderStrategyVault(state) {
               <td>${escapeHtml(strategy.name || "")}</td>
               <td><span class="status ${safeClassName(strategy.decision || "watch")}">${escapeHtml(titleCase(strategy.decision || ""))}</span></td>
               <td>${escapeHtml(text(strategy.score, "0"))}</td>
-              <td>${escapeHtml(strategy.evidence_status || "")}${strategy.best_symbols ? ` / ${escapeHtml(strategy.best_symbols)}` : ""}</td>
+              <td>${escapeHtml(strategy.evidence_status || "")}${strategy.best_symbols ? ` / ${escapeHtml(strategy.best_symbols)}` : ""}${strategy.walk_forward_status ? ` / WF: ${escapeHtml(titleCase(strategy.walk_forward_status))}` : ""}</td>
               <td>${escapeHtml(strategy.action || "")}</td>
             </tr>
           `,
@@ -1634,6 +1640,7 @@ function renderAppHealth(state) {
     ["Setup health CSV", files.setup_health_csv?.modified_et || "missing"],
     ["Strategy vault", files.strategy_vault_json?.modified_et || "not run yet"],
     ["VWAP mean reversion", files.vwap_mean_reversion_json?.modified_et || "not run yet"],
+    ["VWAP mean reversion walk-forward", files.vwap_mean_reversion_walk_forward_json?.modified_et || "not run yet"],
     ["Research confidence", files.research_confidence_csv?.modified_et || "not run yet"],
     ["Promotion review", files.promotion_review_csv?.modified_et || "not run yet"],
     ["Paper log", files.paper_csv?.modified_et || "missing"],
@@ -3399,6 +3406,7 @@ function renderFiles(state) {
     ["Setup replay", "setup_replay.md", "Markdown"],
     ["Strategy vault", "strategy_vault.md", "Markdown"],
     ["VWAP mean reversion", "vwap_mean_reversion.md", "Markdown"],
+    ["VWAP mean reversion walk-forward", "vwap_mean_reversion_walk_forward.md", "Markdown"],
     ["Research confidence", "universe_expansion/research_confidence.md", "Markdown"],
     ["Promotion review", "promotion_review.md", "Markdown"],
     ["Controlled variants", "controlled_variant_review.md", "Markdown"],

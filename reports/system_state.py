@@ -1109,6 +1109,9 @@ def build_system_state(
     vwap_mean_reversion_json = output_dir / "vwap_mean_reversion.json"
     vwap_mean_reversion_md = output_dir / "vwap_mean_reversion.md"
     vwap_mean_reversion_summary_csv = output_dir / "vwap_mean_reversion_summary.csv"
+    vwap_mean_reversion_walk_forward_json = output_dir / "vwap_mean_reversion_walk_forward.json"
+    vwap_mean_reversion_walk_forward_md = output_dir / "vwap_mean_reversion_walk_forward.md"
+    vwap_mean_reversion_walk_forward_csv = output_dir / "vwap_mean_reversion_walk_forward.csv"
     feature_wiring_audit_json = output_dir / "feature_wiring_audit.json"
     feature_wiring_audit_md = output_dir / "feature_wiring_audit.md"
     dashboard_md = output_dir / "project_gwala_dashboard.md"
@@ -1217,6 +1220,7 @@ def build_system_state(
         "strategy_improvement_plan_json": str(strategy_improvement_plan_json),
         "strategy_vault_json": str(strategy_vault_json),
         "vwap_mean_reversion_json": str(vwap_mean_reversion_json),
+        "vwap_mean_reversion_walk_forward_json": str(vwap_mean_reversion_walk_forward_json),
         "feature_wiring_audit_json": str(feature_wiring_audit_json),
         "forward_sample_queue_csv": str(forward_sample_queue_csv),
         "almost_ready_breakout_json": str(almost_ready_breakout_json),
@@ -1304,6 +1308,9 @@ def build_system_state(
                 "vwap_mean_reversion_json": file_state(vwap_mean_reversion_json),
                 "vwap_mean_reversion_md": file_state(vwap_mean_reversion_md),
                 "vwap_mean_reversion_summary_csv": file_state(vwap_mean_reversion_summary_csv),
+                "vwap_mean_reversion_walk_forward_json": file_state(vwap_mean_reversion_walk_forward_json),
+                "vwap_mean_reversion_walk_forward_md": file_state(vwap_mean_reversion_walk_forward_md),
+                "vwap_mean_reversion_walk_forward_csv": file_state(vwap_mean_reversion_walk_forward_csv),
                 "feature_wiring_audit_json": file_state(feature_wiring_audit_json),
                 "feature_wiring_audit_md": file_state(feature_wiring_audit_md),
                 "dashboard_md": file_state(dashboard_md),
