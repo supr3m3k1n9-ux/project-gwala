@@ -61,6 +61,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-vwap-gap-pct", type=float, default=0.0015)
     parser.add_argument("--max-trend-gap-pct", type=float, default=0.0040)
     parser.add_argument(
+        "--lookback-candles",
+        type=int,
+        default=16,
+        help="Recent entry candles to inspect for missed same-session strategy observations.",
+    )
+    parser.add_argument(
         "--record-latest-snapshot",
         action="store_true",
         help="Append latest qualifying saved-candle observations even outside open-market freshness gates.",
@@ -80,7 +86,7 @@ def shadow_to_observations(frame: pd.DataFrame) -> pd.DataFrame:
         }
     ).copy()
     result["observation_status"] = "strategy_forward_observation"
-    result["observation_reason"] = "Latest saved candle passed tightened mean-reversion forward-observation filters."
+    result["observation_reason"] = "Recent saved candle passed tightened mean-reversion forward-observation filters."
     for column in OBSERVATION_COLUMNS:
         if column not in result.columns:
             result[column] = ""
@@ -191,12 +197,12 @@ alerts, or change scanner rules.
 
 ```text
 Append status: {append_status}
-Latest forward observation candidates: {len(candidates)}
+Recent forward observation candidates: {len(candidates)}
 New forward observations appended: {len(appended)}
 Total stored forward observations: {len(observations)}
 ```
 
-## Latest Forward Observation Candidates
+## Recent Forward Observation Candidates
 
 {markdown_table(candidates)}
 
@@ -261,7 +267,7 @@ def main() -> None:
 
     matured = int((outcomes["evaluation_status"] == "matured").sum()) if not outcomes.empty else 0
     print(f"Mean reversion forward observation status: {append_status}")
-    print(f"Latest forward observation candidates: {len(candidates)}")
+    print(f"Recent forward observation candidates: {len(candidates)}")
     print(f"New forward observations appended: {len(appended)}")
     print(f"Matured forward observation outcomes: {matured}")
     print(f"Saved forward observation outcomes CSV: {outcomes_csv}")

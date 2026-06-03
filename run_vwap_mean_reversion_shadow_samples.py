@@ -87,6 +87,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-vwap-gap-pct", type=float, default=0.0015)
     parser.add_argument("--max-trend-gap-pct", type=float, default=0.0040)
     parser.add_argument(
+        "--lookback-candles",
+        type=int,
+        default=16,
+        help="Recent entry candles to inspect for missed same-session strategy samples.",
+    )
+    parser.add_argument(
         "--record-latest-snapshot",
         action="store_true",
         help="Append latest qualifying saved-candle samples even outside open-market freshness gates.",
@@ -191,8 +197,52 @@ def load_symbol_frames(symbol: str, args: argparse.Namespace) -> tuple[pd.DataFr
     return add_research_columns(entry, exits)
 
 
+def sample_row(
+    *,
+    symbol: str,
+    timestamp: pd.Timestamp,
+    row: pd.Series,
+    direction: str,
+    signal_column: str,
+    observed_at_et: str,
+    args: argparse.Namespace,
+) -> dict[str, Any] | None:
+    """Return one strategy sample row if the candle passes every rule."""
+
+    if not bool(row.get(signal_column, False)) or not passes_tightened_filters(row, args):
+        return None
+    plan = plan_for_row(row, direction, args)
+    if plan is None:
+        return None
+    return {
+        "observed_at_et": observed_at_et,
+        "scan_date": timestamp.tz_convert(MARKET_TZ).strftime("%Y-%m-%d")
+        if getattr(timestamp, "tzinfo", None)
+        else str(timestamp.date()),
+        "entry_time_et": timestamp.tz_convert(MARKET_TZ).strftime("%Y-%m-%d %H:%M")
+        if getattr(timestamp, "tzinfo", None)
+        else str(timestamp),
+        "symbol": symbol,
+        "strategy": "vwap_mean_reversion",
+        "direction": direction,
+        "signal_column": signal_column,
+        "shadow_status": "strategy_shadow_candidate",
+        "shadow_reason": "Recent saved candle passed tightened mean-reversion shadow filters.",
+        **plan,
+        "quality_score": int(number_value(row.get("mean_reversion_quality_score"))),
+        "quality_grade": str(row.get("mean_reversion_quality_grade", "")),
+        "relative_volume": round(number_value(row.get("mean_reversion_relative_volume")), 4),
+        "vwap_gap_pct": round(number_value(row.get("mean_reversion_vwap_gap_pct")), 4),
+        "trend_gap_pct": round(number_value(row.get("mean_reversion_trend_gap_pct")), 4),
+        "close": round(float(row["close"]), 4),
+        "vwap": round(float(row["vwap"]), 4),
+        "ema_9": round(number_value(row.get("ema_9")), 4),
+        "ema_21": round(number_value(row.get("ema_21")), 4),
+    }
+
+
 def latest_signal_samples_for_symbol(symbol: str, args: argparse.Namespace, observed_at_et: str) -> pd.DataFrame:
-    """Return latest-candle mean-reversion shadow samples for one symbol."""
+    """Return recent mean-reversion shadow samples for one symbol."""
 
     try:
         entry, _ = load_symbol_frames(symbol, args)
@@ -201,51 +251,29 @@ def latest_signal_samples_for_symbol(symbol: str, args: argparse.Namespace, obse
     if entry.empty:
         return pd.DataFrame(columns=SAMPLE_COLUMNS)
 
-    latest_time = entry.index[-1]
-    latest = entry.loc[[latest_time]].copy()
+    recent = entry.tail(max(int(args.lookback_candles), 1)).copy()
     rows: list[dict[str, Any]] = []
-    for direction, signal_column in [
-        ("long", "mean_reversion_long_signal"),
-        ("short", "mean_reversion_short_signal"),
-    ]:
-        row = latest.iloc[0]
-        if not bool(row.get(signal_column, False)) or not passes_tightened_filters(row, args):
-            continue
-        plan = plan_for_row(row, direction, args)
-        if plan is None:
-            continue
-        rows.append(
-            {
-                "observed_at_et": observed_at_et,
-                "scan_date": latest_time.tz_convert(MARKET_TZ).strftime("%Y-%m-%d")
-                if getattr(latest_time, "tzinfo", None)
-                else str(latest_time.date()),
-                "entry_time_et": latest_time.tz_convert(MARKET_TZ).strftime("%Y-%m-%d %H:%M")
-                if getattr(latest_time, "tzinfo", None)
-                else str(latest_time),
-                "symbol": symbol,
-                "strategy": "vwap_mean_reversion",
-                "direction": direction,
-                "signal_column": signal_column,
-                "shadow_status": "strategy_shadow_candidate",
-                "shadow_reason": "Latest saved candle passed tightened mean-reversion shadow filters.",
-                **plan,
-                "quality_score": int(number_value(row.get("mean_reversion_quality_score"))),
-                "quality_grade": str(row.get("mean_reversion_quality_grade", "")),
-                "relative_volume": round(number_value(row.get("mean_reversion_relative_volume")), 4),
-                "vwap_gap_pct": round(number_value(row.get("mean_reversion_vwap_gap_pct")), 4),
-                "trend_gap_pct": round(number_value(row.get("mean_reversion_trend_gap_pct")), 4),
-                "close": round(float(row["close"]), 4),
-                "vwap": round(float(row["vwap"]), 4),
-                "ema_9": round(number_value(row.get("ema_9")), 4),
-                "ema_21": round(number_value(row.get("ema_21")), 4),
-            }
-        )
+    for timestamp, row in recent.iterrows():
+        for direction, signal_column in [
+            ("long", "mean_reversion_long_signal"),
+            ("short", "mean_reversion_short_signal"),
+        ]:
+            sample = sample_row(
+                symbol=symbol,
+                timestamp=timestamp,
+                row=row,
+                direction=direction,
+                signal_column=signal_column,
+                observed_at_et=observed_at_et,
+                args=args,
+            )
+            if sample is not None:
+                rows.append(sample)
     return pd.DataFrame(rows, columns=SAMPLE_COLUMNS)
 
 
 def build_latest_samples(args: argparse.Namespace) -> pd.DataFrame:
-    """Build latest shadow sample candidates for all configured symbols."""
+    """Build recent shadow sample candidates for all configured symbols."""
 
     observed_at = datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
     frames = [
@@ -407,12 +435,12 @@ or change scanner rules.
 
 ```text
 Append status: {append_status}
-Latest strategy shadow candidates: {len(candidates)}
+Recent strategy shadow candidates: {len(candidates)}
 New strategy shadow samples appended: {len(appended)}
 Total stored strategy shadow samples: {len(samples)}
 ```
 
-## Latest Strategy Shadow Candidates
+## Recent Strategy Shadow Candidates
 
 {markdown_table(candidates)}
 
@@ -477,7 +505,7 @@ def main() -> None:
 
     matured = int((outcomes["evaluation_status"] == "matured").sum()) if not outcomes.empty else 0
     print(f"Mean reversion shadow append status: {append_status}")
-    print(f"Latest strategy shadow candidates: {len(candidates)}")
+    print(f"Recent strategy shadow candidates: {len(candidates)}")
     print(f"New strategy shadow samples appended: {len(appended)}")
     print(f"Matured strategy shadow outcomes: {matured}")
     print(f"Saved strategy shadow outcomes CSV: {outcomes_csv}")

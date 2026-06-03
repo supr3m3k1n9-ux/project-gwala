@@ -68,6 +68,7 @@ from run_shadow_samples import shadow_status_for_row
 from run_strategy_evidence_accumulator import summarize_lane
 from run_strategy_overlap_audit import build_audit_rows, priority_plan
 from run_strategy_vault import build_selector
+from run_vwap_mean_reversion_shadow_samples import sample_row as mean_reversion_sample_row
 from run_walk_forward_review import build_walk_forward_review
 from run_trade_checklist import current_candidates as checklist_candidates
 from run_webull_watchlist import fetch_chart_only_timeframes, write_candidate_selection_report
@@ -788,6 +789,49 @@ class ResearchSelectionTests(unittest.TestCase):
         self.assertEqual(summary.iloc[0]["activation_decision"], "not_ready")
         self.assertIn("Strategy-specific gate exists", set(checklist[checklist["status"] == "blocked"]["check"]))
         self.assertIn("Strategy forward observations", set(checklist[checklist["status"] == "blocked"]["check"]))
+
+    def test_mean_reversion_recent_window_sample_row_builds_valid_plan(self) -> None:
+        args = argparse.Namespace(
+            min_quality_score=4,
+            min_relative_volume=0.5,
+            max_relative_volume=1.4,
+            min_vwap_gap_pct=0.0015,
+            max_trend_gap_pct=0.004,
+            reward_multiple_floor=0.6,
+        )
+        row = pd.Series(
+            {
+                "mean_reversion_long_signal": True,
+                "mean_reversion_quality_score": 4,
+                "mean_reversion_quality_grade": "B",
+                "mean_reversion_relative_volume": 1.0,
+                "mean_reversion_vwap_gap_pct": 0.01,
+                "mean_reversion_trend_gap_pct": 0.001,
+                "close": 99.0,
+                "low": 98.0,
+                "high": 100.0,
+                "vwap": 100.0,
+                "ema_9": 99.2,
+                "ema_21": 99.1,
+            }
+        )
+
+        sample = mean_reversion_sample_row(
+            symbol="QQQ",
+            timestamp=pd.Timestamp("2026-06-02 10:30", tz="America/New_York"),
+            row=row,
+            direction="long",
+            signal_column="mean_reversion_long_signal",
+            observed_at_et="2026-06-02 10:35:00 EDT",
+            args=args,
+        )
+
+        self.assertIsNotNone(sample)
+        assert sample is not None
+        self.assertEqual(sample["symbol"], "QQQ")
+        self.assertEqual(sample["direction"], "long")
+        self.assertEqual(sample["scan_date"], "2026-06-02")
+        self.assertGreater(sample["reward_multiple"], 0.6)
 
     def test_research_confidence_scores_broad_universe_without_live_approval(self) -> None:
         with TemporaryDirectory() as temporary:

@@ -259,9 +259,14 @@ The forward-style shadow lane is available from:
 Reports -> Research -> VWAP Mean Reversion Shadow Samples
 ```
 
-This report collects latest-candle mean-reversion samples when the saved data
+This report collects recent-window mean-reversion samples when the saved data
 passes the strategy-specific filters. These samples stay separate from the
 generic near-miss shadow lane and from official paper trades.
+
+The collector scans a recent M30 candle window during each market-hours
+workflow run, not only the single latest candle. This reduces missed samples
+when a qualifying mean-reversion setup appeared earlier in the current session.
+Rows append only when the saved candles are fresh for the open market session.
 
 The strategy-specific forward observation lane is available from:
 
@@ -269,9 +274,12 @@ The strategy-specific forward observation lane is available from:
 Reports -> Research -> VWAP Mean Reversion Forward Observations
 ```
 
-This report preserves qualifying latest-candle mean-reversion signals as
+This report preserves qualifying recent-window mean-reversion signals as
 forward observations. These observations are closer to paper-watch evidence
 than historical backtests, but they still do not count as official paper trades.
+
+Like the shadow lane, the forward-observation lane now scans a recent M30
+window and dedupes by symbol, direction, signal, and entry time.
 
 The paper-watch gate is available from:
 
