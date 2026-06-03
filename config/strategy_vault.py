@@ -52,6 +52,18 @@ STRATEGY_VAULT: list[VaultStrategy] = [
         next_research_step="Review first-pass backtest rows, then tighten rules before any paper-watch promotion.",
     ),
     VaultStrategy(
+        strategy_id="gap_fill_fade",
+        name="Gap Fill / Gap Fade",
+        status="research_backlog",
+        family="gap_fade",
+        ideal_regimes=("mixed_chop", "range_chop", "late_day_chop"),
+        caution_regimes=("gap_and_go", "bullish_trend", "bearish_trend"),
+        ideal_volatility=("normal_volatility", "high_volatility"),
+        description="Study gap-up shorts and gap-down longs that rotate back toward the prior close.",
+        evidence_source="logs/gap_fill_fade.md and logs/gap_fill_fade_summary.csv.",
+        next_research_step="Review first-pass gap-fade rows, then add walk-forward and forward evidence if promising.",
+    ),
+    VaultStrategy(
         strategy_id="opening_range_breakout",
         name="Opening Range Breakout",
         status="research_backlog",

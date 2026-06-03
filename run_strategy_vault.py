@@ -388,6 +388,12 @@ def evidence_for_strategy(strategy: VaultStrategy, output_dir: Path) -> dict[str
 
     if strategy.strategy_id == "vwap_mean_reversion":
         return mean_reversion_evidence(output_dir)
+    if strategy.strategy_id == "gap_fill_fade":
+        return summary_evidence(
+            output_dir,
+            "gap_fill_fade",
+            "Run python run_gap_fill_fade.py --output-dir logs.",
+        )
     if strategy.strategy_id == "opening_range_failure":
         return summary_evidence(
             output_dir,

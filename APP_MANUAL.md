@@ -214,6 +214,23 @@ The vault does not approve trades, import paper entries, place orders, create
 broker alerts, or bypass the paper gate. It only helps decide which strategy
 family deserves research or manual paper-review attention.
 
+### Gap Fill / Gap Fade
+
+Gap Fill / Gap Fade is the vault's prior-close mean-reversion strategy. It
+studies mornings where price opens away from the prior daily close and then
+starts rotating back toward that prior close.
+
+```text
+Reports -> Research -> Gap Fill / Gap Fade
+logs/gap_fill_fade.md
+```
+
+The research pass tests gap-up shorts and gap-down longs. It uses daily candles
+for prior-close context, 30m candles for entries, 5m candles for exits, a
+target at the prior close, and a stop around the signal candle or session open.
+This is research only; it does not create paper trades, broker orders, or live
+alerts.
+
 ### Opening Range Breakout
 
 Opening Range Breakout is the vault's first pure momentum-open strategy. It
@@ -533,6 +550,7 @@ logs/vwap_mean_reversion_walk_forward.md
 logs/vwap_mean_reversion_shadow_samples.md
 logs/vwap_mean_reversion_forward_observations.md
 logs/vwap_mean_reversion_paper_watch_gate.md
+logs/gap_fill_fade.md
 logs/opening_range_breakout.md
 logs/trend_pullback_continuation.md
 logs/opening_range_failure.md

@@ -74,6 +74,7 @@ from run_vwap_mean_reversion_shadow_samples import sample_row as mean_reversion_
 from run_walk_forward_review import build_walk_forward_review
 from run_trade_checklist import current_candidates as checklist_candidates
 from run_webull_watchlist import fetch_chart_only_timeframes, write_candidate_selection_report
+from strategies.gap_fill_fade import add_gap_fill_fade_signals
 from strategies.opening_range_breakout import add_opening_range_breakout_signals
 from strategies.trend_pullback_continuation import add_trend_pullback_continuation_signals
 
@@ -685,6 +686,31 @@ class ResearchSelectionTests(unittest.TestCase):
         self.assertTrue(bool(signals.iloc[0]["or_breakout_long_signal"]))
         self.assertFalse(bool(signals.iloc[0]["or_breakout_short_signal"]))
         self.assertGreaterEqual(int(signals.iloc[0]["or_breakout_quality_score"]), 4)
+
+    def test_gap_fill_fade_flags_gap_down_long_rotation(self) -> None:
+        candles = pd.DataFrame(
+            [
+                {
+                    "open": 98.5,
+                    "high": 99.5,
+                    "low": 98.3,
+                    "close": 99.2,
+                    "volume": 1_000,
+                    "vwap": 99.0,
+                    "prior_close": 100.0,
+                    "session_open": 98.5,
+                    "regular_session": True,
+                    "entry_window": True,
+                }
+            ],
+            index=[pd.Timestamp("2026-06-02 10:30", tz="America/New_York")],
+        )
+
+        signals = add_gap_fill_fade_signals(candles, STRATEGY)
+
+        self.assertTrue(bool(signals.iloc[0]["gap_fade_long_signal"]))
+        self.assertFalse(bool(signals.iloc[0]["gap_fade_short_signal"]))
+        self.assertGreaterEqual(int(signals.iloc[0]["gap_fade_quality_score"]), 4)
 
     def test_trend_pullback_flags_long_recovery_from_ema_band(self) -> None:
         candles = pd.DataFrame(
