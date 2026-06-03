@@ -1575,6 +1575,43 @@ function renderWorkflow(state) {
     .join("");
 }
 
+function renderStrategyVault(state) {
+  const vault = state.strategy_vault || {};
+  const regime = vault.regime || {};
+  const strategies = vault.strategies || [];
+  const active = strategies.find((strategy) => strategy.decision === "active");
+  const research = strategies.find((strategy) => strategy.decision === "research_priority");
+  const selected = active || research || strategies[0] || {};
+  const passRows = strategies.reduce((total, strategy) => total + Number(strategy.tightened_pass_rows || 0), 0);
+
+  setText("strategy-vault-message", vault.next_action || "Run the strategy vault report to classify market regime and strategy routing.");
+  setText("strategy-vault-regime", titleCase(regime.market_regime || "missing"));
+  setText(
+    "strategy-vault-regime-detail",
+    `${titleCase(regime.volatility_regime || "unknown")} / ${titleCase(regime.strategy_environment || "unknown")}`,
+  );
+  setText("strategy-vault-action", selected.name || "No strategy selected");
+  setText("strategy-vault-action-detail", selected.action || vault.guardrail || "Research routing only.");
+  setText("strategy-vault-evidence", `${passRows} pass row${passRows === 1 ? "" : "s"}`);
+  setText("strategy-vault-evidence-detail", selected.evidence_note || "Evidence appears after strategy-specific reports run.");
+
+  $("strategy-vault-table").innerHTML = strategies.length
+    ? strategies
+        .map(
+          (strategy) => `
+            <tr>
+              <td>${escapeHtml(strategy.name || "")}</td>
+              <td><span class="status ${safeClassName(strategy.decision || "watch")}">${escapeHtml(titleCase(strategy.decision || ""))}</span></td>
+              <td>${escapeHtml(text(strategy.score, "0"))}</td>
+              <td>${escapeHtml(strategy.evidence_status || "")}${strategy.best_symbols ? ` / ${escapeHtml(strategy.best_symbols)}` : ""}</td>
+              <td>${escapeHtml(strategy.action || "")}</td>
+            </tr>
+          `,
+        )
+        .join("")
+    : '<tr><td colspan="5">No strategy vault rows available. Run python run_strategy_vault.py.</td></tr>';
+}
+
 function renderAppHealth(state) {
   const files = state.app_health?.source_file_states || {};
   const rows = [
@@ -3569,6 +3606,7 @@ function updateAppRoute() {
     "#near-miss-analytics": { bodyClass: "near-miss-analytics-route", sections: ["near-miss-analytics"] },
     "#investment-narrative": { bodyClass: "investment-narrative-route", sections: ["investment-narrative"] },
     "#research": { bodyClass: "research-route", sections: ["research-confidence", "promotion-review", "forward-evidence"] },
+    "#strategy-vault": { bodyClass: "strategy-vault-route", sections: ["strategy-vault"] },
     "#system": { bodyClass: "system-route", sections: ["state", "state-metrics", "app-health", "workflow", "app-scaffold"] },
     "#sample-queue": { bodyClass: "sample-queue-route", sections: ["sample-queue"] },
     "#candidates": { bodyClass: "candidates-route", sections: ["candidates"] },
@@ -3657,6 +3695,7 @@ function renderState(state) {
   safeRender("Research confidence", () => renderResearchConfidence(state));
   safeRender("Promotion review", () => renderPromotionReview(state));
   safeRender("Session readiness", () => renderSessionReadiness(state));
+  safeRender("Strategy vault", () => renderStrategyVault(state));
   safeRender("Workflow", () => renderWorkflow(state));
   safeRender("Badges", () => renderBadges(state));
   safeRender("App health", () => renderAppHealth(state));

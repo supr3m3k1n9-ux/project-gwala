@@ -21,6 +21,7 @@
         <a href="#near-miss-analytics">Near-Miss Analytics</a>
         <a href="#investment-narrative">Investment Narrative</a>
         <a href="#research">Research</a>
+        <a href="#strategy-vault">Strategy Vault</a>
         <a href="#system">System</a>
         <a href="#sample-queue">Sample Queue</a>
         <a href="#candidates">Candidates</a>
@@ -405,6 +406,57 @@
           <p id="webull-refresh-message" class="action-message" aria-live="polite">
             Runs the research-only data refresh and rebuilds reports. It cannot place orders or import paper trades.
           </p>
+        </div>
+      </section>
+
+      <section id="strategy-vault" class="strategy-vault-section" aria-label="Strategy vault">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Regime router / research selector</p>
+            <h3>Strategy Vault <span class="help-bubble" data-help="Routes attention to the strategy family that best fits the current saved market regime. It does not approve trades.">?</span></h3>
+          </div>
+          <a href="/logs/strategy_vault.md" target="_blank" rel="noreferrer" class="secondary-link">Open vault report</a>
+        </div>
+        <p id="strategy-vault-message" class="candidate-message">
+          Loading current regime and strategy routing.
+        </p>
+        <div class="backtest-summary-grid">
+          <article>
+            <span>Market Regime</span>
+            <strong id="strategy-vault-regime">...</strong>
+            <p id="strategy-vault-regime-detail">...</p>
+          </article>
+          <article>
+            <span>Vault Action</span>
+            <strong id="strategy-vault-action">...</strong>
+            <p id="strategy-vault-action-detail">...</p>
+          </article>
+          <article>
+            <span>Evidence Passed</span>
+            <strong id="strategy-vault-evidence">...</strong>
+            <p id="strategy-vault-evidence-detail">...</p>
+          </article>
+          <article>
+            <span>Guardrail</span>
+            <strong>Research Only</strong>
+            <p>Strategy routing cannot place orders or bypass paper gates.</p>
+          </article>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th>Decision</th>
+                <th>Score</th>
+                <th>Evidence</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="strategy-vault-table">
+              <tr><td colspan="5">Loading strategy vault...</td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -1262,6 +1314,6 @@
       </section>
     </main>
 
-    <script src="/app.js?v=20260602-vwap-mean-reversion"></script>
+    <script src="/app.js?v=20260602-strategy-vault-page"></script>
   </body>
 </html>
