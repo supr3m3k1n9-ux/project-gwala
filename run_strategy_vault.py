@@ -169,12 +169,70 @@ def classify_regime(candles: pd.DataFrame, scanner: pd.DataFrame) -> dict[str, A
     }
 
 
-def strategy_decision(strategy: VaultStrategy, regime: dict[str, Any]) -> dict[str, Any]:
+def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
+    """Summarize the latest VWAP mean-reversion research review."""
+
+    summary = read_csv_or_empty(output_dir / "vwap_mean_reversion_summary.csv")
+    if summary.empty:
+        return {
+            "evidence_status": "missing",
+            "tightened_pass_rows": 0,
+            "promising_rows": 0,
+            "best_symbols": "",
+            "evidence_note": "Run python run_vwap_mean_reversion.py --output-dir logs.",
+        }
+    pass_rows = (
+        summary[summary["tightened_review"] == "passes_tightened_research"].copy()
+        if "tightened_review" in summary.columns
+        else pd.DataFrame()
+    )
+    promising = (
+        summary[summary["research_status"].isin(["promising", "watch_more"])].copy()
+        if "research_status" in summary.columns
+        else pd.DataFrame()
+    )
+    best_symbols = ", ".join(
+        pass_rows.sort_values(["expectancy_r", "trades"], ascending=[False, False])["symbol"].astype(str).head(5)
+    )
+    if not pass_rows.empty:
+        status = "tightened_first_review_pass"
+        note = f"{len(pass_rows)} row(s) passed tightened first review: {best_symbols}."
+    elif not promising.empty:
+        status = "promising_needs_more_evidence"
+        note = f"{len(promising)} row(s) are promising/watch-more but no row passed tightened review."
+    else:
+        status = "not_ready"
+        note = "No mean-reversion row passed the current research floors."
+    return {
+        "evidence_status": status,
+        "tightened_pass_rows": int(len(pass_rows)),
+        "promising_rows": int(len(promising)),
+        "best_symbols": best_symbols,
+        "evidence_note": note,
+    }
+
+
+def evidence_for_strategy(strategy: VaultStrategy, output_dir: Path) -> dict[str, Any]:
+    """Return strategy-specific evidence metadata for routing."""
+
+    if strategy.strategy_id == "vwap_mean_reversion":
+        return mean_reversion_evidence(output_dir)
+    return {
+        "evidence_status": "existing_or_not_applicable",
+        "tightened_pass_rows": 0,
+        "promising_rows": 0,
+        "best_symbols": "",
+        "evidence_note": strategy.evidence_source,
+    }
+
+
+def strategy_decision(strategy: VaultStrategy, regime: dict[str, Any], output_dir: Path) -> dict[str, Any]:
     """Rank one strategy for the current regime."""
 
     market_regime = str(regime.get("market_regime", "unknown"))
     volatility_regime = str(regime.get("volatility_regime", "unknown"))
     status = strategy.status
+    evidence = evidence_for_strategy(strategy, output_dir)
 
     score = 0
     reasons = []
@@ -210,6 +268,12 @@ def strategy_decision(strategy: VaultStrategy, regime: dict[str, Any]) -> dict[s
         decision = "research_backlog"
         action = "Keep in vault, but do not prioritize today."
 
+    if strategy.strategy_id == "vwap_mean_reversion" and evidence["tightened_pass_rows"] > 0 and decision == "research_priority":
+        action = (
+            f"{evidence['evidence_note']} Next: run walk-forward, strategy-specific shadow samples, "
+            "and forward observation before paper-watch promotion."
+        )
+
     return {
         "strategy_id": strategy.strategy_id,
         "name": strategy.name,
@@ -220,6 +284,11 @@ def strategy_decision(strategy: VaultStrategy, regime: dict[str, Any]) -> dict[s
         "action": action,
         "description": strategy.description,
         "evidence_source": strategy.evidence_source,
+        "evidence_status": evidence["evidence_status"],
+        "tightened_pass_rows": evidence["tightened_pass_rows"],
+        "promising_rows": evidence["promising_rows"],
+        "best_symbols": evidence["best_symbols"],
+        "evidence_note": evidence["evidence_note"],
         "next_research_step": strategy.next_research_step,
         "reason": " ".join(reasons),
     }
@@ -231,7 +300,7 @@ def build_payload(output_dir: Path, market_symbol: str, timeframe: str) -> dict[
     scanner = read_csv_or_empty(output_dir / "daily_paper_signal_scanner.csv")
     candles = load_market_candles(output_dir, market_symbol, timeframe)
     regime = classify_regime(candles, scanner)
-    strategies = [strategy_decision(strategy, regime) for strategy in STRATEGY_VAULT]
+    strategies = [strategy_decision(strategy, regime, output_dir) for strategy in STRATEGY_VAULT]
     strategies = sorted(strategies, key=lambda row: (row["decision"] != "active", -row["score"], row["name"]))
     active = [row for row in strategies if row["decision"] == "active"]
     research_priority = [row for row in strategies if row["decision"] == "research_priority"]

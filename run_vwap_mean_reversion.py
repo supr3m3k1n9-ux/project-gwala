@@ -55,6 +55,7 @@ class MeanReversionTrade:
     ema_21: float
     relative_volume: float
     vwap_gap_pct: float
+    trend_gap_pct: float
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,6 +65,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--entry-timeframe", default="M30", help="Saved Webull entry timeframe.")
     parser.add_argument("--exit-timeframe", default="M5", help="Saved Webull exit-management timeframe.")
     parser.add_argument("--reward-multiple-floor", type=float, default=0.60, help="Minimum VWAP target distance in R.")
+    parser.add_argument("--min-quality-score", type=int, default=4, help="Minimum mean-reversion quality score.")
+    parser.add_argument("--min-relative-volume", type=float, default=0.50, help="Lowest relative volume allowed.")
+    parser.add_argument("--max-relative-volume", type=float, default=1.40, help="Highest relative volume allowed.")
+    parser.add_argument("--min-vwap-gap-pct", type=float, default=0.0015, help="Minimum stretch away from VWAP.")
+    parser.add_argument("--max-trend-gap-pct", type=float, default=0.0040, help="Maximum EMA 9/21 gap for chop/range conditions.")
+    parser.add_argument("--promotion-min-trades", type=int, default=10, help="Trades required before a row can pass review.")
+    parser.add_argument("--promotion-min-expectancy-r", type=float, default=0.10, help="Minimum expectancy for pass review.")
+    parser.add_argument("--promotion-min-profit-factor", type=float, default=1.30, help="Minimum profit factor for pass review.")
+    parser.add_argument("--promotion-max-drawdown-r", type=float, default=-3.0, help="Worst allowed max drawdown in R.")
     return parser.parse_args()
 
 
@@ -154,7 +164,7 @@ def simulate_direction(
     *,
     direction: str,
     signal_column: str,
-    reward_multiple_floor: float,
+    args: argparse.Namespace,
 ) -> pd.DataFrame:
     """Simulate one mean-reversion direction."""
 
@@ -178,6 +188,19 @@ def simulate_direction(
             continue
         if index >= len(rows) - 1 or not bool(row.get(signal_column, False)):
             continue
+        quality_score = int(row.get("mean_reversion_quality_score", 0) or 0)
+        relative_volume = float(row.get("mean_reversion_relative_volume", 0) or 0)
+        vwap_gap_pct = float(row.get("mean_reversion_vwap_gap_pct", 0) or 0)
+        trend_gap_pct = float(row.get("mean_reversion_trend_gap_pct", 0) or 0)
+        tightened_filter_blocked = (
+            quality_score < args.min_quality_score
+            or relative_volume < args.min_relative_volume
+            or relative_volume > args.max_relative_volume
+            or vwap_gap_pct < args.min_vwap_gap_pct
+            or trend_gap_pct > args.max_trend_gap_pct
+        )
+        if tightened_filter_blocked:
+            continue
         if (
             trades_today >= STRATEGY.max_trades_per_day
             or consecutive_losses >= STRATEGY.max_consecutive_losses
@@ -199,7 +222,7 @@ def simulate_direction(
 
         if risk_per_share <= 0 or reward_per_share <= 0:
             continue
-        if reward_per_share / risk_per_share < reward_multiple_floor:
+        if reward_per_share / risk_per_share < args.reward_multiple_floor:
             continue
 
         exit_result = find_mean_reversion_exit(
@@ -225,7 +248,7 @@ def simulate_direction(
                 setup_type="vwap_mean_reversion",
                 signal_column=signal_column,
                 quality_grade=str(row.get("mean_reversion_quality_grade", "")),
-                quality_score=int(row.get("mean_reversion_quality_score", 0)),
+                quality_score=quality_score,
                 entry=round(entry, 4),
                 stop=round(stop, 4),
                 target=round(target, 4),
@@ -237,8 +260,9 @@ def simulate_direction(
                 vwap=round(float(exit_row["vwap"]), 4),
                 ema_9=round(float(exit_row.get("ema_9", 0)), 4),
                 ema_21=round(float(exit_row.get("ema_21", 0)), 4),
-                relative_volume=round(float(row.get("mean_reversion_relative_volume", 0)), 4),
-                vwap_gap_pct=round(float(row.get("mean_reversion_vwap_gap_pct", 0)), 4),
+                relative_volume=round(relative_volume, 4),
+                vwap_gap_pct=round(vwap_gap_pct, 4),
+                trend_gap_pct=round(trend_gap_pct, 4),
             )
         )
         active_until = exit_time
@@ -260,10 +284,32 @@ def finite_number(value: Any) -> float:
     return float(number)
 
 
-def summarize_trades(symbol: str, direction: str, trades: pd.DataFrame) -> dict[str, Any]:
+def promotion_review_status(metrics: dict[str, Any], args: argparse.Namespace) -> tuple[str, str]:
+    """Return pass/fail review for a tightened mean-reversion row."""
+
+    trades = int(metrics.get("trades", 0) or 0)
+    expectancy = float(metrics.get("expectancy_r", 0) or 0)
+    profit_factor = finite_number(metrics.get("profit_factor", 0))
+    max_drawdown = float(metrics.get("max_drawdown_r", 0) or 0)
+    blockers = []
+    if trades < args.promotion_min_trades:
+        blockers.append(f"needs {args.promotion_min_trades - trades} more trades")
+    if expectancy < args.promotion_min_expectancy_r:
+        blockers.append(f"expectancy below {args.promotion_min_expectancy_r:.2f}R")
+    if profit_factor < args.promotion_min_profit_factor:
+        blockers.append(f"profit factor below {args.promotion_min_profit_factor:.2f}")
+    if max_drawdown < args.promotion_max_drawdown_r:
+        blockers.append(f"drawdown worse than {args.promotion_max_drawdown_r:.1f}R")
+    if blockers:
+        return "needs_more_evidence", "; ".join(blockers)
+    return "passes_tightened_research", "Passed tightened first-review thresholds. Still requires walk-forward, shadow, and forward-paper evidence."
+
+
+def summarize_trades(symbol: str, direction: str, trades: pd.DataFrame, args: argparse.Namespace) -> dict[str, Any]:
     """Build one summary row."""
 
     metrics = calculate_metrics(trades)
+    review_status, review_reason = promotion_review_status(metrics, args)
     return {
         "symbol": symbol,
         "direction": direction,
@@ -273,6 +319,8 @@ def summarize_trades(symbol: str, direction: str, trades: pd.DataFrame) -> dict[
         "profit_factor": metrics["profit_factor"],
         "max_drawdown_r": metrics["max_drawdown_r"],
         "research_status": research_status(metrics),
+        "tightened_review": review_status,
+        "review_reason": review_reason,
     }
 
 
@@ -322,14 +370,14 @@ def run_symbol(symbol: str, output_dir: Path, args: argparse.Namespace) -> tuple
         exits,
         direction="long",
         signal_column="mean_reversion_long_signal",
-        reward_multiple_floor=args.reward_multiple_floor,
+        args=args,
     )
     short_trades = simulate_direction(
         entry,
         exits,
         direction="short",
         signal_column="mean_reversion_short_signal",
-        reward_multiple_floor=args.reward_multiple_floor,
+        args=args,
     )
     long_trades.to_csv(output_dir / f"{output_stem}_long_trades.csv", index=False)
     short_trades.to_csv(output_dir / f"{output_stem}_short_trades.csv", index=False)
@@ -338,9 +386,9 @@ def run_symbol(symbol: str, output_dir: Path, args: argparse.Namespace) -> tuple
     calculate_exit_reason_breakdown(all_trades).to_csv(output_dir / f"{output_stem}_by_exit_reason.csv", index=False)
 
     return all_trades, [
-        summarize_trades(symbol, "long", long_trades),
-        summarize_trades(symbol, "short", short_trades),
-        summarize_trades(symbol, "combined", all_trades),
+        summarize_trades(symbol, "long", long_trades, args),
+        summarize_trades(symbol, "short", short_trades, args),
+        summarize_trades(symbol, "combined", all_trades, args),
     ]
 
 
@@ -348,6 +396,7 @@ def write_report(output_dir: Path, summary: pd.DataFrame, all_trades: pd.DataFra
     """Write Markdown and JSON strategy-vault evidence reports."""
 
     promising = summary[summary["research_status"].isin(["promising", "watch_more"])].copy() if not summary.empty else pd.DataFrame()
+    tightened_pass = summary[summary["tightened_review"] == "passes_tightened_research"].copy() if not summary.empty else pd.DataFrame()
     best = summary.sort_values(["expectancy_r", "trades"], ascending=[False, False]).head(8) if not summary.empty else pd.DataFrame()
     payload = {
         "strategy_id": "vwap_mean_reversion",
@@ -355,9 +404,23 @@ def write_report(output_dir: Path, summary: pd.DataFrame, all_trades: pd.DataFra
         "entry_timeframe": args.entry_timeframe,
         "exit_timeframe": args.exit_timeframe,
         "reward_multiple_floor": args.reward_multiple_floor,
+        "tightened_filters": {
+            "min_quality_score": args.min_quality_score,
+            "min_relative_volume": args.min_relative_volume,
+            "max_relative_volume": args.max_relative_volume,
+            "min_vwap_gap_pct": args.min_vwap_gap_pct,
+            "max_trend_gap_pct": args.max_trend_gap_pct,
+        },
+        "promotion_thresholds": {
+            "min_trades": args.promotion_min_trades,
+            "min_expectancy_r": args.promotion_min_expectancy_r,
+            "min_profit_factor": args.promotion_min_profit_factor,
+            "max_drawdown_r": args.promotion_max_drawdown_r,
+        },
         "summary_rows": int(len(summary)),
         "total_trades": int(len(all_trades)),
         "promising_rows": int(len(promising)),
+        "tightened_pass_rows": int(len(tightened_pass)),
         "best_rows": best.to_dict("records") if not best.empty else [],
         "guardrail": "Research/backtesting only. Does not approve paper trades or alter scanner gates.",
     }
@@ -381,6 +444,10 @@ Exit timeframe: {args.exit_timeframe}
 Target: VWAP mean reversion
 Stop: signal candle extreme plus buffer
 Minimum target distance: {args.reward_multiple_floor}R
+Minimum quality score: {args.min_quality_score}
+Relative volume band: {args.min_relative_volume} to {args.max_relative_volume}
+Minimum VWAP stretch: {args.min_vwap_gap_pct:.4%}
+Maximum EMA 9/21 trend gap: {args.max_trend_gap_pct:.4%}
 ```
 
 ## Summary
@@ -394,6 +461,10 @@ Minimum target distance: {args.reward_multiple_floor}R
 ## Promising / Watch-More Rows
 
 {markdown_table(promising)}
+
+## Tightened Pass Rows
+
+{markdown_table(tightened_pass)}
 
 ## Files
 
