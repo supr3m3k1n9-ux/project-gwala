@@ -1121,6 +1121,9 @@ def build_system_state(
     vwap_mean_reversion_paper_watch_gate_json = output_dir / "vwap_mean_reversion_paper_watch_gate.json"
     vwap_mean_reversion_paper_watch_gate_md = output_dir / "vwap_mean_reversion_paper_watch_gate.md"
     vwap_mean_reversion_paper_watch_gate_csv = output_dir / "vwap_mean_reversion_paper_watch_gate.csv"
+    opening_range_failure_json = output_dir / "opening_range_failure.json"
+    opening_range_failure_md = output_dir / "opening_range_failure.md"
+    opening_range_failure_summary_csv = output_dir / "opening_range_failure_summary.csv"
     feature_wiring_audit_json = output_dir / "feature_wiring_audit.json"
     feature_wiring_audit_md = output_dir / "feature_wiring_audit.md"
     dashboard_md = output_dir / "project_gwala_dashboard.md"
@@ -1243,6 +1246,7 @@ def build_system_state(
         "vwap_mean_reversion_shadow_outcomes_csv": str(vwap_mean_reversion_shadow_outcomes_csv),
         "vwap_mean_reversion_forward_observation_results_csv": str(vwap_mean_reversion_forward_results_csv),
         "vwap_mean_reversion_paper_watch_gate_json": str(vwap_mean_reversion_paper_watch_gate_json),
+        "opening_range_failure_json": str(opening_range_failure_json),
         "candidate_aging_csv": str(candidate_aging_csv),
         "post_scan_digest_json": str(post_scan_digest_json),
         "refresh_status_json": str(refresh_status_json),
@@ -1338,6 +1342,9 @@ def build_system_state(
                 "vwap_mean_reversion_paper_watch_gate_json": file_state(vwap_mean_reversion_paper_watch_gate_json),
                 "vwap_mean_reversion_paper_watch_gate_md": file_state(vwap_mean_reversion_paper_watch_gate_md),
                 "vwap_mean_reversion_paper_watch_gate_csv": file_state(vwap_mean_reversion_paper_watch_gate_csv),
+                "opening_range_failure_json": file_state(opening_range_failure_json),
+                "opening_range_failure_md": file_state(opening_range_failure_md),
+                "opening_range_failure_summary_csv": file_state(opening_range_failure_summary_csv),
                 "feature_wiring_audit_json": file_state(feature_wiring_audit_json),
                 "feature_wiring_audit_md": file_state(feature_wiring_audit_md),
                 "dashboard_md": file_state(dashboard_md),

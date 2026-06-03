@@ -257,6 +257,22 @@ evidence, and forward observation evidence.
 This strategy is backtest/research only until it has enough evidence,
 walk-forward stability, shadow samples, and forward paper-validation results.
 
+### Opening Range Failure
+
+Opening Range Failure is the first failed-breakout vault strategy. It studies
+sessions where price breaks the opening range, fails to hold that breakout, and
+reverses back toward VWAP or the opening-range midpoint.
+
+Open the report from:
+
+```text
+Reports -> Research -> Opening Range Failure
+```
+
+This report is research-only. It helps decide whether failed opening-range
+breakouts deserve deeper testing, walk-forward checks, shadow samples, or
+forward observations. It does not approve paper trades or broker execution.
+
 ## Home Backtest Account View
 
 The Home page includes a Backtest Performance Snapshot. Click `View trades` on
@@ -435,6 +451,7 @@ logs/vwap_mean_reversion_walk_forward.md
 logs/vwap_mean_reversion_shadow_samples.md
 logs/vwap_mean_reversion_forward_observations.md
 logs/vwap_mean_reversion_paper_watch_gate.md
+logs/opening_range_failure.md
 logs/regime_review.md
 logs/deeper_research/controlled_variant_review.md
 logs/deeper_research/walk_forward_review.md

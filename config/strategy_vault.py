@@ -72,8 +72,8 @@ STRATEGY_VAULT: list[VaultStrategy] = [
         caution_regimes=("gap_and_go", "risk_on_trend", "risk_off_trend"),
         ideal_volatility=("normal_volatility", "high_volatility"),
         description="Study failed opening-range breaks that reverse back through VWAP or the range midpoint.",
-        evidence_source="Not implemented yet. Needs failure-pattern labels and backtests.",
-        next_research_step="Define failure trigger and compare with near-miss/blocked continuation rows.",
+        evidence_source="logs/opening_range_failure.md and logs/opening_range_failure_summary.csv.",
+        next_research_step="Review first-pass OR failure backtest rows, then add walk-forward and forward evidence if promising.",
     ),
 ]
 

@@ -313,11 +313,87 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
     }
 
 
+def summary_evidence(output_dir: Path, stem: str, missing_note: str) -> dict[str, Any]:
+    """Summarize a strategy report that has a standard summary CSV."""
+
+    summary = read_csv_or_empty(output_dir / f"{stem}_summary.csv")
+    if summary.empty:
+        return {
+            "evidence_status": "missing",
+            "tightened_pass_rows": 0,
+            "promising_rows": 0,
+            "best_symbols": "",
+            "walk_forward_holding_rows": 0,
+            "walk_forward_status": "not_run",
+            "shadow_samples": 0,
+            "matured_shadow_samples": 0,
+            "shadow_average_r": 0.0,
+            "forward_observations": 0,
+            "matured_forward_observations": 0,
+            "forward_average_r": 0.0,
+            "paper_watch_decision": "not_applicable",
+            "paper_watch_blocker": "",
+            "paper_watch_blocked_count": 0,
+            "evidence_note": missing_note,
+        }
+    pass_rows = (
+        summary[summary["tightened_review"] == "passes_tightened_research"].copy()
+        if "tightened_review" in summary.columns
+        else pd.DataFrame()
+    )
+    promising = (
+        summary[summary["research_status"].isin(["promising", "watch_more"])].copy()
+        if "research_status" in summary.columns
+        else pd.DataFrame()
+    )
+    best_source = pass_rows if not pass_rows.empty else promising
+    best_symbols = ""
+    if not best_source.empty:
+        best_symbols = ", ".join(
+            best_source.sort_values(["expectancy_r", "trades"], ascending=[False, False])["symbol"]
+            .astype(str)
+            .head(5)
+        )
+    if not pass_rows.empty:
+        status = "tightened_first_review_pass"
+        note = f"{len(pass_rows)} row(s) passed tightened first review: {best_symbols}."
+    elif not promising.empty:
+        status = "promising_needs_more_evidence"
+        note = f"{len(promising)} row(s) are promising/watch-more: {best_symbols}."
+    else:
+        status = "not_ready"
+        note = "No row passed the current research floors."
+    return {
+        "evidence_status": status,
+        "tightened_pass_rows": int(len(pass_rows)),
+        "promising_rows": int(len(promising)),
+        "best_symbols": best_symbols,
+        "walk_forward_holding_rows": 0,
+        "walk_forward_status": "not_run",
+        "shadow_samples": 0,
+        "matured_shadow_samples": 0,
+        "shadow_average_r": 0.0,
+        "forward_observations": 0,
+        "matured_forward_observations": 0,
+        "forward_average_r": 0.0,
+        "paper_watch_decision": "not_applicable",
+        "paper_watch_blocker": "",
+        "paper_watch_blocked_count": 0,
+        "evidence_note": note,
+    }
+
+
 def evidence_for_strategy(strategy: VaultStrategy, output_dir: Path) -> dict[str, Any]:
     """Return strategy-specific evidence metadata for routing."""
 
     if strategy.strategy_id == "vwap_mean_reversion":
         return mean_reversion_evidence(output_dir)
+    if strategy.strategy_id == "opening_range_failure":
+        return summary_evidence(
+            output_dir,
+            "opening_range_failure",
+            "Run python run_opening_range_failure.py --output-dir logs.",
+        )
     return {
         "evidence_status": "existing_or_not_applicable",
         "tightened_pass_rows": 0,
