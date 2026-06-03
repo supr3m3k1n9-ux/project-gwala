@@ -89,6 +89,7 @@ ALLOWED_REPORTS = {
     "vwap_mean_reversion_paper_watch_gate": "vwap_mean_reversion_paper_watch_gate.md",
     "gap_fill_fade": "gap_fill_fade.md",
     "vwap_reclaim_reject": "vwap_reclaim_reject.md",
+    "vwap_reclaim_reject_walk_forward": "vwap_reclaim_reject_walk_forward.md",
     "opening_range_breakout": "opening_range_breakout.md",
     "trend_pullback_continuation": "trend_pullback_continuation.md",
     "opening_range_failure": "opening_range_failure.md",

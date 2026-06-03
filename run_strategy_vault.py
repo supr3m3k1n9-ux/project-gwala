@@ -317,6 +317,7 @@ def summary_evidence(output_dir: Path, stem: str, missing_note: str) -> dict[str
     """Summarize a strategy report that has a standard summary CSV."""
 
     summary = read_csv_or_empty(output_dir / f"{stem}_summary.csv")
+    walk_forward = read_csv_or_empty(output_dir / f"{stem}_walk_forward.csv")
     if summary.empty:
         return {
             "evidence_status": "missing",
@@ -363,13 +364,38 @@ def summary_evidence(output_dir: Path, stem: str, missing_note: str) -> dict[str
     else:
         status = "not_ready"
         note = "No row passed the current research floors."
+
+    holding_rows = (
+        walk_forward[walk_forward["decision"] == "holding_up"].copy()
+        if not walk_forward.empty and "decision" in walk_forward.columns
+        else pd.DataFrame()
+    )
+    fading_rows = (
+        walk_forward[walk_forward["decision"] == "fading"].copy()
+        if not walk_forward.empty and "decision" in walk_forward.columns
+        else pd.DataFrame()
+    )
+    if walk_forward.empty:
+        walk_forward_status = "not_run"
+    elif not holding_rows.empty:
+        walk_forward_status = "holding_up"
+        sorted_holding = holding_rows.sort_values(["newer_expectancy_r", "full_trades"], ascending=[False, False])
+        holding_symbols = ", ".join(dict.fromkeys(sorted_holding["symbol"].astype(str).head(8)).keys())
+        note = f"{note} Walk-forward holding up: {holding_symbols}."
+    elif not fading_rows.empty:
+        walk_forward_status = "fading"
+        note = f"{note} Walk-forward warning: at least one newer half is fading."
+    else:
+        walk_forward_status = "needs_more_sample"
+        note = f"{note} Walk-forward still needs more sample."
+
     return {
         "evidence_status": status,
         "tightened_pass_rows": int(len(pass_rows)),
         "promising_rows": int(len(promising)),
         "best_symbols": best_symbols,
-        "walk_forward_holding_rows": 0,
-        "walk_forward_status": "not_run",
+        "walk_forward_holding_rows": int(len(holding_rows)),
+        "walk_forward_status": walk_forward_status,
         "shadow_samples": 0,
         "matured_shadow_samples": 0,
         "shadow_average_r": 0.0,

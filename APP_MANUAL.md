@@ -240,12 +240,18 @@ back on the other side with EMA support.
 ```text
 Reports -> Research -> VWAP Reclaim / Reject
 logs/vwap_reclaim_reject.md
+logs/vwap_reclaim_reject_walk_forward.md
 ```
 
 The research pass tests long VWAP reclaims and short VWAP rejects. It uses 30m
 candles for entries, 5m candles for exits, a fixed R target, and a stop around
 the signal candle or VWAP. This is research only; it does not create paper
 trades, broker orders, or live alerts.
+
+The walk-forward report splits promising rows into older and newer halves. A
+`holding_up` row means the newer half stayed above the early durability floor,
+but it still requires shadow samples and forward observations before any
+manual paper-watch promotion.
 
 ### Opening Range Breakout
 
@@ -568,6 +574,7 @@ logs/vwap_mean_reversion_forward_observations.md
 logs/vwap_mean_reversion_paper_watch_gate.md
 logs/gap_fill_fade.md
 logs/vwap_reclaim_reject.md
+logs/vwap_reclaim_reject_walk_forward.md
 logs/opening_range_breakout.md
 logs/trend_pullback_continuation.md
 logs/opening_range_failure.md

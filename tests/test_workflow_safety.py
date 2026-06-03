@@ -71,6 +71,7 @@ from run_strategy_evidence_accumulator import summarize_lane
 from run_strategy_overlap_audit import build_audit_rows, priority_plan
 from run_strategy_vault import build_selector
 from run_vwap_mean_reversion_shadow_samples import sample_row as mean_reversion_sample_row
+from run_vwap_reclaim_reject_walk_forward import build_review as build_vwap_reclaim_walk_forward
 from run_walk_forward_review import build_walk_forward_review
 from run_trade_checklist import current_candidates as checklist_candidates
 from run_webull_watchlist import fetch_chart_only_timeframes, write_candidate_selection_report
@@ -752,6 +753,44 @@ class ResearchSelectionTests(unittest.TestCase):
         self.assertTrue(bool(signals.iloc[1]["vwap_reclaim_long_signal"]))
         self.assertFalse(bool(signals.iloc[1]["vwap_reject_short_signal"]))
         self.assertGreaterEqual(int(signals.iloc[1]["vwap_rr_quality_score"]), 4)
+
+    def test_vwap_reclaim_walk_forward_flags_holding_up_recent_half(self) -> None:
+        summary = pd.DataFrame(
+            [
+                {
+                    "symbol": "QQQ",
+                    "direction": "combined",
+                    "research_status": "promising",
+                    "tightened_review": "passes_tightened_research",
+                    "expectancy_r": 0.25,
+                    "profit_factor": 2.0,
+                    "max_drawdown_r": -1.0,
+                }
+            ]
+        )
+        trades = pd.DataFrame(
+            [
+                {"symbol": "QQQ", "direction": "long", "entry_time": "2026-05-01 10:00:00+00:00", "r_result": 0.5},
+                {"symbol": "QQQ", "direction": "short", "entry_time": "2026-05-02 10:00:00+00:00", "r_result": -0.2},
+                {"symbol": "QQQ", "direction": "long", "entry_time": "2026-05-03 10:00:00+00:00", "r_result": 0.6},
+                {"symbol": "QQQ", "direction": "short", "entry_time": "2026-05-04 10:00:00+00:00", "r_result": 0.4},
+                {"symbol": "QQQ", "direction": "long", "entry_time": "2026-05-05 10:00:00+00:00", "r_result": 0.3},
+                {"symbol": "QQQ", "direction": "short", "entry_time": "2026-05-06 10:00:00+00:00", "r_result": -0.1},
+                {"symbol": "QQQ", "direction": "long", "entry_time": "2026-05-07 10:00:00+00:00", "r_result": 0.5},
+                {"symbol": "QQQ", "direction": "short", "entry_time": "2026-05-08 10:00:00+00:00", "r_result": 0.2},
+            ]
+        )
+        args = argparse.Namespace(
+            min_half_trades=4,
+            min_newer_expectancy_r=0.10,
+            min_newer_profit_factor=1.20,
+        )
+
+        review = build_vwap_reclaim_walk_forward(summary, trades, args)
+
+        self.assertEqual(review.iloc[0]["decision"], "holding_up")
+        self.assertEqual(review.iloc[0]["newer_trades"], 4)
+        self.assertGreater(review.iloc[0]["newer_expectancy_r"], 0.10)
 
     def test_trend_pullback_flags_long_recovery_from_ema_band(self) -> None:
         candles = pd.DataFrame(
