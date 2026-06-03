@@ -442,6 +442,35 @@
             <p>Strategy routing cannot place orders or bypass paper gates.</p>
           </article>
         </div>
+        <div class="section-heading strategy-promotion-heading">
+          <div>
+            <p class="eyebrow">Paper-watch promotion</p>
+            <h3>Strategy Promotion Gate <span class="help-bubble" data-help="Shows whether a strategy has enough evidence to enter manual paper-watch review. This does not create orders or alerts.">?</span></h3>
+          </div>
+          <a href="/logs/vwap_mean_reversion_paper_watch_gate.md" target="_blank" rel="noreferrer" class="secondary-link">Open gate report</a>
+        </div>
+        <div class="backtest-summary-grid">
+          <article>
+            <span>Gate Decision</span>
+            <strong id="strategy-promotion-decision">...</strong>
+            <p id="strategy-promotion-detail">...</p>
+          </article>
+          <article>
+            <span>Next Blocker</span>
+            <strong id="strategy-promotion-blocker">...</strong>
+            <p id="strategy-promotion-blocker-detail">...</p>
+          </article>
+          <article>
+            <span>Shadow Evidence</span>
+            <strong id="strategy-promotion-shadow">...</strong>
+            <p id="strategy-promotion-shadow-detail">...</p>
+          </article>
+          <article>
+            <span>Forward Evidence</span>
+            <strong id="strategy-promotion-forward">...</strong>
+            <p id="strategy-promotion-forward-detail">...</p>
+          </article>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -1314,6 +1343,6 @@
       </section>
     </main>
 
-    <script src="/app.js?v=20260602-mean-reversion-paper-watch-gate"></script>
+    <script src="/app.js?v=20260602-strategy-promotion-panel"></script>
   </body>
 </html>

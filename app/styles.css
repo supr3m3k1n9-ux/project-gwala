@@ -1943,6 +1943,10 @@ button:disabled {
   margin-bottom: 14px;
 }
 
+.strategy-promotion-heading {
+  margin-top: 22px;
+}
+
 .section-heading h3 {
   font-size: 18px;
 }

@@ -245,6 +245,15 @@ It checks tightened backtests, walk-forward stability, strategy-specific shadow
 samples, and strategy-specific forward observations. A passing gate still does
 not place orders or enable live trading.
 
+The Strategy Vault page also shows the gate as dashboard cards:
+
+```text
+Strategy Vault -> Strategy Promotion Gate
+```
+
+Use those cards for the quick answer: gate decision, next blocker, shadow
+evidence, and forward observation evidence.
+
 This strategy is backtest/research only until it has enough evidence,
 walk-forward stability, shadow samples, and forward paper-validation results.
 

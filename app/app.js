@@ -1597,6 +1597,28 @@ function renderStrategyVault(state) {
   setText("strategy-vault-action", selected.name || "No strategy selected");
   setText("strategy-vault-action-detail", selected.action || vault.guardrail || "Research routing only.");
   setText("strategy-vault-evidence", `${passRows} pass row${passRows === 1 ? "" : "s"}`);
+  setText("strategy-promotion-decision", titleCase(selected.paper_watch_decision || "not available"));
+  setText(
+    "strategy-promotion-detail",
+    selected.paper_watch_decision === "paper_watch_eligible"
+      ? "Eligible for manual paper-watch review only."
+      : "Not ready for paper-watch review yet.",
+  );
+  setText("strategy-promotion-blocker", selected.paper_watch_blocker || "No blocker reported");
+  setText(
+    "strategy-promotion-blocker-detail",
+    `${Number(selected.paper_watch_blocked_count || 0)} blocked check${Number(selected.paper_watch_blocked_count || 0) === 1 ? "" : "s"}.`,
+  );
+  setText(
+    "strategy-promotion-shadow",
+    `${Number(selected.matured_shadow_samples || 0)} / ${Number(selected.shadow_samples || 0)}`,
+  );
+  setText("strategy-promotion-shadow-detail", `${rValue(selected.shadow_average_r)} avg matured shadow R.`);
+  setText(
+    "strategy-promotion-forward",
+    `${Number(selected.matured_forward_observations || 0)} / ${Number(selected.forward_observations || 0)}`,
+  );
+  setText("strategy-promotion-forward-detail", `${rValue(selected.forward_average_r)} avg matured forward R.`);
   setText(
     "strategy-vault-evidence-detail",
     selected.walk_forward_status
