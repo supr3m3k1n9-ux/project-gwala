@@ -192,6 +192,23 @@ The vault does not approve trades, import paper entries, place orders, create
 broker alerts, or bypass the paper gate. It only helps decide which strategy
 family deserves research or manual paper-review attention.
 
+### Strategy Selector
+
+The Strategy Vault page now includes a Strategy Selector at the top of the
+page. It separates:
+
+```text
+Paper-Watch Strategy = the only strategy family allowed to reach manual paper review
+Research Focus = the strategy family worth building or studying next
+Selector Rule = what the app allows today
+Blocked Research = research-only strategies that cannot be paper-traded yet
+```
+
+If a research strategy fits the current regime better than the active strategy,
+the selector may prioritize it for research. That still does not make it
+paper-watch eligible. A strategy needs its own evidence and promotion gate
+before it can move from research-only into paper-watch review.
+
 ### VWAP Mean Reversion
 
 VWAP Mean Reversion is the first complementary vault strategy. It studies

@@ -65,6 +65,7 @@ from run_research_confidence import build_rows as build_research_confidence_rows
 from run_regime_review import build_regime_review
 from run_shadow_samples import shadow_status_for_row
 from run_strategy_overlap_audit import build_audit_rows, priority_plan
+from run_strategy_vault import build_selector
 from run_walk_forward_review import build_walk_forward_review
 from run_trade_checklist import current_candidates as checklist_candidates
 from run_webull_watchlist import fetch_chart_only_timeframes, write_candidate_selection_report
@@ -690,6 +691,31 @@ class ResearchSelectionTests(unittest.TestCase):
 
         self.assertIn("| COIN | approved | current + no_vwap_exit | 12 |", report)
         self.assertNotIn("| COIN | watch_more | market_confirmed + no_vwap_exit |", report)
+
+    def test_strategy_selector_blocks_research_priority_from_paper_watch(self) -> None:
+        selector = build_selector(
+            [
+                {
+                    "strategy_id": "vwap_ema_trend_continuation",
+                    "name": "VWAP + EMA Trend Continuation",
+                    "status": "active_paper_watch",
+                    "decision": "watch",
+                    "paper_watch_decision": "not_applicable",
+                },
+                {
+                    "strategy_id": "opening_range_failure",
+                    "name": "Opening Range Failure",
+                    "status": "research_backlog",
+                    "decision": "research_priority",
+                    "paper_watch_decision": "not_applicable",
+                },
+            ]
+        )
+
+        self.assertEqual(selector["mode"], "selective_watch")
+        self.assertEqual(selector["paper_watch_strategy"], "VWAP + EMA Trend Continuation")
+        self.assertEqual(selector["research_strategy"], "Opening Range Failure")
+        self.assertIn("Do not paper-trade Opening Range Failure", selector["blocked_actions"][0])
 
     def test_research_confidence_scores_broad_universe_without_live_approval(self) -> None:
         with TemporaryDirectory() as temporary:

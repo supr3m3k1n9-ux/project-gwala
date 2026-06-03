@@ -499,6 +499,67 @@ def strategy_decision(strategy: VaultStrategy, regime: dict[str, Any], output_di
     }
 
 
+def build_selector(strategies: list[dict[str, Any]]) -> dict[str, Any]:
+    """Choose the strategy lane that is allowed for paper review today.
+
+    The selector is intentionally conservative. Research strategies can be the
+    best fit for the regime, but they stay blocked from paper-watch review until
+    a dedicated promotion gate says otherwise.
+    """
+
+    paper_watch_rows = [row for row in strategies if row.get("status") == "active_paper_watch"]
+    paper_watch = paper_watch_rows[0] if paper_watch_rows else {}
+    research_priority = next((row for row in strategies if row.get("decision") == "research_priority"), {})
+    research_only = [
+        row
+        for row in strategies
+        if row.get("status") != "active_paper_watch"
+        and row.get("paper_watch_decision") != "paper_watch_eligible"
+    ]
+
+    paper_decision = str(paper_watch.get("decision", "missing") or "missing")
+    paper_name = str(paper_watch.get("name", "No active paper-watch strategy") or "No active paper-watch strategy")
+    research_name = str(research_priority.get("name", "No research priority") or "No research priority")
+
+    if paper_decision == "active":
+        mode = "paper_watch_allowed"
+        allowed_action = f"Only review current-candle, size-ok {paper_name} candidates."
+        selector_note = "Current regime supports the active paper-watch strategy."
+    elif paper_decision == "watch":
+        mode = "selective_watch"
+        allowed_action = f"Keep scanning {paper_name}, but require perfect scanner, sizing, freshness, and manual checklist gates."
+        selector_note = "The active strategy is usable only with extra selectivity."
+    elif paper_decision == "caution":
+        mode = "stand_aside"
+        allowed_action = "Stand aside from new paper entries unless the active scanner produces an unusually clean fresh setup."
+        selector_note = "The active paper-watch strategy is not favored by the current regime."
+    else:
+        mode = "research_only"
+        allowed_action = "No strategy is cleared for paper-watch review. Keep collecting evidence."
+        selector_note = "No active paper-watch strategy is available."
+
+    blocked_actions = [
+        f"Do not paper-trade {row.get('name', 'research strategy')} from vault research rows."
+        for row in research_only
+    ]
+    if not blocked_actions:
+        blocked_actions = ["No research-only strategy blocks reported."]
+
+    return {
+        "mode": mode,
+        "paper_watch_strategy_id": paper_watch.get("strategy_id", ""),
+        "paper_watch_strategy": paper_name,
+        "paper_watch_decision": paper_decision,
+        "research_strategy_id": research_priority.get("strategy_id", ""),
+        "research_strategy": research_name,
+        "research_decision": research_priority.get("decision", "none"),
+        "allowed_action": allowed_action,
+        "selector_note": selector_note,
+        "blocked_actions": blocked_actions,
+        "research_only_strategy_count": len(research_only),
+    }
+
+
 def build_payload(output_dir: Path, market_symbol: str, timeframe: str) -> dict[str, Any]:
     """Build the complete strategy vault payload."""
 
@@ -507,6 +568,7 @@ def build_payload(output_dir: Path, market_symbol: str, timeframe: str) -> dict[
     regime = classify_regime(candles, scanner)
     strategies = [strategy_decision(strategy, regime, output_dir) for strategy in STRATEGY_VAULT]
     strategies = sorted(strategies, key=lambda row: (row["decision"] != "active", -row["score"], row["name"]))
+    selector = build_selector(strategies)
     active = [row for row in strategies if row["decision"] == "active"]
     research_priority = [row for row in strategies if row["decision"] == "research_priority"]
     if active:
@@ -524,6 +586,7 @@ def build_payload(output_dir: Path, market_symbol: str, timeframe: str) -> dict[
         "research_priority_count": len(research_priority),
         "next_action": next_action,
         "guardrail": "Strategy vault routes research attention only. It does not approve trades or bypass paper gates.",
+        "selector": selector,
         "strategies": strategies,
     }
 
@@ -540,6 +603,14 @@ def write_outputs(output_dir: Path, payload: dict[str, Any]) -> None:
     json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     regime = payload["regime"]
+    selector = payload.get("selector", {})
+    selector_rows = [
+        {"field": "mode", "value": selector.get("mode", "missing")},
+        {"field": "paper_watch_strategy", "value": selector.get("paper_watch_strategy", "missing")},
+        {"field": "paper_watch_decision", "value": selector.get("paper_watch_decision", "missing")},
+        {"field": "research_strategy", "value": selector.get("research_strategy", "missing")},
+        {"field": "allowed_action", "value": selector.get("allowed_action", "missing")},
+    ]
     md_path.write_text(
         f"""# Strategy Vault
 
@@ -557,6 +628,16 @@ orders, create broker alerts, or bypass the existing scanner/sizing gates.
 
 ```text
 {payload["next_action"]}
+```
+
+## Strategy Selector
+
+{markdown_table(pd.DataFrame(selector_rows))}
+
+Blocked research-only actions:
+
+```text
+{chr(10).join(selector.get("blocked_actions", ["No blocked actions reported."]))}
 ```
 
 ## Strategy Routing

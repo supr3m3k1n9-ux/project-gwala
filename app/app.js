@@ -1583,6 +1583,7 @@ function renderWorkflow(state) {
 function renderStrategyVault(state) {
   const vault = state.strategy_vault || {};
   const regime = vault.regime || {};
+  const selector = vault.selector || {};
   const strategies = vault.strategies || [];
   const active = strategies.find((strategy) => strategy.decision === "active");
   const research = strategies.find((strategy) => strategy.decision === "research_priority");
@@ -1590,6 +1591,25 @@ function renderStrategyVault(state) {
   const passRows = strategies.reduce((total, strategy) => total + Number(strategy.tightened_pass_rows || 0), 0);
 
   setText("strategy-vault-message", vault.next_action || "Run the strategy vault report to classify market regime and strategy routing.");
+  setText("strategy-selector-paper", selector.paper_watch_strategy || active?.name || "No paper-watch strategy");
+  setText(
+    "strategy-selector-paper-detail",
+    `Decision: ${titleCase(selector.paper_watch_decision || active?.decision || "missing")}.`,
+  );
+  setText("strategy-selector-research", selector.research_strategy || research?.name || "No research priority");
+  setText(
+    "strategy-selector-research-detail",
+    selector.research_decision && selector.research_decision !== "none"
+      ? `Research lane: ${titleCase(selector.research_decision)}.`
+      : "No research strategy is prioritized right now.",
+  );
+  setText("strategy-selector-mode", titleCase(selector.mode || "missing"));
+  setText("strategy-selector-action", selector.allowed_action || "Run the strategy vault report.");
+  setText("strategy-selector-blocked-count", `${Number(selector.research_only_strategy_count || 0)} blocked`);
+  setText(
+    "strategy-selector-blocked",
+    (selector.blocked_actions || ["Research strategies cannot be paper-traded until promoted."]).join(" "),
+  );
   setText("strategy-vault-regime", titleCase(regime.market_regime || "missing"));
   setText(
     "strategy-vault-regime-detail",
@@ -3712,15 +3732,18 @@ function renderState(state) {
   setText("health-summary", JSON.stringify(state.setup_health?.status_counts || {}));
   const vault = state.strategy_vault || {};
   const vaultRegime = vault.regime || {};
-  const activeStrategy = (vault.strategies || []).find((strategy) => strategy.decision === "active");
-  const researchStrategy = (vault.strategies || []).find((strategy) => strategy.decision === "research_priority");
+  const selector = vault.selector || {};
   setText(
     "strategy-vault-status",
-    activeStrategy ? activeStrategy.name : researchStrategy ? `Research: ${researchStrategy.name}` : titleCase(vaultRegime.market_regime || "missing"),
+    selector.paper_watch_strategy
+      ? `Paper: ${selector.paper_watch_strategy}`
+      : selector.research_strategy
+        ? `Research: ${selector.research_strategy}`
+        : titleCase(vaultRegime.market_regime || "missing"),
   );
   setText(
     "strategy-vault-detail",
-    vault.next_action || "Run the strategy vault report to classify the market regime.",
+    selector.allowed_action || vault.next_action || "Run the strategy vault report to classify the market regime.",
   );
   setText("premarket-status", titleCase(state.premarket_verification?.status || "not_run"));
   setText(
