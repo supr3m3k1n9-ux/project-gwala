@@ -231,6 +231,24 @@ for exits, a fixed R target, and a stop around the signal candle or opening
 range extreme. This is research only; it does not create paper trades, broker
 orders, or live alerts.
 
+### Trend Pullback Continuation
+
+Trend Pullback Continuation is the vault's second-chance trend strategy. It
+studies entries after a move is already underway, when price pulls back into
+the 9/21 EMA area and then closes back in the direction of VWAP and the larger
+trend.
+
+```text
+Reports -> Research -> Trend Pullback Continuation
+logs/trend_pullback_continuation.md
+```
+
+The research pass tests long pullbacks above VWAP and EMA 200, plus short
+pullbacks below VWAP and EMA 200. It uses 30m candles for entries, 5m candles
+for exits, a fixed R target, and a stop around the signal candle or EMA 21.
+This is research only; it does not create paper trades, broker orders, or live
+alerts.
+
 ### Strategy Selector
 
 The Strategy Vault page now includes a Strategy Selector at the top of the
@@ -516,6 +534,7 @@ logs/vwap_mean_reversion_shadow_samples.md
 logs/vwap_mean_reversion_forward_observations.md
 logs/vwap_mean_reversion_paper_watch_gate.md
 logs/opening_range_breakout.md
+logs/trend_pullback_continuation.md
 logs/opening_range_failure.md
 logs/strategy_evidence_accumulator.md
 logs/paper_activation_rules.md

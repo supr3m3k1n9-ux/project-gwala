@@ -64,6 +64,18 @@ STRATEGY_VAULT: list[VaultStrategy] = [
         next_research_step="Review first-pass OR breakout rows, then add walk-forward and forward evidence if promising.",
     ),
     VaultStrategy(
+        strategy_id="trend_pullback_continuation",
+        name="Trend Pullback Continuation",
+        status="research_backlog",
+        family="trend_pullback",
+        ideal_regimes=("bullish_trend", "bearish_trend", "risk_on_trend", "risk_off_trend"),
+        caution_regimes=("range_chop", "mixed_chop", "late_day_chop"),
+        ideal_volatility=("normal_volatility", "high_volatility"),
+        description="Study second-chance trend entries after price pulls back into the EMA 9/21 zone.",
+        evidence_source="logs/trend_pullback_continuation.md and logs/trend_pullback_continuation_summary.csv.",
+        next_research_step="Review first-pass trend-pullback rows, then add walk-forward and forward evidence if promising.",
+    ),
+    VaultStrategy(
         strategy_id="opening_range_failure",
         name="Opening Range Failure",
         status="research_backlog",

@@ -349,11 +349,11 @@ def summary_evidence(output_dir: Path, stem: str, missing_note: str) -> dict[str
     best_source = pass_rows if not pass_rows.empty else promising
     best_symbols = ""
     if not best_source.empty:
-        best_symbols = ", ".join(
-            best_source.sort_values(["expectancy_r", "trades"], ascending=[False, False])["symbol"]
-            .astype(str)
-            .head(5)
-        )
+        unique_symbols = []
+        for symbol in best_source.sort_values(["expectancy_r", "trades"], ascending=[False, False])["symbol"].astype(str):
+            if symbol not in unique_symbols:
+                unique_symbols.append(symbol)
+        best_symbols = ", ".join(unique_symbols[:5])
     if not pass_rows.empty:
         status = "tightened_first_review_pass"
         note = f"{len(pass_rows)} row(s) passed tightened first review: {best_symbols}."
@@ -399,6 +399,12 @@ def evidence_for_strategy(strategy: VaultStrategy, output_dir: Path) -> dict[str
             output_dir,
             "opening_range_breakout",
             "Run python run_opening_range_breakout.py --output-dir logs.",
+        )
+    if strategy.strategy_id == "trend_pullback_continuation":
+        return summary_evidence(
+            output_dir,
+            "trend_pullback_continuation",
+            "Run python run_trend_pullback_continuation.py --output-dir logs.",
         )
     return {
         "evidence_status": "existing_or_not_applicable",

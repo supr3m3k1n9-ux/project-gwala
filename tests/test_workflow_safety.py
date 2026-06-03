@@ -75,6 +75,7 @@ from run_walk_forward_review import build_walk_forward_review
 from run_trade_checklist import current_candidates as checklist_candidates
 from run_webull_watchlist import fetch_chart_only_timeframes, write_candidate_selection_report
 from strategies.opening_range_breakout import add_opening_range_breakout_signals
+from strategies.trend_pullback_continuation import add_trend_pullback_continuation_signals
 
 
 def scanner_row(**updates: object) -> dict[str, object]:
@@ -684,6 +685,32 @@ class ResearchSelectionTests(unittest.TestCase):
         self.assertTrue(bool(signals.iloc[0]["or_breakout_long_signal"]))
         self.assertFalse(bool(signals.iloc[0]["or_breakout_short_signal"]))
         self.assertGreaterEqual(int(signals.iloc[0]["or_breakout_quality_score"]), 4)
+
+    def test_trend_pullback_flags_long_recovery_from_ema_band(self) -> None:
+        candles = pd.DataFrame(
+            [
+                {
+                    "open": 101.0,
+                    "high": 102.0,
+                    "low": 100.7,
+                    "close": 101.7,
+                    "volume": 1_000,
+                    "vwap": 100.5,
+                    "ema_9": 101.2,
+                    "ema_21": 100.9,
+                    "ema_200": 99.5,
+                    "regular_session": True,
+                    "entry_window": True,
+                }
+            ],
+            index=[pd.Timestamp("2026-06-02 11:00", tz="America/New_York")],
+        )
+
+        signals = add_trend_pullback_continuation_signals(candles, STRATEGY)
+
+        self.assertTrue(bool(signals.iloc[0]["trend_pullback_long_signal"]))
+        self.assertFalse(bool(signals.iloc[0]["trend_pullback_short_signal"]))
+        self.assertGreaterEqual(int(signals.iloc[0]["trend_pullback_quality_score"]), 4)
 
     def test_approved_candidate_is_not_displaced_by_higher_expectancy_small_sample(self) -> None:
         summary = pd.DataFrame(

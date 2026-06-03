@@ -1127,6 +1127,9 @@ def build_system_state(
     opening_range_breakout_json = output_dir / "opening_range_breakout.json"
     opening_range_breakout_md = output_dir / "opening_range_breakout.md"
     opening_range_breakout_summary_csv = output_dir / "opening_range_breakout_summary.csv"
+    trend_pullback_continuation_json = output_dir / "trend_pullback_continuation.json"
+    trend_pullback_continuation_md = output_dir / "trend_pullback_continuation.md"
+    trend_pullback_continuation_summary_csv = output_dir / "trend_pullback_continuation_summary.csv"
     opening_range_failure_json = output_dir / "opening_range_failure.json"
     opening_range_failure_md = output_dir / "opening_range_failure.md"
     opening_range_failure_summary_csv = output_dir / "opening_range_failure_summary.csv"
@@ -1260,6 +1263,7 @@ def build_system_state(
         "vwap_mean_reversion_forward_observation_results_csv": str(vwap_mean_reversion_forward_results_csv),
         "vwap_mean_reversion_paper_watch_gate_json": str(vwap_mean_reversion_paper_watch_gate_json),
         "opening_range_breakout_json": str(opening_range_breakout_json),
+        "trend_pullback_continuation_json": str(trend_pullback_continuation_json),
         "opening_range_failure_json": str(opening_range_failure_json),
         "strategy_evidence_accumulator_json": str(strategy_evidence_accumulator_json),
         "paper_activation_rules_json": str(paper_activation_rules_json),
@@ -1364,6 +1368,9 @@ def build_system_state(
                 "opening_range_breakout_json": file_state(opening_range_breakout_json),
                 "opening_range_breakout_md": file_state(opening_range_breakout_md),
                 "opening_range_breakout_summary_csv": file_state(opening_range_breakout_summary_csv),
+                "trend_pullback_continuation_json": file_state(trend_pullback_continuation_json),
+                "trend_pullback_continuation_md": file_state(trend_pullback_continuation_md),
+                "trend_pullback_continuation_summary_csv": file_state(trend_pullback_continuation_summary_csv),
                 "opening_range_failure_json": file_state(opening_range_failure_json),
                 "opening_range_failure_md": file_state(opening_range_failure_md),
                 "opening_range_failure_summary_csv": file_state(opening_range_failure_summary_csv),
