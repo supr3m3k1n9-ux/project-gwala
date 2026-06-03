@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project Gwala Expanded Chart</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="chart-page">
+    <main class="chart-workspace">
+      <header class="topbar expanded-chart-topbar">
+        <div>
+          <p class="eyebrow" id="expanded-source">Saved Webull candles</p>
+          <h2><span id="expanded-symbol">SPY</span> <span id="expanded-price">...</span></h2>
+          <p id="expanded-change" class="auto-refresh-status">Loading expanded chart...</p>
+        </div>
+        <div class="topbar-actions">
+          <a href="/" class="secondary-link">Back to dashboard</a>
+          <button id="expanded-refresh" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <section class="expanded-chart-panel">
+        <div class="terminal-legend">
+          <span class="legend-vwap">VWAP</span>
+          <span class="legend-ema9">EMA 9</span>
+          <span class="legend-ema21">EMA 21</span>
+          <span class="legend-ema200">EMA 200</span>
+          <span class="legend-range">Opening Range</span>
+          <span class="legend-signal">Signal Marker</span>
+        </div>
+        <div id="expanded-chart" class="expanded-chart">
+          <div class="terminal-empty">Loading expanded chart...</div>
+        </div>
+        <p id="expanded-time" class="terminal-chart-time">Latest stored bar: ...</p>
+      </section>
+    </main>
+    <script src="/chart.js"></script>
+  </body>
+</html>

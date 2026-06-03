@@ -1,0 +1,1262 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project Gwala</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">PG</div>
+        <div>
+          <h1>Project Gwala</h1>
+          <p>Research and paper validation</p>
+        </div>
+      </div>
+      <nav aria-label="Dashboard sections">
+        <a href="#home">Home</a>
+        <a href="#trading-workspace">Trading Workspace</a>
+        <a href="#near-miss-analytics">Near-Miss Analytics</a>
+        <a href="#investment-narrative">Investment Narrative</a>
+        <a href="#research">Research</a>
+        <a href="#system">System</a>
+        <a href="#sample-queue">Sample Queue</a>
+        <a href="#candidates">Candidates</a>
+        <a href="#trade-logger">Trade Logger</a>
+        <a href="#paper-visualization">Paper Progress</a>
+        <a href="#health">Setup Health</a>
+        <a href="#practice-replay">Practice Replay</a>
+        <a href="#reports">Reports</a>
+      </nav>
+    </aside>
+
+    <main id="home" class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Local app shell</p>
+          <h2>Mission Control</h2>
+          <p id="auto-refresh-status" class="auto-refresh-status">Auto-refresh checks every 60 seconds.</p>
+        </div>
+        <div class="topbar-actions">
+          <a href="#system" class="secondary-link">System health</a>
+          <button id="refresh-button" type="button">Refresh</button>
+        </div>
+      </header>
+      <audio id="entry-alert-audio" src="/assets/entry-alert.wav" preload="auto"></audio>
+      <audio id="exit-alert-audio" src="/assets/exit-alert.wav" preload="auto"></audio>
+
+      <section id="command-center" class="command-center" aria-label="Today's command center">
+        <article id="notification-panel" class="notification-panel muted">
+          <div>
+            <p class="eyebrow">Notification layer <span class="help-bubble" data-help="Browser-safe local alerts for paper-ready entries and completed paper exits. Sounds require clicking Enable alerts once per session.">?</span></p>
+            <strong id="notification-title">Alerts muted</strong>
+            <p id="notification-detail">Enable alerts to hear entry-ready and exit-completed notifications.</p>
+          </div>
+          <div class="notification-actions">
+            <button id="enable-alerts" type="button">Enable alerts</button>
+            <label>
+              <input id="entry-alert-toggle" type="checkbox" checked>
+              Entry sound
+            </label>
+            <label>
+              <input id="exit-alert-toggle" type="checkbox" checked>
+              Exit sound
+            </label>
+          </div>
+        </article>
+        <div class="command-primary">
+          <div>
+            <p class="eyebrow">Today&apos;s Command Center <span class="help-bubble" data-help="The plain-English operating panel. Start here to see the next safest action before reading the rest of the dashboard.">?</span></p>
+            <h3 id="command-title">Checking what matters now...</h3>
+            <p id="command-detail">Reading automation, data freshness, candidate readiness, and safety state.</p>
+          </div>
+          <button id="command-primary-action" type="button">Loading</button>
+        </div>
+        <div class="command-grid">
+          <article id="command-automation-card">
+            <span>Automation <span class="help-bubble" data-help="Shows whether the local scheduled workflow appears to be updating its status files.">?</span></span>
+            <strong id="command-automation-status">...</strong>
+            <p id="command-automation-detail">Checking scheduler output.</p>
+          </article>
+          <article id="command-data-card">
+            <span>Data Freshness <span class="help-bubble" data-help="Shows whether the scanner is using today&apos;s saved market data.">?</span></span>
+            <strong id="command-data-status">...</strong>
+            <p id="command-data-detail">Checking latest scanner session.</p>
+          </article>
+          <article id="command-candle-card">
+            <span>Candle Age <span class="help-bubble" data-help="Checks whether saved 5m exit candles and 30m entry candles are fresh enough during market hours.">?</span></span>
+            <strong id="command-candle-status">...</strong>
+            <p id="command-candle-detail">Checking saved candle timestamps.</p>
+          </article>
+          <article id="command-candidate-card">
+            <span>Candidates <span class="help-bubble" data-help="Current-candle setups ready for manual paper review. These are not automatic trades.">?</span></span>
+            <strong id="command-candidate-status">...</strong>
+            <p id="command-candidate-detail">Checking reviewable cards.</p>
+          </article>
+          <article id="command-safety-card">
+            <span>Safety <span class="help-bubble" data-help="Confirms the app is still research and paper-validation only.">?</span></span>
+            <strong id="command-safety-status">...</strong>
+            <p id="command-safety-detail">Checking execution flags.</p>
+          </article>
+          <article id="command-backtest-card">
+            <span>Backtests <span class="help-bubble" data-help="Latest historical watchlist tests. These show research stats only, not live-trading approval.">?</span></span>
+            <strong id="command-backtest-status">...</strong>
+            <p id="command-backtest-detail">Checking historical performance.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="backtest-performance" class="backtest-performance" aria-label="Backtest performance snapshot">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Historical research stats</p>
+            <h3>Backtest Performance Snapshot <span class="help-bubble" data-help="Shows the latest historical backtest trades, win rates, expectancy, and profit factor from saved watchlist summary CSVs.">?</span></h3>
+          </div>
+          <a href="#reports" class="secondary-link">Open full reports</a>
+        </div>
+        <p id="backtest-message" class="backtest-message">Loading latest backtest summaries...</p>
+        <div class="backtest-summary-grid">
+          <article>
+            <span>Tested Rows <span class="help-bubble" data-help="Number of candidate rows with at least one historical trade in the latest summary files.">?</span></span>
+            <strong id="backtest-candidate-count">0</strong>
+            <p>With trade samples</p>
+          </article>
+          <article>
+            <span>Total Trades <span class="help-bubble" data-help="Total historical trades across the displayed candidate rows.">?</span></span>
+            <strong id="backtest-total-trades">0</strong>
+            <p>Historical samples</p>
+          </article>
+          <article>
+            <span>Positive Exp R <span class="help-bubble" data-help="How many candidate rows have average historical outcome above 0R.">?</span></span>
+            <strong id="backtest-positive-count">0</strong>
+            <p>Rows above 0R</p>
+          </article>
+          <article>
+            <span>Best Candidate <span class="help-bubble" data-help="Highest-expectancy candidate in the latest summaries. Small sample sizes should still be treated carefully.">?</span></span>
+            <strong id="backtest-best-name">--</strong>
+            <p id="backtest-best-detail">No sample yet.</p>
+          </article>
+        </div>
+        <div class="table-wrap">
+          <table class="backtest-table">
+            <thead>
+              <tr>
+                <th>Setup</th>
+                <th>Symbol</th>
+                <th>Candidate</th>
+                <th>Trades</th>
+                <th>Win Rate</th>
+                <th>Exp R</th>
+                <th>PF</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="backtest-table-body"></tbody>
+          </table>
+        </div>
+        <article class="backtest-trade-log">
+          <header>
+            <div>
+              <p class="eyebrow">Simulated trade details</p>
+              <h4 id="backtest-trade-title">Select a backtest row</h4>
+            </div>
+            <span id="backtest-trade-count" class="status review_only">No file selected</span>
+          </header>
+          <p id="backtest-trade-message">Click View trades beside a backtest row to see every simulated entry, exit, result R, and exit reason.</p>
+          <div class="backtest-account-controls" aria-label="Retro paper account settings">
+            <label>
+              <span>Starting account</span>
+              <input id="backtest-starting-equity" type="number" min="100" step="100" value="5000">
+            </label>
+            <label>
+              <span>Risk per trade %</span>
+              <input id="backtest-risk-pct" type="number" min="0.1" max="10" step="0.1" value="0.5">
+            </label>
+            <button id="backtest-recalculate-account" type="button" class="secondary-button">Recalculate</button>
+          </div>
+          <div class="backtest-account-summary">
+            <article><span>Ending Account</span><strong id="backtest-ending-equity">$5,000.00</strong></article>
+            <article><span>Total P/L</span><strong id="backtest-total-pnl">$0.00</strong></article>
+            <article><span>Return</span><strong id="backtest-return-pct">0.00%</strong></article>
+            <article><span>Max Drawdown</span><strong id="backtest-max-drawdown">$0.00</strong></article>
+          </div>
+          <div id="backtest-context-grid" class="backtest-context-grid">
+            <article><span>Win Rate</span><strong>--</strong><p>Select a backtest row.</p></article>
+            <article><span>Average R</span><strong>--</strong><p>Historical simulation.</p></article>
+            <article><span>Best / Worst</span><strong>--</strong><p>Trade extremes.</p></article>
+            <article><span>Max Loss Streak</span><strong>--</strong><p>Discipline pressure.</p></article>
+          </div>
+          <div id="backtest-trade-insights" class="backtest-trade-insights">
+            Select a backtest row to see trade context, drawdown behavior, and exit patterns.
+          </div>
+          <div id="backtest-equity-chart" class="paper-equity-chart"></div>
+          <div class="table-wrap">
+            <table class="backtest-table">
+              <thead>
+                <tr>
+                  <th>Entry Time</th>
+                  <th>Exit</th>
+                  <th>Grade</th>
+                  <th>Entry</th>
+                  <th>Stop</th>
+                  <th>Target</th>
+                  <th>Exit Price</th>
+                  <th>Result R</th>
+                  <th>Risk $</th>
+                  <th>P/L $</th>
+                  <th>Account</th>
+                  <th>Exit Reason</th>
+                  <th>Rel Vol</th>
+                </tr>
+              </thead>
+              <tbody id="backtest-trade-body">
+                <tr><td colspan="13">No simulated trade log selected yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="research-confidence" class="research-confidence" aria-label="Research confidence">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Broad universe testing</p>
+            <h3>Research Confidence <span class="help-bubble" data-help="Scores the broader research universe so we can decide what deserves deeper review. This does not approve live trading.">?</span></h3>
+          </div>
+          <a id="research-confidence-report-link" href="#" class="secondary-link">Open confidence report</a>
+        </div>
+        <p id="research-confidence-message" class="backtest-message">Loading broad research scores...</p>
+        <div class="backtest-summary-grid research-summary-grid">
+          <article>
+            <span>Symbols Tested <span class="help-bubble" data-help="Unique symbols included in the broad research confidence file.">?</span></span>
+            <strong id="research-tested-symbols">0</strong>
+            <p>Research universe only</p>
+          </article>
+          <article>
+            <span>Research Ready <span class="help-bubble" data-help="Rows strong enough for deeper review and forward paper validation, not real-money trading.">?</span></span>
+            <strong id="research-ready-count">0</strong>
+            <p>Need review first</p>
+          </article>
+          <article>
+            <span>Promising <span class="help-bubble" data-help="Rows with positive early evidence that need more samples before trust increases.">?</span></span>
+            <strong id="research-promising-count">0</strong>
+            <p>Keep watching</p>
+          </article>
+          <article>
+            <span>Total Rows <span class="help-bubble" data-help="All scored symbol/setup candidates from the broad research files.">?</span></span>
+            <strong id="research-candidate-count">0</strong>
+            <p>Scored candidates</p>
+          </article>
+        </div>
+        <div class="table-wrap">
+          <table class="backtest-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Score</th>
+                <th>Symbol</th>
+                <th>Setup</th>
+                <th>Candidate</th>
+                <th>Trades</th>
+                <th>Exp R</th>
+                <th>PF</th>
+              </tr>
+            </thead>
+            <tbody id="research-confidence-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="promotion-review" class="promotion-review" aria-label="Promotion review">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Signal quality gate</p>
+            <h3>Promotion Review <span class="help-bubble" data-help="The checkpoint between promising backtests and active paper watch. It filters noise before a setup reaches the scanner.">?</span></h3>
+          </div>
+          <a id="promotion-review-report-link" href="#" class="secondary-link">Open promotion report</a>
+        </div>
+        <p id="promotion-review-message" class="backtest-message">Loading promotion review...</p>
+        <div class="backtest-summary-grid promotion-summary-grid">
+          <article>
+            <span>Paper Watch <span class="help-bubble" data-help="Setups that passed the review gate for manual forward paper validation only.">?</span></span>
+            <strong id="promotion-paper-watch-count">0</strong>
+            <p>Manual review only</p>
+          </article>
+          <article>
+            <span>Needs Review <span class="help-bubble" data-help="Setups with risk, stability, or outlier concerns that need inspection before paper watch.">?</span></span>
+            <strong id="promotion-needs-review-count">0</strong>
+            <p>Check before use</p>
+          </article>
+          <article>
+            <span>Needs Samples <span class="help-bubble" data-help="Good-looking rows that do not have enough historical trades yet.">?</span></span>
+            <strong id="promotion-needs-samples-count">0</strong>
+            <p>Keep researching</p>
+          </article>
+          <article>
+            <span>Total Reviewed <span class="help-bubble" data-help="Research-ready and high-promising rows inspected by the promotion gate.">?</span></span>
+            <strong id="promotion-candidate-count">0</strong>
+            <p>Review queue</p>
+          </article>
+        </div>
+        <div class="table-wrap">
+          <table class="backtest-table">
+            <thead>
+              <tr>
+                <th>Decision</th>
+                <th>Symbol</th>
+                <th>Setup</th>
+                <th>Candidate</th>
+                <th>Trades</th>
+                <th>Exp R</th>
+                <th>PF</th>
+                <th>DD</th>
+                <th>Months</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody id="promotion-review-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="state" class="status-band">
+        <div class="verdict">
+          <span id="phase-pill" class="pill">Loading</span>
+          <h3 id="verdict">Loading system state...</h3>
+          <p id="safety-line">Checking safety flags.</p>
+        </div>
+        <div id="warning-badges" class="warning-badges"></div>
+      </section>
+
+      <section id="state-metrics" class="metrics-grid" aria-label="Key metrics">
+        <article>
+          <span>Market</span>
+          <strong id="market-status">...</strong>
+          <p id="next-session">...</p>
+        </article>
+        <article>
+          <span>Data</span>
+          <strong id="data-status">...</strong>
+          <p id="latest-session">...</p>
+        </article>
+        <article>
+          <span>Paper Gate</span>
+          <strong id="paper-gate">...</strong>
+          <p id="paper-progress">...</p>
+        </article>
+        <article>
+          <span>Setup Health</span>
+          <strong id="health-count">...</strong>
+          <p id="health-summary">...</p>
+        </article>
+        <article>
+          <span>Pre-Market Gate</span>
+          <strong id="premarket-status">...</strong>
+          <p id="premarket-detail">...</p>
+        </article>
+        <article>
+          <span>Data Reliability</span>
+          <strong id="data-reliability-status">...</strong>
+          <p id="data-reliability-detail">...</p>
+        </article>
+      </section>
+
+      <section id="session-readiness" class="session-readiness" aria-label="Session readiness">
+        <div class="section-heading readiness-summary-heading">
+          <div>
+            <p class="eyebrow">Today&apos;s operating state</p>
+          <h3>Session Readiness <span class="help-bubble" data-help="A quick summary of whether the app has fresh data, the market clock is valid, and paper-review safeguards are still blocking unsafe actions.">?</span></h3>
+          </div>
+          <span id="readiness-summary-status" class="status watch">Loading</span>
+        </div>
+        <p id="readiness-summary-message" class="readiness-summary-message">
+          Checking the market clock, data pipe, scanner freshness, and paper gate.
+        </p>
+        <div id="readiness-summary-cards" class="readiness-summary-cards">
+          <article>
+            <span>Data Pipe <span class="help-bubble" data-help="The path that brings Webull candle data into local CSV files and reports. If it is stale, the scanner may be working from old candles.">?</span></span>
+            <strong>...</strong>
+            <p>Checking Webull access.</p>
+          </article>
+          <article>
+            <span>Market Clock <span class="help-bubble" data-help="Checks whether the regular stock-market session is open, closed, or waiting for the next session.">?</span></span>
+            <strong>...</strong>
+            <p>Checking session time.</p>
+          </article>
+          <article>
+            <span>Paper Gate <span class="help-bubble" data-help="A safety gate that blocks paper logging until a fresh current-candle candidate has been reviewed.">?</span></span>
+            <strong>...</strong>
+            <p>Checking candidates.</p>
+          </article>
+        </div>
+        <div class="readiness-next-action">
+          <span>Next safe action</span>
+          <code id="readiness-next-action">Loading...</code>
+        </div>
+        <div class="readiness-actions">
+          <button id="run-webull-refresh" type="button">Refresh Webull Data</button>
+          <p id="webull-refresh-message" class="action-message" aria-live="polite">
+            Runs the research-only data refresh and rebuilds reports. It cannot place orders or import paper trades.
+          </p>
+        </div>
+      </section>
+
+      <section id="trading-workspace">
+        <div class="section-heading trading-heading">
+          <div>
+            <p class="eyebrow">Webull market data / read-only paper review</p>
+            <h3>Trading Workspace <span class="help-bubble" data-help="A read-only chart and paper-review area. It uses saved Webull candles and cannot place broker orders.">?</span></h3>
+          </div>
+          <span class="status watch">No Order Execution</span>
+        </div>
+        <p class="trading-disclosure">
+          Chart candles and indicators come from the same saved Webull data used by the scanner.
+          This workspace supports paper review only and cannot submit broker orders.
+        </p>
+        <p id="terminal-focus-note" class="terminal-focus-note" hidden></p>
+        <div class="terminal-grid">
+          <aside class="terminal-watchlist" aria-label="Approved playbook watchlist">
+            <header>
+              <span class="eyebrow">Approved universe <span class="help-bubble" data-help="The symbols that are allowed in this research playbook. The app ignores symbols outside this list.">?</span></span>
+              <strong>Watchlist</strong>
+            </header>
+            <div id="terminal-symbols" class="terminal-symbols">
+              <p>Loading symbols...</p>
+            </div>
+          </aside>
+          <article class="terminal-chart-panel">
+            <header class="terminal-chart-header">
+              <div>
+                <p class="eyebrow" id="terminal-source">Saved Webull candles</p>
+                <h4><span id="terminal-chart-symbol">SPY</span> <span id="terminal-price">...</span></h4>
+                <p id="terminal-change" class="terminal-change">Loading chart...</p>
+              </div>
+              <div id="terminal-timeframes" class="terminal-timeframes" aria-label="Chart timeframe">
+                <button type="button" data-timeframe="M1">1m</button>
+                <button type="button" data-timeframe="M5" class="active">5m</button>
+                <button type="button" data-timeframe="M15">15m</button>
+                <button type="button" data-timeframe="M30">30m</button>
+                <button type="button" data-timeframe="M60">1h</button>
+                <button type="button" data-timeframe="D">Daily</button>
+              </div>
+            </header>
+            <div class="terminal-legend">
+              <span class="legend-vwap">VWAP <span class="help-bubble" data-help="Volume-weighted average price. It shows the average traded price weighted by volume during the session.">?</span></span>
+              <span class="legend-ema9">EMA 9 <span class="help-bubble" data-help="A fast exponential moving average used to judge short-term momentum.">?</span></span>
+              <span class="legend-ema21">EMA 21 <span class="help-bubble" data-help="A slower exponential moving average used to judge trend structure.">?</span></span>
+              <span class="legend-ema200">EMA 200 <span class="help-bubble" data-help="A long-term moving average used as a broad trend filter.">?</span></span>
+              <span class="legend-range">Opening Range <span class="help-bubble" data-help="The early-session high and low used to judge whether price is showing strength or weakness after the open.">?</span></span>
+              <span class="legend-signal">Signal Marker <span class="help-bubble" data-help="A candle where the scanner found a setup condition. It is evidence for review, not an automatic trade.">?</span></span>
+            </div>
+            <div id="terminal-chart" class="terminal-chart" title="Open expanded chart">
+              <div class="terminal-empty">Loading latest saved chart data...</div>
+            </div>
+            <div class="terminal-chart-footer">
+              <p id="terminal-chart-time" class="terminal-chart-time">Latest stored bar: ...</p>
+              <a id="terminal-expand-chart" href="/chart.html?symbol=SPY&timeframe=M5" target="_blank" rel="noopener">
+                Open expanded chart
+              </a>
+            </div>
+            <p id="terminal-freshness-warning" class="terminal-freshness-warning watch">
+              Checking candle freshness.
+            </p>
+          </article>
+          <aside class="terminal-ticket">
+            <header>
+              <span class="eyebrow">Paper ticket <span class="help-bubble" data-help="A local review card showing planned entry, stop, target, and size. It cannot send an order.">?</span></span>
+              <strong id="ticket-title">No Current Signal</strong>
+            </header>
+            <span id="ticket-status" class="status watch">Review Only</span>
+            <dl class="ticket-prices">
+              <div><dt>Entry</dt><dd id="ticket-entry">--</dd></div>
+              <div><dt>Stop</dt><dd id="ticket-stop">--</dd></div>
+              <div><dt>Target</dt><dd id="ticket-target">--</dd></div>
+              <div><dt>Shares</dt><dd id="ticket-shares">--</dd></div>
+            </dl>
+            <div class="ticket-context">
+              <p class="eyebrow">Approved setup coverage</p>
+              <p id="ticket-setups">Loading selected symbol...</p>
+            </div>
+            <p id="ticket-message" class="ticket-message">
+              Waiting for the latest scanner state.
+            </p>
+            <button type="button" class="disabled-order" disabled>Orders Disabled In Paper Validation</button>
+            <section class="pre-entry-panel" aria-label="Pre-entry checklist">
+              <header>
+                <span class="eyebrow">Pre-entry checklist <span class="help-bubble" data-help="Final local-paper gate before running a paper preview. It does not place orders.">?</span></span>
+                <strong id="pre-entry-title">Waiting for chart</strong>
+              </header>
+              <ul id="pre-entry-list" class="pre-entry-list"></ul>
+              <label class="pre-entry-review">
+                <input id="pre-entry-reviewed" type="checkbox">
+                I reviewed the chart, setup context, and risk before paper preview.
+              </label>
+              <button id="ticket-paper-preview" type="button" disabled>Run local paper preview</button>
+              <p id="pre-entry-message" class="ticket-message">
+                Select a ready current-candle candidate before preview.
+              </p>
+            </section>
+          </aside>
+        </div>
+        <div class="readiness-radar">
+          <header class="readiness-heading">
+            <div>
+              <p class="eyebrow">Latest scanner explanation</p>
+              <h4>Setup Readiness Radar <span id="readiness-symbol">SPY</span> <span class="help-bubble" data-help="Shows which checklist conditions are passing or missing for the selected symbol and setup. It explains the scanner; it does not approve trades.">?</span></h4>
+            </div>
+            <span class="status review_only">Explanation Only</span>
+          </header>
+          <p id="readiness-message" class="readiness-message">
+            Loading setup conditions and stored-session signal markers...
+          </p>
+          <div id="readiness-cards" class="readiness-cards">
+            <div class="radar-empty">Loading approved setup checks...</div>
+          </div>
+          <p id="readiness-guardrail" class="readiness-guardrail">
+            Readiness explanations do not approve paper trades or alter position sizing.
+          </p>
+        </div>
+      </section>
+
+      <section id="near-miss-analytics">
+        <div class="section-heading near-miss-heading">
+          <div>
+            <p class="eyebrow">Paper-session learning / non-signals</p>
+            <h3>Near-Miss Analytics <span class="help-bubble" data-help="Studies setups that almost qualified but were blocked by one or more missing conditions. Useful for learning, not trade approval.">?</span></h3>
+          </div>
+          <span id="near-miss-basis" class="status review_only">Loading Evidence</span>
+        </div>
+        <p id="near-miss-message" class="near-miss-message">
+          Loading recurring setup blockers from the scanner.
+        </p>
+        <div class="near-miss-grid">
+          <article class="blocker-panel">
+            <header>
+              <div>
+                <p class="eyebrow">Most frequent blockers</p>
+                <h4>What Prevented Setups</h4>
+              </div>
+              <strong id="near-miss-count">0</strong>
+            </header>
+            <div id="near-miss-blockers" class="blocker-bars">
+              <p class="radar-empty">No blocker data available yet.</p>
+            </div>
+          </article>
+          <article class="closest-panel">
+            <header>
+              <p class="eyebrow">Latest stored scanner</p>
+              <h4>Closest Setups</h4>
+            </header>
+            <div id="near-miss-closest" class="closest-list">
+              <p class="radar-empty">No near-miss setup rows available yet.</p>
+            </div>
+          </article>
+          <article class="closest-panel">
+            <header>
+              <div>
+                <p class="eyebrow">Almost-ready follow-through</p>
+                <h4>Missed Opportunity Tracker</h4>
+              </div>
+              <strong id="near-miss-missed-count">0</strong>
+            </header>
+            <div id="near-miss-missed" class="closest-list">
+              <p class="radar-empty">No almost-ready outcomes available yet.</p>
+            </div>
+          </article>
+        </div>
+        <p id="near-miss-guardrail" class="near-miss-guardrail">
+          Near-miss analytics explains blocked setup conditions only; it never changes signal eligibility.
+        </p>
+      </section>
+
+      <section id="investment-narrative">
+        <div class="section-heading narrative-heading">
+          <div>
+            <p class="eyebrow">Long-term context / research journal</p>
+            <h3>Investment Narrative <span class="help-bubble" data-help="Longer-term business or market context for the selected symbol. It stays separate from VWAP/EMA trade rules.">?</span></h3>
+          </div>
+          <span id="narrative-scope" class="status review_only">Long-Term Context Only</span>
+        </div>
+        <p class="narrative-disclosure">
+          This panel is for explaining durable business and market themes around the selected chart symbol.
+          It does not influence the VWAP/EMA strategy, paper-trade eligibility, or position sizing.
+        </p>
+        <div class="narrative-grid">
+          <article class="narrative-overview">
+            <header class="narrative-symbol-header">
+              <div>
+                <p class="eyebrow">Selected symbol</p>
+                <h4><span id="narrative-symbol">SPY</span> <span id="narrative-asset-type">...</span></h4>
+              </div>
+              <span id="narrative-source-status" class="status watch">Loading</span>
+            </header>
+            <div class="narrative-summary">
+              <p class="eyebrow">Source-linked summary</p>
+              <p id="narrative-summary-text">Loading narrative context...</p>
+            </div>
+            <div class="narrative-focus">
+              <p class="eyebrow">Long-term thesis focus</p>
+              <p id="narrative-thesis-focus">Loading monitoring themes...</p>
+            </div>
+            <div id="narrative-themes" class="narrative-themes"></div>
+          </article>
+          <aside class="narrative-side">
+            <div>
+              <p class="eyebrow">Future source connections</p>
+              <div id="narrative-sources" class="narrative-sources"></div>
+            </div>
+            <div>
+              <p class="eyebrow">Review questions</p>
+              <ul id="narrative-questions" class="narrative-questions"></ul>
+            </div>
+            <p id="narrative-guardrail" class="narrative-guardrail">
+              Narrative context remains separate from trade decisions.
+            </p>
+          </aside>
+        </div>
+      </section>
+
+      <section id="app-health">
+        <div class="section-heading">
+          <p class="eyebrow">Freshness</p>
+          <h3>App Health <span class="help-bubble" data-help="Timestamps for key files the app reads. If these are old, the screen may be showing stale data.">?</span></h3>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <tbody id="app-health-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="workflow" class="split">
+        <div>
+          <div class="section-heading">
+            <p class="eyebrow">Scanner</p>
+            <h3>Signal Workflow <span class="help-bubble" data-help="The scanner and report pipeline that turns saved candles into setup checks, sizing, alerts, and dashboard state.">?</span></h3>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <tbody id="workflow-table"></tbody>
+            </table>
+          </div>
+          <div class="workflow-action">
+            <p class="eyebrow">Status-only action</p>
+            <button id="run-refresh-status" type="button">Update refresh status</button>
+            <p id="refresh-action-message" class="action-message" aria-live="polite">
+              Rebuilds local readiness reports only. It does not fetch market data or import paper trades.
+            </p>
+          </div>
+          <div class="workflow-action">
+            <p class="eyebrow">Local pre-market gate</p>
+            <button id="run-premarket-check" type="button">Run local pre-market check</button>
+            <p id="premarket-action-message" class="action-message" aria-live="polite">
+              Rebuilds integrity and readiness reports only. The Webull data-only probe remains a separate terminal command.
+            </p>
+          </div>
+          <div class="workflow-action">
+            <p class="eyebrow">Local paper cycle</p>
+            <div class="button-row">
+              <button id="run-paper-session-preview" type="button">Run paper preview</button>
+              <button id="confirm-paper-entry" type="button">Confirm local paper entry</button>
+              <button id="confirm-paper-exits" type="button">Confirm local paper exits</button>
+            </div>
+            <p id="paper-session-action-message" class="action-message" aria-live="polite">
+              Preview is read-only. Confirm buttons write local paper logs only; they cannot place broker orders.
+            </p>
+          </div>
+        </div>
+        <div>
+          <div class="section-heading">
+            <p class="eyebrow">Safety</p>
+            <h3>Guardrails <span class="help-bubble" data-help="Safety rules that keep this app in research and paper-validation mode. They prevent broker execution and unsafe paper logging.">?</span></h3>
+          </div>
+          <ul id="guardrails" class="check-list"></ul>
+        </div>
+      </section>
+
+      <section id="sample-queue">
+        <div class="section-heading candidate-heading">
+          <div>
+            <p class="eyebrow">Forward paper validation</p>
+            <h3>Sample Queue <span class="help-bubble" data-help="Ranks ready, blocked, and almost-ready scanner rows so the first 30 forward paper samples are collected cleanly. It is read-only.">?</span></h3>
+          </div>
+          <span id="sample-queue-status" class="status watch">Loading</span>
+        </div>
+        <p id="sample-queue-message" class="candidate-message">
+          Checking the forward sample queue.
+        </p>
+        <div class="sample-queue-summary">
+          <article><span>Ready <span class="help-bubble" data-help="Current-candle rows that passed scanner, freshness, and size gates. Manual checklist still required.">?</span></span><strong id="sample-ready-count">0</strong><p>Manual checklist next</p></article>
+          <article><span>Blocked Current <span class="help-bubble" data-help="Current-candle rows that appeared but are blocked by scanner, freshness, or sizing rules.">?</span></span><strong id="sample-blocked-count">0</strong><p>Study only</p></article>
+          <article><span>Almost Ready <span class="help-bubble" data-help="Rows near the setup checklist threshold but not allowed for paper entry.">?</span></span><strong id="sample-almost-count">0</strong><p>Watch next scan</p></article>
+          <article><span>To 30 <span class="help-bubble" data-help="Allowed completed forward paper trades remaining before the first useful validation checkpoint.">?</span></span><strong id="sample-to-30-count">30</strong><p>Clean samples left</p></article>
+        </div>
+        <div id="sample-queue-list" class="sample-queue-list"></div>
+        <article class="almost-breakout-panel">
+          <header>
+            <div>
+              <p class="eyebrow">Optimization guardrail</p>
+              <h4>Almost-Ready Breakout <span class="help-bubble" data-help="Explains which near-ready blockers should stay strict versus which deserve shadow-only testing.">?</span></h4>
+            </div>
+            <span id="almost-breakout-status" class="status watch">Loading</span>
+          </header>
+          <p id="almost-breakout-message">Checking almost-ready breakout evidence.</p>
+          <div id="almost-breakout-list" class="almost-breakout-list"></div>
+        </article>
+      </section>
+
+      <section id="candidates">
+        <div class="section-heading candidate-heading">
+          <div>
+            <p class="eyebrow">Read-only paper review</p>
+            <h3>Current-Candle Candidates <span class="help-bubble" data-help="Setups found on the latest relevant candle. These are review candidates only, not automatic trades.">?</span></h3>
+          </div>
+          <span id="candidate-count" class="status watch">Loading</span>
+        </div>
+        <p id="candidate-message" class="candidate-message">
+          Checking the existing scanner and position-sizing outputs.
+        </p>
+        <div id="paper-workflow-guide" class="paper-workflow-guide"></div>
+        <div id="candidate-list" class="candidate-list"></div>
+      </section>
+
+      <section id="trade-logger">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Local paper outcome entry</p>
+            <h3>Open Trade Logger <span class="help-bubble" data-help="Updates local paper rows after you manually close a paper/options-style trade. It never places or closes broker orders.">?</span></h3>
+          </div>
+          <span id="trade-logger-count" class="status watch">Loading</span>
+        </div>
+        <p id="trade-logger-message" class="candidate-message">Checking open local paper rows.</p>
+        <form id="trade-logger-form" class="trade-logger-form compact">
+          <div class="logger-primary-row">
+            <label>
+              <span>Open row</span>
+              <select id="trade-log-row"></select>
+            </label>
+            <label>
+              <span>Entry</span>
+              <input id="trade-log-actual-entry" type="number" step="0.01" inputmode="decimal" required>
+            </label>
+            <label>
+              <span>Exit</span>
+              <input id="trade-log-actual-exit" type="number" step="0.01" inputmode="decimal" required>
+            </label>
+            <button id="trade-log-submit" type="submit">Save</button>
+          </div>
+          <details class="logger-details">
+            <summary>Trade details</summary>
+            <div class="logger-detail-grid">
+              <label>
+                <span>Exit time ET</span>
+                <input id="trade-log-exit-time" type="text" placeholder="11:15">
+              </label>
+              <label>
+                <span>Vehicle</span>
+                <select id="trade-log-vehicle">
+                  <option value="options">Options</option>
+                  <option value="shares">Shares</option>
+                </select>
+              </label>
+              <label>
+                <span>Risk tier</span>
+                <select id="trade-log-risk-tier">
+                  <option value="standard">Standard</option>
+                  <option value="reduced">Reduced</option>
+                  <option value="strong">Strong</option>
+                  <option value="best-tier">Best-tier</option>
+                  <option value="no_scale">No scale</option>
+                </select>
+              </label>
+              <label>
+                <span>Premium</span>
+                <input id="trade-log-premium" type="number" step="0.01" inputmode="decimal" placeholder="120">
+              </label>
+              <label>
+                <span>Contracts</span>
+                <input id="trade-log-shares" type="number" step="1" inputmode="numeric">
+              </label>
+              <label>
+                <span>Followed plan</span>
+                <select id="trade-log-followed-plan">
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+              <label>
+                <span>Exit reason</span>
+                <select id="trade-log-exit-reason">
+                  <option value="profit_target">Profit target</option>
+                  <option value="stop_loss">Stop loss</option>
+                  <option value="manual_exit">Manual exit</option>
+                  <option value="time_exit">Time exit</option>
+                </select>
+              </label>
+              <button id="trade-log-refresh" type="button" class="secondary-button">Reload rows</button>
+              <label class="trade-logger-notes">
+                <span>Notes</span>
+                <textarea id="trade-log-notes" rows="2" placeholder="Contract notes, spread, discipline, or lesson."></textarea>
+              </label>
+            </div>
+          </details>
+        </form>
+      </section>
+
+      <section id="forward-evidence">
+        <div class="section-heading">
+          <p class="eyebrow">Observed hypothetical results</p>
+          <h3>Forward Sample Evidence <span class="help-bubble" data-help="Saved observations of signals after they appeared in real time. They help measure whether the strategy is behaving forward, outside old backtests.">?</span></h3>
+        </div>
+        <p class="paper-viz-message">
+          Preserved scanner sightings and matured hypothetical outcomes. These are observations, not paper trades.
+        </p>
+        <div class="evidence-grid">
+          <article><span>Observed <span class="help-bubble" data-help="Signals that were saved when they appeared, before knowing their final result.">?</span></span><strong id="evidence-observed">0</strong><p>Fresh signals preserved</p></article>
+          <article><span>Matured <span class="help-bubble" data-help="Observed signals that now have enough later candles to judge the hypothetical outcome.">?</span></span><strong id="evidence-matured">0</strong><p>Outcome-ready observations</p></article>
+          <article><span>Allowed Avg R <span class="help-bubble" data-help="Average R-multiple for matured observations that met the scanner rules. 1R equals the planned risk from entry to stop.">?</span></span><strong id="evidence-allowed-r">0.00R</strong><p id="evidence-allowed-count">0 matured</p></article>
+          <article><span>Watch Avg R <span class="help-bubble" data-help="Average R-multiple for watch-only or blocked observations. Useful for learning what the filters are excluding.">?</span></span><strong id="evidence-blocked-r">0.00R</strong><p id="evidence-blocked-count">0 matured</p></article>
+          <article><span>Integrity <span class="help-bubble" data-help="Count of data-quality warnings found in the candle files. Lower is better.">?</span></span><strong id="evidence-integrity">0</strong><p>Data warnings</p></article>
+        </div>
+      </section>
+
+      <section id="paper-visualization">
+        <div class="section-heading">
+          <p class="eyebrow">Forward validation only</p>
+          <h3>Paper Progress Visualization <span class="help-bubble" data-help="Progress view for completed local paper trades and validation checkpoints. It is not a live brokerage account.">?</span></h3>
+        </div>
+        <p id="paper-viz-message" class="paper-viz-message">Loading completed paper-trade progress.</p>
+        <article class="evidence-bridge-card">
+          <header>
+            <div>
+              <p class="eyebrow">Evidence bridge</p>
+              <h4>What Counts Toward Paper Validation <span class="help-bubble" data-help="Separates official paper trades from historical, forward-observation, and shadow evidence so the 30-trade gate stays clean.">?</span></h4>
+            </div>
+            <span id="evidence-bridge-status" class="status watch">Loading</span>
+          </header>
+          <p id="evidence-bridge-message" class="paper-viz-message">Checking evidence lanes.</p>
+          <div class="evidence-bridge-grid">
+            <article><span>Official Paper</span><strong id="bridge-official-paper">0</strong><p id="bridge-official-detail">Counts toward gate</p></article>
+            <article><span>Forward Observations</span><strong id="bridge-observations">0</strong><p id="bridge-observation-detail">Research context</p></article>
+            <article><span>Shadow Samples</span><strong id="bridge-shadow">0</strong><p id="bridge-shadow-detail">Does not count</p></article>
+            <article><span>Timing Evidence</span><strong id="bridge-aging">0</strong><p id="bridge-aging-detail">Candidate aging</p></article>
+          </div>
+        </article>
+        <article class="paper-account-card">
+          <header>
+            <div>
+              <p class="eyebrow">Forward paper account</p>
+              <h4>Actual Logged Paper Trade P/L <span class="help-bubble" data-help="Applies the paper-account model only to completed local paper trades logged after signals appear in real time.">?</span></h4>
+            </div>
+            <span id="paper-account-count" class="status review_only">0 logged</span>
+          </header>
+          <p id="paper-account-message" class="paper-viz-message">No completed paper trades are logged yet.</p>
+          <div class="backtest-account-controls" aria-label="Forward paper account settings">
+            <label>
+              <span>Starting account</span>
+              <input id="paper-account-starting-equity" type="number" min="100" step="100" value="5000">
+            </label>
+            <label>
+              <span>Risk per trade %</span>
+              <input id="paper-account-risk-pct" type="number" min="0.1" max="10" step="0.1" value="0.5">
+            </label>
+            <button id="paper-account-recalculate-account" type="button" class="secondary-button">Recalculate</button>
+          </div>
+          <div class="backtest-account-summary">
+            <article><span>Ending Account</span><strong id="paper-account-ending-equity">$5,000.00</strong></article>
+            <article><span>Total P/L</span><strong id="paper-account-total-pnl">$0.00</strong></article>
+            <article><span>Return</span><strong id="paper-account-return-pct">0.00%</strong></article>
+            <article><span>Max Drawdown</span><strong id="paper-account-max-drawdown">$0.00</strong></article>
+          </div>
+          <div id="paper-account-context-grid" class="backtest-context-grid">
+            <article><span>Win Rate</span><strong>--</strong><p>Logged paper trades.</p></article>
+            <article><span>Average R</span><strong>--</strong><p>Forward validation.</p></article>
+            <article><span>Allowed Trades</span><strong>0</strong><p>Progress gate count.</p></article>
+            <article><span>Total Logged</span><strong>0</strong><p>Completed outcomes.</p></article>
+          </div>
+          <div id="paper-account-monthly" class="monthly-progress">
+            <p class="paper-empty">Monthly paper P/L appears after completed paper trades are logged.</p>
+          </div>
+          <div id="paper-account-equity-chart" class="paper-equity-chart"></div>
+        </article>
+        <div class="gate-grid">
+          <article>
+            <header><span>First checkpoint</span><strong id="paper-first-gate-label">0 / 30</strong></header>
+            <div class="progress-track"><span id="paper-first-gate-bar"></span></div>
+          </article>
+          <article>
+            <header><span>Stronger checkpoint</span><strong id="paper-strong-gate-label">0 / 60</strong></header>
+            <div class="progress-track"><span id="paper-strong-gate-bar"></span></div>
+          </article>
+        </div>
+        <div class="paper-viz-grid">
+          <article class="paper-chart-card">
+            <header>
+              <div>
+                <p class="eyebrow">Completed paper trades</p>
+                <h4>Cumulative R <span class="help-bubble" data-help="Running total of paper results measured in R. 1R is one planned unit of risk.">?</span></h4>
+              </div>
+              <strong id="paper-total-r">0.00R</strong>
+            </header>
+            <div id="paper-equity-chart" class="paper-equity-chart"></div>
+          </article>
+          <article class="paper-breakdown">
+            <h4>Allowed vs Watch-Only</h4>
+            <div id="paper-status-summary"></div>
+            <h4>Plan Adherence</h4>
+            <div id="paper-plan-summary"></div>
+          </article>
+        </div>
+        <article class="research-account-card">
+          <header>
+            <div>
+              <p class="eyebrow">Historical simulation account</p>
+              <h4>Promoted Backtest P/L <span class="help-bubble" data-help="Applies the paper-account model to promoted historical backtest trades. This is research context, not actual paper trades.">?</span></h4>
+            </div>
+            <span id="research-account-count" class="status review_only">Loading</span>
+          </header>
+          <p id="research-account-message" class="paper-viz-message">Loading promoted backtest account simulation.</p>
+          <div id="portfolio-freshness-card" class="portfolio-freshness-card">
+            <strong>Historical freshness</strong>
+            <span>Checking promoted backtest date range.</span>
+          </div>
+          <div class="backtest-account-controls" aria-label="Backtest research account settings">
+            <label>
+              <span>Starting account</span>
+              <input id="portfolio-starting-equity" type="number" min="100" step="100" value="5000">
+            </label>
+            <label>
+              <span>Risk per trade %</span>
+              <input id="portfolio-risk-pct" type="number" min="0.1" max="10" step="0.1" value="0.5">
+            </label>
+            <label>
+              <span>Risk model</span>
+              <select id="portfolio-risk-model">
+                <option value="tiered" selected>Tiered setup risk</option>
+                <option value="fixed">Fixed risk</option>
+              </select>
+            </label>
+            <button id="portfolio-recalculate-account" type="button" class="secondary-button">Recalculate</button>
+          </div>
+          <div class="backtest-account-summary">
+            <article><span>Ending Account</span><strong id="portfolio-ending-equity">$5,000.00</strong></article>
+            <article><span>Total P/L</span><strong id="portfolio-total-pnl">$0.00</strong></article>
+            <article><span>Return</span><strong id="portfolio-return-pct">0.00%</strong></article>
+            <article><span>Max Drawdown</span><strong id="portfolio-max-drawdown">$0.00</strong></article>
+          </div>
+          <div id="portfolio-context-grid" class="backtest-context-grid">
+            <article><span>Win Rate</span><strong>--</strong><p>Promoted historical trades.</p></article>
+            <article><span>Average R</span><strong>--</strong><p>Research simulation.</p></article>
+            <article><span>Source Files</span><strong>--</strong><p>Promoted candidates.</p></article>
+            <article><span>Collapsed Duplicates</span><strong>--</strong><p>Overlap control.</p></article>
+          </div>
+          <div id="portfolio-timeline-grid" class="backtest-context-grid">
+            <article><span>First Trade</span><strong>--</strong><p>Historical start.</p></article>
+            <article><span>Last Trade</span><strong>--</strong><p>Historical end.</p></article>
+            <article><span>Active Dates</span><strong>--</strong><p>Days with trades.</p></article>
+            <article><span>Active Months</span><strong>--</strong><p>Months represented.</p></article>
+          </div>
+          <div id="portfolio-risk-tier-summary" class="paper-summary-row">
+            <div>
+              <strong>Risk tiers</strong>
+              <span>Waiting for historical simulation.</span>
+            </div>
+            <strong>--</strong>
+          </div>
+          <div id="portfolio-monthly" class="monthly-progress">
+            <p class="paper-empty">Monthly historical P/L appears after the simulation loads.</p>
+          </div>
+          <div id="portfolio-equity-chart" class="paper-equity-chart"></div>
+          <div class="portfolio-history-block">
+            <div class="history-header">
+              <div>
+                <p class="eyebrow">Historical simulated trade history</p>
+                <h4>Trades Behind This Account Curve</h4>
+              </div>
+              <span id="portfolio-history-count" class="status review_only">Loading</span>
+            </div>
+            <p id="portfolio-history-message" class="paper-viz-message">
+              This table mirrors the promoted historical simulator rows used in the account curve above.
+            </p>
+            <div class="history-filter-controls" aria-label="Historical simulated trade filters">
+              <label>
+                <span>Symbol</span>
+                <select id="portfolio-history-symbol">
+                  <option value="">All symbols</option>
+                </select>
+              </label>
+              <label>
+                <span>Year</span>
+                <select id="portfolio-history-year">
+                  <option value="">All years</option>
+                </select>
+              </label>
+              <label>
+                <span>Month</span>
+                <select id="portfolio-history-month">
+                  <option value="">All months</option>
+                </select>
+              </label>
+              <label>
+                <span>Result</span>
+                <select id="portfolio-history-result">
+                  <option value="">All results</option>
+                  <option value="win">Winners</option>
+                  <option value="loss">Losers</option>
+                  <option value="flat">Flat</option>
+                </select>
+              </label>
+              <label>
+                <span>Sort</span>
+                <select id="portfolio-history-sort">
+                  <option value="newest" selected>Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                  <option value="best">Best R first</option>
+                  <option value="worst">Worst R first</option>
+                </select>
+              </label>
+              <label class="history-search-label">
+                <span>Search</span>
+                <input id="portfolio-history-search" type="search" placeholder="Symbol, setup, candidate, exit...">
+              </label>
+              <button id="portfolio-history-clear" type="button" class="secondary-button">Clear filters</button>
+            </div>
+            <div class="table-scroll">
+              <table class="backtest-table">
+                <thead>
+                  <tr>
+                    <th>Entry</th>
+                    <th>Symbol</th>
+                    <th>Setup</th>
+                    <th>Candidate</th>
+                    <th>Grade</th>
+                    <th>Result</th>
+                    <th>Risk</th>
+                    <th>P/L</th>
+                    <th>Equity After</th>
+                    <th>Exit</th>
+                    <th>Source</th>
+                  </tr>
+                </thead>
+                <tbody id="portfolio-history-body">
+                  <tr><td colspan="11">Loading historical simulated trades...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section id="health">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Approved playbook</p>
+            <h3>Setup Health Attention <span class="help-bubble" data-help="Flags approved setups whose recent paper/backtest stats need review before trusting them.">?</span></h3>
+          </div>
+          <a href="#home" class="secondary-link">Back to dashboard</a>
+        </div>
+        <div id="health-list" class="health-list"></div>
+      </section>
+
+      <section id="practice-replay" class="practice-replay-page">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Practice mode</p>
+            <h3>Setup Replay <span class="help-bubble" data-help="Practice mode using historical setup cards. Future candles stay hidden until you make a take, skip, or watch decision.">?</span></h3>
+          </div>
+          <a href="#home" class="secondary-link">Back to dashboard</a>
+        </div>
+        <article class="replay-filter-panel">
+          <header>
+            <div>
+              <p class="eyebrow">Practice session builder</p>
+              <h4>Replay Filters And Presets</h4>
+            </div>
+            <p id="replay-filter-message">Build a focused session without revealing future outcomes.</p>
+          </header>
+          <div class="replay-filter-grid">
+            <label>
+              Symbol
+              <select id="replay-filter-symbol"></select>
+            </label>
+            <label>
+              Setup
+              <select id="replay-filter-setup"></select>
+            </label>
+            <label>
+              Grade
+              <select id="replay-filter-grade"></select>
+            </label>
+            <label>
+              Compared result only
+              <select id="replay-filter-result">
+                <option value="">All results</option>
+                <option value="win">Wins</option>
+                <option value="loss">Losses</option>
+              </select>
+            </label>
+            <label>
+              Compared exit reason only
+              <select id="replay-filter-exit-reason"></select>
+            </label>
+          </div>
+          <div class="replay-preset-actions" aria-label="Replay practice presets">
+            <button type="button" data-replay-preset="all">All Cards</button>
+            <button type="button" data-replay-preset="unreviewed">Unreviewed Only</button>
+            <button type="button" data-replay-preset="a_grade">A-Grade Setups</button>
+            <button type="button" data-replay-preset="setup_b">Setup B Shorts</button>
+            <button type="button" data-replay-preset="losses">Reviewed Losses</button>
+            <button type="button" data-replay-preset="stop_losses">Reviewed Stop-Losses</button>
+            <button type="button" data-replay-preset="vwap_exits">Reviewed VWAP Exits</button>
+          </div>
+          <p class="replay-filter-guardrail">
+            Result and exit-reason sessions include compared cards only. Hidden outcomes never determine your practice queue.
+          </p>
+        </article>
+        <div class="replay-journal-summary">
+          <div>
+            <p class="eyebrow">Practice journal</p>
+            <p id="replay-journal-message">Choose a process decision before revealing each historical outcome.</p>
+          </div>
+          <div id="replay-journal-counts" class="replay-journal-counts"></div>
+        </div>
+        <article class="replay-scoreboard">
+          <header>
+            <div>
+              <p class="eyebrow">Compared replays only</p>
+              <h4>Replay Scoring Dashboard <span class="help-bubble" data-help="Scores your practice decisions after you reveal historical outcomes. It is training feedback, not live evidence.">?</span></h4>
+            </div>
+            <p id="replay-score-message">Historical scoring appears after completed comparisons.</p>
+          </header>
+          <div class="replay-score-metrics">
+            <div><span>Reviewed</span><strong id="replay-score-reviewed">0 / 0</strong></div>
+            <div><span>Take Avg Outcome</span><strong id="replay-score-take-avg">--</strong></div>
+            <div><span>Losses Avoided</span><strong id="replay-score-avoided-losses">0</strong></div>
+            <div><span>Exit Vs Strategy</span><strong id="replay-score-exit-delta">--</strong></div>
+          </div>
+          <div class="replay-score-columns">
+            <section>
+              <h4>Decision Outcomes</h4>
+              <div id="replay-score-decisions"></div>
+            </section>
+            <section>
+              <h4>Setup / Grade Outcomes</h4>
+              <div id="replay-score-setups"></div>
+            </section>
+          </div>
+          <section class="replay-exit-comparisons">
+            <h4>Practice Exit Comparisons</h4>
+            <div id="replay-score-exits"></div>
+          </section>
+          <p class="replay-score-guardrail">
+            Training feedback from reviewed historical cards only. It is not forward-validation evidence.
+          </p>
+        </article>
+        <article class="replay-card">
+          <header>
+            <div>
+              <p class="eyebrow" id="replay-counter">No replay loaded</p>
+              <h3 id="replay-title">Run setup replay</h3>
+            </div>
+            <span id="replay-result" class="status">Practice</span>
+          </header>
+          <div class="replay-grid">
+            <div><span>Entry <span class="help-bubble" data-help="The planned price where the setup would be entered during practice or paper review.">?</span></span><strong id="replay-entry">...</strong></div>
+            <div><span>Stop <span class="help-bubble" data-help="The invalidation price. If reached, the planned loss is usually -1R.">?</span></span><strong id="replay-stop">...</strong></div>
+            <div><span>Target <span class="help-bubble" data-help="The planned profit area used to compare potential reward against risk.">?</span></span><strong id="replay-target">...</strong></div>
+            <div><span>Outcome <span class="help-bubble" data-help="The final historical result measured in R after you reveal the card.">?</span></span><strong id="replay-r">...</strong></div>
+          </div>
+          <div class="replay-chart-panel">
+            <div class="terminal-legend">
+              <span class="legend-vwap">VWAP <span class="help-bubble" data-help="Volume-weighted average price for the session.">?</span></span>
+              <span class="legend-ema9">9 EMA <span class="help-bubble" data-help="Fast moving average used for short-term momentum.">?</span></span>
+              <span class="legend-ema21">21 EMA <span class="help-bubble" data-help="Trend-structure moving average.">?</span></span>
+              <span class="legend-plan">Plan levels <span class="help-bubble" data-help="The planned entry, stop, and target lines for the setup.">?</span></span>
+              <span class="legend-replay">Entry / exit <span class="help-bubble" data-help="Markers showing where the historical setup entered and exited after reveal.">?</span></span>
+            </div>
+            <div id="replay-chart" class="terminal-chart replay-chart">
+              <div class="terminal-empty">Loading historical decision view...</div>
+            </div>
+            <p id="replay-chart-note" class="terminal-chart-time">Outcome candles stay hidden until reveal.</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <tbody id="replay-details"></tbody>
+            </table>
+          </div>
+          <ul id="replay-prompts" class="check-list"></ul>
+          <div class="replay-decision-panel">
+            <p class="eyebrow">Decision before outcome <span class="help-bubble" data-help="Choose what you would do before the app reveals what happened historically. This trains process, not hindsight.">?</span></p>
+            <p id="replay-decision-prompt">Would you take, skip, or watch this historical setup?</p>
+            <div class="replay-decision-buttons" aria-label="Replay practice decision">
+              <button id="replay-take" type="button" data-decision="take">Take</button>
+              <button id="replay-skip" type="button" data-decision="skip">Skip</button>
+              <button id="replay-watch" type="button" data-decision="watch">Watch</button>
+            </div>
+            <label class="replay-notes-label" for="replay-notes">Journal note</label>
+            <textarea id="replay-notes" rows="3" placeholder="What supported or blocked the setup? What would you follow in the plan?"></textarea>
+            <div class="replay-notes-actions">
+              <button id="replay-save-note" type="button">Save note</button>
+              <span id="replay-save-status">Saved locally in this browser only.</span>
+            </div>
+          </div>
+          <div class="replay-management-panel">
+            <p class="eyebrow">Candle-by-candle management <span class="help-bubble" data-help="Step through later candles one at a time and practice holding or exiting without seeing the final result first.">?</span></p>
+            <p id="replay-management-prompt">Record a decision first, then manage the historical setup without seeing its ending.</p>
+            <div class="replay-management-grid">
+              <div><span>Visible candle</span><strong id="replay-visible-step">Not started</strong></div>
+              <div><span>Marked price</span><strong id="replay-current-price">Hidden</strong></div>
+              <div><span>Unrealized R</span><strong id="replay-current-r">Hidden</strong></div>
+            </div>
+            <div class="replay-management-actions">
+              <button id="replay-start-management" type="button">Start management</button>
+              <button id="replay-hold" type="button">Hold / Next candle</button>
+              <button id="replay-exit-here" type="button">Exit here</button>
+              <button id="replay-stop-followed" type="button">Stop followed</button>
+            </div>
+          </div>
+          <div class="replay-actions">
+            <button id="replay-prev" type="button">Previous</button>
+            <button id="replay-reveal" class="reveal" type="button">Compare with historical outcome</button>
+            <button id="replay-next" type="button">Next</button>
+          </div>
+        </article>
+      </section>
+
+      <section id="reports">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Read-only</p>
+            <h3>Report Detail <span class="help-bubble" data-help="Read-only generated reports from the local workflow. These explain scanner output, refresh status, setup health, and validation evidence.">?</span></h3>
+          </div>
+          <a href="#home" class="secondary-link">Back to dashboard</a>
+        </div>
+        <div id="report-tabs" class="report-picker"></div>
+        <article class="report-view">
+          <header>
+            <div>
+              <p class="eyebrow" id="report-filename">No report selected</p>
+              <h3 id="report-title">Select a report</h3>
+            </div>
+          </header>
+          <div id="report-content" class="report-content">Choose a report above.</div>
+        </article>
+      </section>
+
+      <section id="app-scaffold" class="app-scaffold-page">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">App scaffold</p>
+            <h3>Source Files <span class="help-bubble" data-help="Quick links to local project files used by the app and workflow.">?</span></h3>
+          </div>
+          <a href="#home" class="secondary-link">Back to dashboard</a>
+        </div>
+        <div id="file-links" class="file-grid"></div>
+      </section>
+    </main>
+
+    <script src="/app.js?v=20260602-historical-timeline-sync"></script>
+  </body>
+</html>

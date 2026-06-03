@@ -1,0 +1,4 @@
+# Webull OpenAPI SDK dependency.
+# Use this with a Python 3.11 virtual environment.
+
+webull-openapi-python-sdk

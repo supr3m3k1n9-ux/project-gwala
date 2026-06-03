@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+/usr/bin/open "http://127.0.0.1:8765"

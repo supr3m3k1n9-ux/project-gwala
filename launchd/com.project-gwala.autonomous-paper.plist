@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.project-gwala.autonomous-paper</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/roy/Documents/New project/.venv-webull/bin/python</string>
+		<string>/Users/roy/Documents/New project/run_autonomous_paper_workflow.py</string>
+		<string>--interval-minutes</string>
+		<string>5</string>
+		<string>--auto-confirm-paper-exits</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/roy/Documents/New project</string>
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict>
+			<key>Weekday</key>
+			<integer>1</integer>
+			<key>Hour</key>
+			<integer>6</integer>
+			<key>Minute</key>
+			<integer>15</integer>
+		</dict>
+		<dict>
+			<key>Weekday</key>
+			<integer>2</integer>
+			<key>Hour</key>
+			<integer>6</integer>
+			<key>Minute</key>
+			<integer>15</integer>
+		</dict>
+		<dict>
+			<key>Weekday</key>
+			<integer>3</integer>
+			<key>Hour</key>
+			<integer>6</integer>
+			<key>Minute</key>
+			<integer>15</integer>
+		</dict>
+		<dict>
+			<key>Weekday</key>
+			<integer>4</integer>
+			<key>Hour</key>
+			<integer>6</integer>
+			<key>Minute</key>
+			<integer>15</integer>
+		</dict>
+		<dict>
+			<key>Weekday</key>
+			<integer>5</integer>
+			<key>Hour</key>
+			<integer>6</integer>
+			<key>Minute</key>
+			<integer>15</integer>
+		</dict>
+	</array>
+	<key>StandardOutPath</key>
+	<string>/Users/roy/Documents/New project/logs/autonomous_paper_workflow.launchd.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/roy/Documents/New project/logs/autonomous_paper_workflow.launchd.err.log</string>
+	<key>RunAtLoad</key>
+	<false/>
+</dict>
+</plist>
