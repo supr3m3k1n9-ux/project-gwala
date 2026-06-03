@@ -15,6 +15,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ, market_session_for_date, next_market_session
+from config.settings import STRATEGY
 from execution.paper_trader import build_local_paper_orders, eligible_sizing_rows, orders_to_open_paper_trades
 from reports.refresh_status import build_refresh_status
 from reports.system_state import (
@@ -73,6 +74,7 @@ from run_vwap_mean_reversion_shadow_samples import sample_row as mean_reversion_
 from run_walk_forward_review import build_walk_forward_review
 from run_trade_checklist import current_candidates as checklist_candidates
 from run_webull_watchlist import fetch_chart_only_timeframes, write_candidate_selection_report
+from strategies.opening_range_breakout import add_opening_range_breakout_signals
 
 
 def scanner_row(**updates: object) -> dict[str, object]:
@@ -655,6 +657,33 @@ class ResearchSelectionTests(unittest.TestCase):
         self.assertEqual(by_symbol.loc["SPY", "decision"], "shadow_test_only")
         self.assertEqual(by_symbol.loc["QQQ", "decision"], "reject_relaxation")
         self.assertEqual(by_symbol.loc["SPY", "added_trades"], 4)
+
+    def test_opening_range_breakout_flags_long_break_above_range(self) -> None:
+        candles = pd.DataFrame(
+            [
+                {
+                    "open": 100.9,
+                    "high": 102.0,
+                    "low": 100.8,
+                    "close": 101.5,
+                    "volume": 1_000,
+                    "vwap": 100.5,
+                    "ema_9": 101.0,
+                    "ema_21": 100.5,
+                    "opening_range_high": 101.0,
+                    "opening_range_low": 99.5,
+                    "regular_session": True,
+                    "entry_window": True,
+                }
+            ],
+            index=[pd.Timestamp("2026-06-02 10:30", tz="America/New_York")],
+        )
+
+        signals = add_opening_range_breakout_signals(candles, STRATEGY)
+
+        self.assertTrue(bool(signals.iloc[0]["or_breakout_long_signal"]))
+        self.assertFalse(bool(signals.iloc[0]["or_breakout_short_signal"]))
+        self.assertGreaterEqual(int(signals.iloc[0]["or_breakout_quality_score"]), 4)
 
     def test_approved_candidate_is_not_displaced_by_higher_expectancy_small_sample(self) -> None:
         summary = pd.DataFrame(

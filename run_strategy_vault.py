@@ -394,6 +394,12 @@ def evidence_for_strategy(strategy: VaultStrategy, output_dir: Path) -> dict[str
             "opening_range_failure",
             "Run python run_opening_range_failure.py --output-dir logs.",
         )
+    if strategy.strategy_id == "opening_range_breakout":
+        return summary_evidence(
+            output_dir,
+            "opening_range_breakout",
+            "Run python run_opening_range_breakout.py --output-dir logs.",
+        )
     return {
         "evidence_status": "existing_or_not_applicable",
         "tightened_pass_rows": 0,

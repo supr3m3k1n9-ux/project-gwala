@@ -60,8 +60,8 @@ STRATEGY_VAULT: list[VaultStrategy] = [
         caution_regimes=("range_chop", "mixed_chop"),
         ideal_volatility=("high_volatility", "normal_volatility"),
         description="Study early expansion through the opening range with strong relative volume.",
-        evidence_source="Not implemented yet. Needs OR breakout-specific backtests and forward samples.",
-        next_research_step="Add OR breakout strategy module and compare against the current continuation setup.",
+        evidence_source="logs/opening_range_breakout.md and logs/opening_range_breakout_summary.csv.",
+        next_research_step="Review first-pass OR breakout rows, then add walk-forward and forward evidence if promising.",
     ),
     VaultStrategy(
         strategy_id="opening_range_failure",

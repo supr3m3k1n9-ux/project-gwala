@@ -282,6 +282,7 @@ def main() -> None:
     run_step([python, "run_vwap_mean_reversion_shadow_samples.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_vwap_mean_reversion_forward_observations.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_vwap_mean_reversion_paper_watch_gate.py", "--output-dir", str(args.output_dir)])
+    run_step([python, "run_opening_range_breakout.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_opening_range_failure.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_strategy_evidence_accumulator.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_strategy_vault.py", "--output-dir", str(args.output_dir)])

@@ -214,6 +214,23 @@ The vault does not approve trades, import paper entries, place orders, create
 broker alerts, or bypass the paper gate. It only helps decide which strategy
 family deserves research or manual paper-review attention.
 
+### Opening Range Breakout
+
+Opening Range Breakout is the vault's first pure momentum-open strategy. It
+tests whether price can expand through the opening range while aligned with
+VWAP and the 9/21 EMA structure.
+
+```text
+Reports -> Research -> Opening Range Breakout
+logs/opening_range_breakout.md
+```
+
+The research pass tests long breaks above the opening-range high and short
+breaks below the opening-range low. It uses 30m candles for entries, 5m candles
+for exits, a fixed R target, and a stop around the signal candle or opening
+range extreme. This is research only; it does not create paper trades, broker
+orders, or live alerts.
+
 ### Strategy Selector
 
 The Strategy Vault page now includes a Strategy Selector at the top of the
@@ -498,6 +515,7 @@ logs/vwap_mean_reversion_walk_forward.md
 logs/vwap_mean_reversion_shadow_samples.md
 logs/vwap_mean_reversion_forward_observations.md
 logs/vwap_mean_reversion_paper_watch_gate.md
+logs/opening_range_breakout.md
 logs/opening_range_failure.md
 logs/strategy_evidence_accumulator.md
 logs/paper_activation_rules.md

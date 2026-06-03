@@ -87,6 +87,7 @@ ALLOWED_REPORTS = {
     "vwap_mean_reversion_shadow_samples": "vwap_mean_reversion_shadow_samples.md",
     "vwap_mean_reversion_forward_observations": "vwap_mean_reversion_forward_observations.md",
     "vwap_mean_reversion_paper_watch_gate": "vwap_mean_reversion_paper_watch_gate.md",
+    "opening_range_breakout": "opening_range_breakout.md",
     "opening_range_failure": "opening_range_failure.md",
     "strategy_evidence_accumulator": "strategy_evidence_accumulator.md",
     "paper_activation_rules": "paper_activation_rules.md",
