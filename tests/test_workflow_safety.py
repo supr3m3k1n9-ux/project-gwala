@@ -60,6 +60,7 @@ from run_post_scan_digest import build_digest as build_post_scan_digest
 from run_position_sizer import apply_session_gate, build_sizing, realized_r_from_paper_log, risk_status
 from run_premarket_plan import candidate_table as plan_candidate_table
 from run_premarket_verification import build_checks, has_failed_checks, run_webull_probe, write_report
+from run_paper_activation_rules import build_activation_payload
 from run_promotion_review import build_review as build_promotion_review
 from run_research_confidence import build_rows as build_research_confidence_rows, readiness_status
 from run_regime_review import build_regime_review
@@ -751,6 +752,42 @@ class ResearchSelectionTests(unittest.TestCase):
         self.assertEqual(lane["today_rows"], 1)
         self.assertEqual(lane["matured_outcomes"], 1)
         self.assertAlmostEqual(lane["average_r"], 0.5)
+
+    def test_paper_activation_rules_require_all_strategy_evidence(self) -> None:
+        with TemporaryDirectory() as temporary:
+            output_dir = Path(temporary)
+            vault = {
+                "strategies": [
+                    {
+                        "strategy_id": "vwap_ema_trend_continuation",
+                        "name": "VWAP + EMA Trend Continuation",
+                        "status": "active_paper_watch",
+                    },
+                    {
+                        "strategy_id": "vwap_mean_reversion",
+                        "name": "VWAP Mean Reversion",
+                        "status": "research_backlog",
+                        "decision": "research_priority",
+                        "paper_watch_decision": "not_ready",
+                        "tightened_pass_rows": 1,
+                        "walk_forward_holding_rows": 1,
+                        "shadow_samples": 10,
+                        "matured_shadow_samples": 5,
+                        "shadow_average_r": 0.12,
+                        "forward_observations": 0,
+                        "matured_forward_observations": 0,
+                        "forward_average_r": 0.0,
+                    },
+                ]
+            }
+            (output_dir / "strategy_vault.json").write_text(json.dumps(vault), encoding="utf-8")
+
+            payload, summary, checklist = build_activation_payload(output_dir)
+
+        self.assertEqual(payload["eligible_strategy_count"], 0)
+        self.assertEqual(summary.iloc[0]["activation_decision"], "not_ready")
+        self.assertIn("Strategy-specific gate exists", set(checklist[checklist["status"] == "blocked"]["check"]))
+        self.assertIn("Strategy forward observations", set(checklist[checklist["status"] == "blocked"]["check"]))
 
     def test_research_confidence_scores_broad_universe_without_live_approval(self) -> None:
         with TemporaryDirectory() as temporary:

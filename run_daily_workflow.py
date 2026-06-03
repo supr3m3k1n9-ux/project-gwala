@@ -284,6 +284,7 @@ def main() -> None:
     run_step([python, "run_opening_range_failure.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_strategy_evidence_accumulator.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_strategy_vault.py", "--output-dir", str(args.output_dir)])
+    run_step([python, "run_paper_activation_rules.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_almost_ready_breakout.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_refresh_status.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_setup_replay.py", "--output-dir", str(args.output_dir)])

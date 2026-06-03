@@ -199,6 +199,17 @@ generic forward observations, generic shadow samples, and strategy-specific
 mean-reversion evidence. It also marks research strategies that do not yet have
 their own forward evidence lane.
 
+The research-to-paper-watch activation contract is available from:
+
+```text
+Reports -> Research -> Paper Activation Rules
+```
+
+Use this report to see the exact requirements before any research strategy can
+graduate into manual paper-watch review: strategy-specific gate, tightened
+backtest pass, walk-forward pass, shadow evidence, and forward observation
+evidence. Passing still means manual paper validation only, not live trading.
+
 The vault does not approve trades, import paper entries, place orders, create
 broker alerts, or bypass the paper gate. It only helps decide which strategy
 family deserves research or manual paper-review attention.
@@ -481,6 +492,7 @@ logs/vwap_mean_reversion_forward_observations.md
 logs/vwap_mean_reversion_paper_watch_gate.md
 logs/opening_range_failure.md
 logs/strategy_evidence_accumulator.md
+logs/paper_activation_rules.md
 logs/regime_review.md
 logs/deeper_research/controlled_variant_review.md
 logs/deeper_research/walk_forward_review.md
