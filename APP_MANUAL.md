@@ -1112,6 +1112,19 @@ be shadow-tested, rejected, or studied further.
 alerts, local paper execution preview, open paper monitoring, paper review,
 refresh status, and system state.
 
+`Pre-Entry Review` is the hardened checklist before any local paper entry is
+logged. It joins scanner status, sizing, data freshness, paper import
+availability, Strategy Selector mode, and the Risk Guard into one
+ready-or-blocked table.
+
+Open it from:
+
+```text
+Reports -> Paper Review -> Pre-Entry Review
+```
+
+If this report says `blocked`, do not log the paper entry.
+
 The Signal Workflow section has matching buttons: `Run paper preview`,
 `Confirm local paper entry`, and `Confirm local paper exits`. The entry confirm
 button is still manual. The exit confirm action is also run automatically during

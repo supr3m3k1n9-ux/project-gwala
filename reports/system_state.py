@@ -1104,6 +1104,9 @@ def build_system_state(
     refresh_audit_csv = Path("data/market_refresh_audit.csv")
     refresh_audit_md = output_dir / "market_refresh_audit.md"
     paper_review_csv = output_dir / "paper_review_clean_trades.csv"
+    pre_entry_review_json = output_dir / "pre_entry_review.json"
+    pre_entry_review_md = output_dir / "pre_entry_review.md"
+    pre_entry_review_csv = output_dir / "pre_entry_review.csv"
     setup_health_csv = output_dir / "setup_health.csv"
     promotion_review_csv = output_dir / "promotion_review.csv"
     strategy_improvement_plan_json = output_dir / "strategy_improvement_plan.json"
@@ -1238,6 +1241,7 @@ def build_system_state(
         "refresh_audit_csv": str(refresh_audit_csv),
         "paper_csv": str(paper_csv),
         "paper_review_csv": str(paper_review_csv),
+        "pre_entry_review_json": str(pre_entry_review_json),
         "setup_health_csv": str(setup_health_csv),
         "research_confidence_csv": str(output_dir / "universe_expansion" / "research_confidence.csv"),
         "promotion_review_csv": str(promotion_review_csv),
@@ -1328,6 +1332,9 @@ def build_system_state(
                 "refresh_audit_md": file_state(refresh_audit_md),
                 "paper_csv": file_state(paper_csv),
                 "paper_review_csv": file_state(paper_review_csv),
+                "pre_entry_review_json": file_state(pre_entry_review_json),
+                "pre_entry_review_md": file_state(pre_entry_review_md),
+                "pre_entry_review_csv": file_state(pre_entry_review_csv),
                 "setup_health_csv": file_state(setup_health_csv),
                 "research_confidence_csv": research_confidence["source_csv"],
                 "research_confidence_md": research_confidence["source_report"],

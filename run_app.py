@@ -62,6 +62,7 @@ ALLOWED_REPORTS = {
     "refresh_audit": "market_refresh_audit.md",
     "setup_health": "setup_health.md",
     "paper_session": "paper_session_cycle.md",
+    "pre_entry_review": "pre_entry_review.md",
     "paper_execution": "local_paper_execution_simulator.md",
     "candidate_alerts": "paper_candidate_alerts.md",
     "forward_sample_queue": "forward_sample_queue.md",

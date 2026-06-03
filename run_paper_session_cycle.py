@@ -60,6 +60,7 @@ def build_commands(
 
     commands = [
         ("Candidate alerts", [python, "run_candidate_alerts.py", "--output-dir", str(output_dir)]),
+        ("Pre-entry review", [python, "run_pre_entry_review.py", "--output-dir", str(output_dir)]),
         ("Local paper execution", [python, "run_paper_execution_simulator.py", "--output-dir", str(output_dir)]),
         ("Open paper monitor", [python, "run_open_paper_monitor.py", "--output-dir", str(output_dir)]),
         ("Exit audit", [python, "run_exit_audit.py", "--output-dir", str(output_dir)]),
@@ -73,9 +74,9 @@ def build_commands(
         ("System state", [python, "run_system_state.py", "--output-dir", str(output_dir)]),
     ]
     if confirm_local_paper:
-        commands[1][1].append("--confirm-local-paper")
+        commands[2][1].append("--confirm-local-paper")
     if confirm_exits:
-        commands[2][1].append("--confirm-updates")
+        commands[3][1].append("--confirm-updates")
     return commands
 
 

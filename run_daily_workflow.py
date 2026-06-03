@@ -258,6 +258,7 @@ def main() -> None:
             str(args.risk_per_trade_pct),
         ]
     )
+    run_step([python, "run_pre_entry_review.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_paper_execution_simulator.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_candidate_alerts.py", "--output-dir", str(args.output_dir)])
     open_monitor_command = [python, "run_open_paper_monitor.py", "--output-dir", str(args.output_dir)]

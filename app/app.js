@@ -27,6 +27,7 @@ const reports = [
   ["refresh_audit", "Refresh Audit"],
   ["setup_health", "Setup Health"],
   ["paper_session", "Paper Session"],
+  ["pre_entry_review", "Pre-Entry Review"],
   ["paper_execution", "Paper Execution"],
   ["candidate_alerts", "Candidate Alerts"],
   ["forward_sample_queue", "Forward Sample Queue"],
@@ -91,7 +92,7 @@ const reportGroups = [
   },
   {
     label: "Paper Review",
-    reports: ["paper_session", "paper_execution", "candidate_alerts", "forward_sample_queue", "almost_ready_breakout", "post_scan_digest", "forward_evidence", "candidate_aging", "no_trade_analysis", "shadow_samples", "open_paper_monitor", "exit_audit", "readiness", "checkpoint", "setup_replay"],
+    reports: ["paper_session", "pre_entry_review", "paper_execution", "candidate_alerts", "forward_sample_queue", "almost_ready_breakout", "post_scan_digest", "forward_evidence", "candidate_aging", "no_trade_analysis", "shadow_samples", "open_paper_monitor", "exit_audit", "readiness", "checkpoint", "setup_replay"],
   },
   {
     label: "Research",
@@ -1685,6 +1686,7 @@ function renderAppHealth(state) {
     ["Integrity Report", files.integrity_csv?.modified_et || "missing"],
     ["Refresh Audit", files.refresh_audit_csv?.modified_et || "missing"],
     ["Position sizing CSV", files.sizing_csv?.modified_et || "missing"],
+    ["Pre-entry review", files.pre_entry_review_json?.modified_et || "not run yet"],
     ["Setup health CSV", files.setup_health_csv?.modified_et || "missing"],
     ["Strategy vault", files.strategy_vault_json?.modified_et || "not run yet"],
     ["Strategy evidence accumulator", files.strategy_evidence_accumulator_json?.modified_et || "not run yet"],
@@ -3447,6 +3449,7 @@ function renderFiles(state) {
     ["Position sizing", "position_sizing.md", "Markdown"],
     ["Setup health", "setup_health.md", "Markdown"],
     ["Paper session", "paper_session_cycle.md", "Markdown"],
+    ["Pre-entry review", "pre_entry_review.md", "Markdown"],
     ["Paper execution", "local_paper_execution_simulator.md", "Markdown"],
     ["Candidate alerts", "paper_candidate_alerts.md", "Markdown"],
     ["Forward sample queue", "forward_sample_queue.md", "Markdown"],

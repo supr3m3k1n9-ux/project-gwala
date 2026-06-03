@@ -61,6 +61,7 @@ from run_position_sizer import apply_session_gate, build_sizing, realized_r_from
 from run_premarket_plan import candidate_table as plan_candidate_table
 from run_premarket_verification import build_checks, has_failed_checks, run_webull_probe, write_report
 from run_paper_activation_rules import build_activation_payload
+from run_pre_entry_review import review_row as pre_entry_review_row
 from run_promotion_review import build_review as build_promotion_review
 from run_research_confidence import build_rows as build_research_confidence_rows, readiness_status
 from run_regime_review import build_regime_review
@@ -1498,13 +1499,21 @@ class PaperGuardrailTests(unittest.TestCase):
         self.assertIn("--confirm-local-paper", confirm_flat)
         self.assertIn("--confirm-updates", confirm_flat)
         self.assertEqual(
-            [step for step, _ in preview_commands][:6],
-            ["Candidate alerts", "Local paper execution", "Open paper monitor", "Exit audit", "Paper review", "Forward sample queue"],
+            [step for step, _ in preview_commands][:7],
+            [
+                "Candidate alerts",
+                "Pre-entry review",
+                "Local paper execution",
+                "Open paper monitor",
+                "Exit audit",
+                "Paper review",
+                "Forward sample queue",
+            ],
         )
-        self.assertEqual(preview_commands[6][0], "No-trade analysis")
-        self.assertEqual(preview_commands[7][0], "Shadow samples")
-        self.assertEqual(preview_commands[8][0], "Candidate aging")
-        self.assertEqual(preview_commands[9][0], "Forward evidence")
+        self.assertEqual(preview_commands[7][0], "No-trade analysis")
+        self.assertEqual(preview_commands[8][0], "Shadow samples")
+        self.assertEqual(preview_commands[9][0], "Candidate aging")
+        self.assertEqual(preview_commands[10][0], "Forward evidence")
 
     def test_forward_sample_queue_ranks_ready_and_almost_ready_rows(self) -> None:
         scanner = pd.DataFrame(
@@ -1553,6 +1562,45 @@ class PaperGuardrailTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["ready_for_review"], 1)
         self.assertEqual(payload["summary"]["almost_ready"], 1)
         self.assertIn("read-only", payload["guardrail"].lower())
+
+    def test_pre_entry_review_blocks_watch_only_candidates(self) -> None:
+        scanner = pd.Series(
+            {
+                "symbol": "SPY",
+                "setup": "Setup A Long",
+                "direction": "long",
+                "latest_signal_et": "2026-05-26 10:30",
+                "scanner_status": "blocked_watch_only",
+                "signal_freshness": "current_candle",
+                "planned_entry": 100.0,
+                "planned_stop": 99.0,
+                "planned_target": 102.0,
+            }
+        )
+        sizing = pd.DataFrame(
+            [
+                {
+                    "symbol": "SPY",
+                    "setup": "Setup A Long",
+                    "direction": "long",
+                    "sizing_status": "size_ok",
+                    "suggested_shares": 10,
+                }
+            ]
+        )
+
+        row = pre_entry_review_row(
+            scanner,
+            sizing,
+            data_fresh=True,
+            import_allowed=True,
+            import_reason="eligible",
+            selector={"mode": "paper_watch_allowed"},
+            risk_guard={"status": "pre_validation"},
+        )
+
+        self.assertEqual(row["review_status"], "blocked")
+        self.assertIn("Scanner did not mark this candidate allowed.", row["blockers"])
 
     def test_forward_evidence_keeps_shadow_samples_out_of_official_gate(self) -> None:
         paper_review = pd.DataFrame(
