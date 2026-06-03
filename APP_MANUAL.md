@@ -234,6 +234,17 @@ This report preserves qualifying latest-candle mean-reversion signals as
 forward observations. These observations are closer to paper-watch evidence
 than historical backtests, but they still do not count as official paper trades.
 
+The paper-watch gate is available from:
+
+```text
+Reports -> Research -> VWAP Mean Reversion Paper-Watch Gate
+```
+
+This report says whether the strategy is ready for manual paper-watch review.
+It checks tightened backtests, walk-forward stability, strategy-specific shadow
+samples, and strategy-specific forward observations. A passing gate still does
+not place orders or enable live trading.
+
 This strategy is backtest/research only until it has enough evidence,
 walk-forward stability, shadow samples, and forward paper-validation results.
 
@@ -414,6 +425,7 @@ logs/walk_forward_review.md
 logs/vwap_mean_reversion_walk_forward.md
 logs/vwap_mean_reversion_shadow_samples.md
 logs/vwap_mean_reversion_forward_observations.md
+logs/vwap_mean_reversion_paper_watch_gate.md
 logs/regime_review.md
 logs/deeper_research/controlled_variant_review.md
 logs/deeper_research/walk_forward_review.md

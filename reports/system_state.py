@@ -1118,6 +1118,9 @@ def build_system_state(
     vwap_mean_reversion_walk_forward_csv = output_dir / "vwap_mean_reversion_walk_forward.csv"
     vwap_mean_reversion_shadow_md = output_dir / "vwap_mean_reversion_shadow_samples.md"
     vwap_mean_reversion_forward_md = output_dir / "vwap_mean_reversion_forward_observations.md"
+    vwap_mean_reversion_paper_watch_gate_json = output_dir / "vwap_mean_reversion_paper_watch_gate.json"
+    vwap_mean_reversion_paper_watch_gate_md = output_dir / "vwap_mean_reversion_paper_watch_gate.md"
+    vwap_mean_reversion_paper_watch_gate_csv = output_dir / "vwap_mean_reversion_paper_watch_gate.csv"
     feature_wiring_audit_json = output_dir / "feature_wiring_audit.json"
     feature_wiring_audit_md = output_dir / "feature_wiring_audit.md"
     dashboard_md = output_dir / "project_gwala_dashboard.md"
@@ -1239,6 +1242,7 @@ def build_system_state(
         "shadow_outcomes_csv": str(shadow_outcomes_csv),
         "vwap_mean_reversion_shadow_outcomes_csv": str(vwap_mean_reversion_shadow_outcomes_csv),
         "vwap_mean_reversion_forward_observation_results_csv": str(vwap_mean_reversion_forward_results_csv),
+        "vwap_mean_reversion_paper_watch_gate_json": str(vwap_mean_reversion_paper_watch_gate_json),
         "candidate_aging_csv": str(candidate_aging_csv),
         "post_scan_digest_json": str(post_scan_digest_json),
         "refresh_status_json": str(refresh_status_json),
@@ -1331,6 +1335,9 @@ def build_system_state(
                 "vwap_mean_reversion_shadow_outcomes_csv": file_state(vwap_mean_reversion_shadow_outcomes_csv),
                 "vwap_mean_reversion_forward_md": file_state(vwap_mean_reversion_forward_md),
                 "vwap_mean_reversion_forward_observation_results_csv": file_state(vwap_mean_reversion_forward_results_csv),
+                "vwap_mean_reversion_paper_watch_gate_json": file_state(vwap_mean_reversion_paper_watch_gate_json),
+                "vwap_mean_reversion_paper_watch_gate_md": file_state(vwap_mean_reversion_paper_watch_gate_md),
+                "vwap_mean_reversion_paper_watch_gate_csv": file_state(vwap_mean_reversion_paper_watch_gate_csv),
                 "feature_wiring_audit_json": file_state(feature_wiring_audit_json),
                 "feature_wiring_audit_md": file_state(feature_wiring_audit_md),
                 "dashboard_md": file_state(dashboard_md),

@@ -41,6 +41,17 @@ def read_csv_or_empty(path: Path) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def read_json_or_empty(path: Path) -> dict[str, Any]:
+    """Read JSON data if available."""
+
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 def true_range_percent(candles: pd.DataFrame) -> pd.Series:
     """Return true range as a percent of close."""
 
@@ -176,6 +187,7 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
     walk_forward = read_csv_or_empty(output_dir / "vwap_mean_reversion_walk_forward.csv")
     shadow = read_csv_or_empty(output_dir / "vwap_mean_reversion_shadow_outcomes.csv")
     forward = read_csv_or_empty(output_dir / "vwap_mean_reversion_forward_observation_results.csv")
+    gate = read_json_or_empty(output_dir / "vwap_mean_reversion_paper_watch_gate.json")
     if summary.empty:
         return {
             "evidence_status": "missing",
@@ -190,6 +202,9 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
             "forward_observations": 0,
             "matured_forward_observations": 0,
             "forward_average_r": 0.0,
+            "paper_watch_decision": "missing",
+            "paper_watch_blocker": "Run paper-watch gate.",
+            "paper_watch_blocked_count": 0,
             "evidence_note": "Run python run_vwap_mean_reversion.py --output-dir logs.",
         }
     pass_rows = (
@@ -269,6 +284,15 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
         note = f"{note} Forward observation lane has not collected samples yet."
     else:
         note = f"{note} Forward observations: {len(forward)} logged, {len(matured_forward)} matured, {forward_average:+.2f}R avg."
+    gate_decision = str(gate.get("decision", "missing") or "missing")
+    gate_blocker = str(gate.get("next_blocker", "Run paper-watch gate.") or "Run paper-watch gate.")
+    gate_blocked_count = int(gate.get("blocked_count", 0) or 0)
+    if gate_decision == "paper_watch_eligible":
+        note = f"{note} Paper-watch gate: eligible for manual review."
+    elif gate_decision != "missing":
+        note = f"{note} Paper-watch gate: {gate_decision}; next blocker: {gate_blocker}."
+    else:
+        note = f"{note} Paper-watch gate has not run yet."
     return {
         "evidence_status": status,
         "tightened_pass_rows": int(len(pass_rows)),
@@ -282,6 +306,9 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
         "forward_observations": int(len(forward)),
         "matured_forward_observations": int(len(matured_forward)),
         "forward_average_r": forward_average,
+        "paper_watch_decision": gate_decision,
+        "paper_watch_blocker": gate_blocker,
+        "paper_watch_blocked_count": gate_blocked_count,
         "evidence_note": note,
     }
 
@@ -304,6 +331,9 @@ def evidence_for_strategy(strategy: VaultStrategy, output_dir: Path) -> dict[str
         "forward_observations": 0,
         "matured_forward_observations": 0,
         "forward_average_r": 0.0,
+        "paper_watch_decision": "not_applicable",
+        "paper_watch_blocker": "",
+        "paper_watch_blocked_count": 0,
         "evidence_note": strategy.evidence_source,
     }
 
@@ -384,6 +414,9 @@ def strategy_decision(strategy: VaultStrategy, regime: dict[str, Any], output_di
         "forward_observations": evidence["forward_observations"],
         "matured_forward_observations": evidence["matured_forward_observations"],
         "forward_average_r": evidence["forward_average_r"],
+        "paper_watch_decision": evidence["paper_watch_decision"],
+        "paper_watch_blocker": evidence["paper_watch_blocker"],
+        "paper_watch_blocked_count": evidence["paper_watch_blocked_count"],
         "evidence_note": evidence["evidence_note"],
         "next_research_step": strategy.next_research_step,
         "reason": " ".join(reasons),
