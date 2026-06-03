@@ -278,6 +278,7 @@ def main() -> None:
     run_step([python, "run_setup_health.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_vwap_mean_reversion.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_vwap_mean_reversion_walk_forward.py", "--output-dir", str(args.output_dir)])
+    run_step([python, "run_vwap_mean_reversion_shadow_samples.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_strategy_vault.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_almost_ready_breakout.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_refresh_status.py", "--output-dir", str(args.output_dir)])

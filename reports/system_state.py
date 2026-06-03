@@ -1086,11 +1086,13 @@ def build_system_state(
     sizing_csv = output_dir / "position_sizing.csv"
     forward_observations_csv = Path("data/forward_signal_observations.csv")
     shadow_samples_csv = Path("data/shadow_samples.csv")
+    vwap_mean_reversion_shadow_samples_csv = Path("data/vwap_mean_reversion_shadow_samples.csv")
     forward_observations_md = output_dir / "forward_signal_observations.md"
     near_miss_csv = Path("data/near_miss_observations.csv")
     near_miss_md = output_dir / "near_miss_analytics.md"
     forward_results_csv = output_dir / "forward_observation_results.csv"
     shadow_outcomes_csv = output_dir / "shadow_sample_outcomes.csv"
+    vwap_mean_reversion_shadow_outcomes_csv = output_dir / "vwap_mean_reversion_shadow_outcomes.csv"
     candidate_aging_csv = output_dir / "candidate_aging.csv"
     forward_review_md = output_dir / "forward_observation_review.md"
     reconciliation_csv = output_dir / "observation_paper_reconciliation.csv"
@@ -1112,6 +1114,7 @@ def build_system_state(
     vwap_mean_reversion_walk_forward_json = output_dir / "vwap_mean_reversion_walk_forward.json"
     vwap_mean_reversion_walk_forward_md = output_dir / "vwap_mean_reversion_walk_forward.md"
     vwap_mean_reversion_walk_forward_csv = output_dir / "vwap_mean_reversion_walk_forward.csv"
+    vwap_mean_reversion_shadow_md = output_dir / "vwap_mean_reversion_shadow_samples.md"
     feature_wiring_audit_json = output_dir / "feature_wiring_audit.json"
     feature_wiring_audit_md = output_dir / "feature_wiring_audit.md"
     dashboard_md = output_dir / "project_gwala_dashboard.md"
@@ -1141,8 +1144,10 @@ def build_system_state(
     sizing_frame = read_csv_or_empty(sizing_csv)
     forward_observations = read_csv_or_empty(forward_observations_csv)
     shadow_samples = read_csv_or_empty(shadow_samples_csv)
+    vwap_mean_reversion_shadow_samples = read_csv_or_empty(vwap_mean_reversion_shadow_samples_csv)
     forward_results = read_csv_or_empty(forward_results_csv)
     shadow_outcomes = read_csv_or_empty(shadow_outcomes_csv)
+    vwap_mean_reversion_shadow_outcomes = read_csv_or_empty(vwap_mean_reversion_shadow_outcomes_csv)
     candidate_aging = read_csv_or_empty(candidate_aging_csv)
     reconciliation = read_csv_or_empty(reconciliation_csv)
     integrity = read_csv_or_empty(integrity_csv)
@@ -1207,6 +1212,7 @@ def build_system_state(
         "sizing_csv": str(sizing_csv),
         "forward_observations_csv": str(forward_observations_csv),
         "shadow_samples_csv": str(shadow_samples_csv),
+        "vwap_mean_reversion_shadow_samples_csv": str(vwap_mean_reversion_shadow_samples_csv),
         "near_miss_csv": str(near_miss_csv),
         "forward_results_csv": str(forward_results_csv),
         "reconciliation_csv": str(reconciliation_csv),
@@ -1225,6 +1231,7 @@ def build_system_state(
         "forward_sample_queue_csv": str(forward_sample_queue_csv),
         "almost_ready_breakout_json": str(almost_ready_breakout_json),
         "shadow_outcomes_csv": str(shadow_outcomes_csv),
+        "vwap_mean_reversion_shadow_outcomes_csv": str(vwap_mean_reversion_shadow_outcomes_csv),
         "candidate_aging_csv": str(candidate_aging_csv),
         "post_scan_digest_json": str(post_scan_digest_json),
         "refresh_status_json": str(refresh_status_json),
@@ -1283,6 +1290,7 @@ def build_system_state(
                 "sizing_csv": file_state(sizing_csv),
                 "forward_observations_csv": file_state(forward_observations_csv),
                 "shadow_samples_csv": file_state(shadow_samples_csv),
+                "vwap_mean_reversion_shadow_samples_csv": file_state(vwap_mean_reversion_shadow_samples_csv),
                 "forward_observations_md": file_state(forward_observations_md),
                 "near_miss_csv": file_state(near_miss_csv),
                 "near_miss_md": file_state(near_miss_md),
@@ -1311,6 +1319,8 @@ def build_system_state(
                 "vwap_mean_reversion_walk_forward_json": file_state(vwap_mean_reversion_walk_forward_json),
                 "vwap_mean_reversion_walk_forward_md": file_state(vwap_mean_reversion_walk_forward_md),
                 "vwap_mean_reversion_walk_forward_csv": file_state(vwap_mean_reversion_walk_forward_csv),
+                "vwap_mean_reversion_shadow_md": file_state(vwap_mean_reversion_shadow_md),
+                "vwap_mean_reversion_shadow_outcomes_csv": file_state(vwap_mean_reversion_shadow_outcomes_csv),
                 "feature_wiring_audit_json": file_state(feature_wiring_audit_json),
                 "feature_wiring_audit_md": file_state(feature_wiring_audit_md),
                 "dashboard_md": file_state(dashboard_md),

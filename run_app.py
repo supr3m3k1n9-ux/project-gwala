@@ -83,6 +83,7 @@ ALLOWED_REPORTS = {
     "strategy_vault": "strategy_vault.md",
     "vwap_mean_reversion": "vwap_mean_reversion.md",
     "vwap_mean_reversion_walk_forward": "vwap_mean_reversion_walk_forward.md",
+    "vwap_mean_reversion_shadow_samples": "vwap_mean_reversion_shadow_samples.md",
     "strategy_improvement_plan": "strategy_improvement_plan.md",
     "feature_wiring_audit": "feature_wiring_audit.md",
     "research_confidence": "universe_expansion/research_confidence.md",

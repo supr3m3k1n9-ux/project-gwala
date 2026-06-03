@@ -174,6 +174,7 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
 
     summary = read_csv_or_empty(output_dir / "vwap_mean_reversion_summary.csv")
     walk_forward = read_csv_or_empty(output_dir / "vwap_mean_reversion_walk_forward.csv")
+    shadow = read_csv_or_empty(output_dir / "vwap_mean_reversion_shadow_outcomes.csv")
     if summary.empty:
         return {
             "evidence_status": "missing",
@@ -182,6 +183,9 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
             "best_symbols": "",
             "walk_forward_holding_rows": 0,
             "walk_forward_status": "missing",
+            "shadow_samples": 0,
+            "matured_shadow_samples": 0,
+            "shadow_average_r": 0.0,
             "evidence_note": "Run python run_vwap_mean_reversion.py --output-dir logs.",
         }
     pass_rows = (
@@ -231,6 +235,21 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
     else:
         walk_status = "needs_more_sample"
         note = f"{note} Walk-forward still needs more sample."
+
+    matured_shadow = (
+        shadow[shadow["evaluation_status"] == "matured"].copy()
+        if not shadow.empty and "evaluation_status" in shadow.columns
+        else pd.DataFrame()
+    )
+    if not matured_shadow.empty and "hypothetical_r" in matured_shadow.columns:
+        shadow_values = pd.to_numeric(matured_shadow["hypothetical_r"], errors="coerce").dropna()
+        shadow_average = round(float(shadow_values.mean()), 4) if not shadow_values.empty else 0.0
+    else:
+        shadow_average = 0.0
+    if shadow.empty:
+        note = f"{note} Mean-reversion shadow lane has not collected samples yet."
+    else:
+        note = f"{note} Mean-reversion shadow samples: {len(shadow)} logged, {len(matured_shadow)} matured, {shadow_average:+.2f}R avg."
     return {
         "evidence_status": status,
         "tightened_pass_rows": int(len(pass_rows)),
@@ -238,6 +257,9 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
         "best_symbols": best_symbols,
         "walk_forward_holding_rows": int(len(holding_rows)),
         "walk_forward_status": walk_status,
+        "shadow_samples": int(len(shadow)),
+        "matured_shadow_samples": int(len(matured_shadow)),
+        "shadow_average_r": shadow_average,
         "evidence_note": note,
     }
 
@@ -254,6 +276,9 @@ def evidence_for_strategy(strategy: VaultStrategy, output_dir: Path) -> dict[str
         "best_symbols": "",
         "walk_forward_holding_rows": 0,
         "walk_forward_status": "not_applicable",
+        "shadow_samples": 0,
+        "matured_shadow_samples": 0,
+        "shadow_average_r": 0.0,
         "evidence_note": strategy.evidence_source,
     }
 
@@ -328,6 +353,9 @@ def strategy_decision(strategy: VaultStrategy, regime: dict[str, Any], output_di
         "best_symbols": evidence["best_symbols"],
         "walk_forward_holding_rows": evidence["walk_forward_holding_rows"],
         "walk_forward_status": evidence["walk_forward_status"],
+        "shadow_samples": evidence["shadow_samples"],
+        "matured_shadow_samples": evidence["matured_shadow_samples"],
+        "shadow_average_r": evidence["shadow_average_r"],
         "evidence_note": evidence["evidence_note"],
         "next_research_step": strategy.next_research_step,
         "reason": " ".join(reasons),

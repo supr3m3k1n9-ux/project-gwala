@@ -214,6 +214,16 @@ Walk-forward splits each promising row into older trades and newer trades. A
 `holding_up` decision means the newer half still meets the early durability
 floor. It is a good sign, but it is still not paper-watch approval by itself.
 
+The forward-style shadow lane is available from:
+
+```text
+Reports -> Research -> VWAP Mean Reversion Shadow Samples
+```
+
+This report collects latest-candle mean-reversion samples when the saved data
+passes the strategy-specific filters. These samples stay separate from the
+generic near-miss shadow lane and from official paper trades.
+
 This strategy is backtest/research only until it has enough evidence,
 walk-forward stability, shadow samples, and forward paper-validation results.
 
@@ -392,6 +402,7 @@ The controlled and walk-forward tests are available in the Reports tab too:
 logs/controlled_variant_review.md
 logs/walk_forward_review.md
 logs/vwap_mean_reversion_walk_forward.md
+logs/vwap_mean_reversion_shadow_samples.md
 logs/regime_review.md
 logs/deeper_research/controlled_variant_review.md
 logs/deeper_research/walk_forward_review.md
