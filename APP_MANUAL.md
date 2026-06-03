@@ -231,6 +231,22 @@ target at the prior close, and a stop around the signal candle or session open.
 This is research only; it does not create paper trades, broker orders, or live
 alerts.
 
+### VWAP Reclaim / Reject
+
+VWAP Reclaim / Reject is the vault's intraday control-flip strategy. It studies
+moments where price was on one side of VWAP, touches the line again, and closes
+back on the other side with EMA support.
+
+```text
+Reports -> Research -> VWAP Reclaim / Reject
+logs/vwap_reclaim_reject.md
+```
+
+The research pass tests long VWAP reclaims and short VWAP rejects. It uses 30m
+candles for entries, 5m candles for exits, a fixed R target, and a stop around
+the signal candle or VWAP. This is research only; it does not create paper
+trades, broker orders, or live alerts.
+
 ### Opening Range Breakout
 
 Opening Range Breakout is the vault's first pure momentum-open strategy. It
@@ -551,6 +567,7 @@ logs/vwap_mean_reversion_shadow_samples.md
 logs/vwap_mean_reversion_forward_observations.md
 logs/vwap_mean_reversion_paper_watch_gate.md
 logs/gap_fill_fade.md
+logs/vwap_reclaim_reject.md
 logs/opening_range_breakout.md
 logs/trend_pullback_continuation.md
 logs/opening_range_failure.md

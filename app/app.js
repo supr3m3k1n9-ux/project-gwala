@@ -53,6 +53,7 @@ const reports = [
   ["vwap_mean_reversion_forward_observations", "VWAP Mean Reversion Forward Observations"],
   ["vwap_mean_reversion_paper_watch_gate", "VWAP Mean Reversion Paper-Watch Gate"],
   ["gap_fill_fade", "Gap Fill / Gap Fade"],
+  ["vwap_reclaim_reject", "VWAP Reclaim / Reject"],
   ["opening_range_breakout", "Opening Range Breakout"],
   ["trend_pullback_continuation", "Trend Pullback Continuation"],
   ["opening_range_failure", "Opening Range Failure"],
@@ -99,7 +100,7 @@ const reportGroups = [
   },
   {
     label: "Research",
-    reports: ["strategy_vault", "strategy_evidence_accumulator", "paper_activation_rules", "vwap_mean_reversion", "vwap_mean_reversion_walk_forward", "vwap_mean_reversion_shadow_samples", "vwap_mean_reversion_forward_observations", "vwap_mean_reversion_paper_watch_gate", "gap_fill_fade", "opening_range_breakout", "trend_pullback_continuation", "opening_range_failure", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
+    reports: ["strategy_vault", "strategy_evidence_accumulator", "paper_activation_rules", "vwap_mean_reversion", "vwap_mean_reversion_walk_forward", "vwap_mean_reversion_shadow_samples", "vwap_mean_reversion_forward_observations", "vwap_mean_reversion_paper_watch_gate", "gap_fill_fade", "vwap_reclaim_reject", "opening_range_breakout", "trend_pullback_continuation", "opening_range_failure", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
   },
   {
     label: "Deep Research",
@@ -1700,6 +1701,7 @@ function renderAppHealth(state) {
     ["VWAP mean reversion forward observations", files.vwap_mean_reversion_forward_observation_results_csv?.modified_et || "not run yet"],
     ["VWAP mean reversion paper-watch gate", files.vwap_mean_reversion_paper_watch_gate_json?.modified_et || "not run yet"],
     ["Gap fill / gap fade", files.gap_fill_fade_json?.modified_et || "not run yet"],
+    ["VWAP reclaim / reject", files.vwap_reclaim_reject_json?.modified_et || "not run yet"],
     ["Opening range breakout", files.opening_range_breakout_json?.modified_et || "not run yet"],
     ["Trend pullback continuation", files.trend_pullback_continuation_json?.modified_et || "not run yet"],
     ["Opening range failure", files.opening_range_failure_json?.modified_et || "not run yet"],
@@ -3474,6 +3476,7 @@ function renderFiles(state) {
     ["VWAP mean reversion forward observations", "vwap_mean_reversion_forward_observations.md", "Markdown"],
     ["VWAP mean reversion paper-watch gate", "vwap_mean_reversion_paper_watch_gate.md", "Markdown"],
     ["Gap fill / gap fade", "gap_fill_fade.md", "Markdown"],
+    ["VWAP reclaim / reject", "vwap_reclaim_reject.md", "Markdown"],
     ["Opening range breakout", "opening_range_breakout.md", "Markdown"],
     ["Trend pullback continuation", "trend_pullback_continuation.md", "Markdown"],
     ["Opening range failure", "opening_range_failure.md", "Markdown"],

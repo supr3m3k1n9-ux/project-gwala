@@ -77,6 +77,7 @@ from run_webull_watchlist import fetch_chart_only_timeframes, write_candidate_se
 from strategies.gap_fill_fade import add_gap_fill_fade_signals
 from strategies.opening_range_breakout import add_opening_range_breakout_signals
 from strategies.trend_pullback_continuation import add_trend_pullback_continuation_signals
+from strategies.vwap_reclaim_reject import add_vwap_reclaim_reject_signals
 
 
 def scanner_row(**updates: object) -> dict[str, object]:
@@ -711,6 +712,46 @@ class ResearchSelectionTests(unittest.TestCase):
         self.assertTrue(bool(signals.iloc[0]["gap_fade_long_signal"]))
         self.assertFalse(bool(signals.iloc[0]["gap_fade_short_signal"]))
         self.assertGreaterEqual(int(signals.iloc[0]["gap_fade_quality_score"]), 4)
+
+    def test_vwap_reclaim_flags_long_control_flip(self) -> None:
+        candles = pd.DataFrame(
+            [
+                {
+                    "open": 99.0,
+                    "high": 99.8,
+                    "low": 98.8,
+                    "close": 99.2,
+                    "volume": 1_000,
+                    "vwap": 100.0,
+                    "ema_9": 99.1,
+                    "ema_21": 99.0,
+                    "regular_session": True,
+                    "entry_window": True,
+                },
+                {
+                    "open": 99.3,
+                    "high": 101.0,
+                    "low": 99.8,
+                    "close": 100.7,
+                    "volume": 1_100,
+                    "vwap": 100.0,
+                    "ema_9": 100.4,
+                    "ema_21": 100.1,
+                    "regular_session": True,
+                    "entry_window": True,
+                },
+            ],
+            index=[
+                pd.Timestamp("2026-06-02 10:00", tz="America/New_York"),
+                pd.Timestamp("2026-06-02 10:30", tz="America/New_York"),
+            ],
+        )
+
+        signals = add_vwap_reclaim_reject_signals(candles, STRATEGY)
+
+        self.assertTrue(bool(signals.iloc[1]["vwap_reclaim_long_signal"]))
+        self.assertFalse(bool(signals.iloc[1]["vwap_reject_short_signal"]))
+        self.assertGreaterEqual(int(signals.iloc[1]["vwap_rr_quality_score"]), 4)
 
     def test_trend_pullback_flags_long_recovery_from_ema_band(self) -> None:
         candles = pd.DataFrame(

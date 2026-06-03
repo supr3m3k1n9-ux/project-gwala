@@ -394,6 +394,12 @@ def evidence_for_strategy(strategy: VaultStrategy, output_dir: Path) -> dict[str
             "gap_fill_fade",
             "Run python run_gap_fill_fade.py --output-dir logs.",
         )
+    if strategy.strategy_id == "vwap_reclaim_reject":
+        return summary_evidence(
+            output_dir,
+            "vwap_reclaim_reject",
+            "Run python run_vwap_reclaim_reject.py --output-dir logs.",
+        )
     if strategy.strategy_id == "opening_range_failure":
         return summary_evidence(
             output_dir,

@@ -64,6 +64,18 @@ STRATEGY_VAULT: list[VaultStrategy] = [
         next_research_step="Review first-pass gap-fade rows, then add walk-forward and forward evidence if promising.",
     ),
     VaultStrategy(
+        strategy_id="vwap_reclaim_reject",
+        name="VWAP Reclaim / Reject",
+        status="research_backlog",
+        family="vwap_control",
+        ideal_regimes=("mixed_chop", "range_chop", "bullish_trend", "bearish_trend"),
+        caution_regimes=("late_day_chop",),
+        ideal_volatility=("normal_volatility", "high_volatility"),
+        description="Study intraday control flips when price reclaims or rejects VWAP with EMA support.",
+        evidence_source="logs/vwap_reclaim_reject.md and logs/vwap_reclaim_reject_summary.csv.",
+        next_research_step="Add walk-forward, shadow, and forward evidence for first-pass passing rows.",
+    ),
+    VaultStrategy(
         strategy_id="opening_range_breakout",
         name="Opening Range Breakout",
         status="research_backlog",

@@ -1127,6 +1127,9 @@ def build_system_state(
     gap_fill_fade_json = output_dir / "gap_fill_fade.json"
     gap_fill_fade_md = output_dir / "gap_fill_fade.md"
     gap_fill_fade_summary_csv = output_dir / "gap_fill_fade_summary.csv"
+    vwap_reclaim_reject_json = output_dir / "vwap_reclaim_reject.json"
+    vwap_reclaim_reject_md = output_dir / "vwap_reclaim_reject.md"
+    vwap_reclaim_reject_summary_csv = output_dir / "vwap_reclaim_reject_summary.csv"
     opening_range_breakout_json = output_dir / "opening_range_breakout.json"
     opening_range_breakout_md = output_dir / "opening_range_breakout.md"
     opening_range_breakout_summary_csv = output_dir / "opening_range_breakout_summary.csv"
@@ -1266,6 +1269,7 @@ def build_system_state(
         "vwap_mean_reversion_forward_observation_results_csv": str(vwap_mean_reversion_forward_results_csv),
         "vwap_mean_reversion_paper_watch_gate_json": str(vwap_mean_reversion_paper_watch_gate_json),
         "gap_fill_fade_json": str(gap_fill_fade_json),
+        "vwap_reclaim_reject_json": str(vwap_reclaim_reject_json),
         "opening_range_breakout_json": str(opening_range_breakout_json),
         "trend_pullback_continuation_json": str(trend_pullback_continuation_json),
         "opening_range_failure_json": str(opening_range_failure_json),
@@ -1372,6 +1376,9 @@ def build_system_state(
                 "gap_fill_fade_json": file_state(gap_fill_fade_json),
                 "gap_fill_fade_md": file_state(gap_fill_fade_md),
                 "gap_fill_fade_summary_csv": file_state(gap_fill_fade_summary_csv),
+                "vwap_reclaim_reject_json": file_state(vwap_reclaim_reject_json),
+                "vwap_reclaim_reject_md": file_state(vwap_reclaim_reject_md),
+                "vwap_reclaim_reject_summary_csv": file_state(vwap_reclaim_reject_summary_csv),
                 "opening_range_breakout_json": file_state(opening_range_breakout_json),
                 "opening_range_breakout_md": file_state(opening_range_breakout_md),
                 "opening_range_breakout_summary_csv": file_state(opening_range_breakout_summary_csv),
