@@ -115,6 +115,18 @@ execution, and real-money readiness are disabled.
     "source": "logs/setup_replay.json",
 })}
 
+## Strategy Vault
+
+{small_table({
+    "market_regime": state.get("strategy_vault", {}).get("regime", {}).get("market_regime", "missing"),
+    "volatility_regime": state.get("strategy_vault", {}).get("regime", {}).get("volatility_regime", "missing"),
+    "strategy_environment": state.get("strategy_vault", {}).get("regime", {}).get("strategy_environment", "missing"),
+    "active_strategy_count": state.get("strategy_vault", {}).get("active_strategy_count", 0),
+    "research_priority_count": state.get("strategy_vault", {}).get("research_priority_count", 0),
+    "next_action": state.get("strategy_vault", {}).get("next_action", "Run python run_strategy_vault.py."),
+    "source": "logs/strategy_vault.json",
+})}
+
 ## Current-Candle Candidate Panel
 
 {small_table({

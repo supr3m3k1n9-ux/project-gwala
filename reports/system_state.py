@@ -1104,6 +1104,8 @@ def build_system_state(
     promotion_review_csv = output_dir / "promotion_review.csv"
     strategy_improvement_plan_json = output_dir / "strategy_improvement_plan.json"
     strategy_improvement_plan_md = output_dir / "strategy_improvement_plan.md"
+    strategy_vault_json = output_dir / "strategy_vault.json"
+    strategy_vault_md = output_dir / "strategy_vault.md"
     feature_wiring_audit_json = output_dir / "feature_wiring_audit.json"
     feature_wiring_audit_md = output_dir / "feature_wiring_audit.md"
     dashboard_md = output_dir / "project_gwala_dashboard.md"
@@ -1144,6 +1146,7 @@ def build_system_state(
     setup_health = read_csv_or_empty(setup_health_csv)
     promotion_review_frame = read_csv_or_empty(promotion_review_csv)
     strategy_improvement_plan = read_json_or_empty(strategy_improvement_plan_json)
+    strategy_vault = read_json_or_empty(strategy_vault_json)
     feature_wiring_audit = read_json_or_empty(feature_wiring_audit_json)
     refresh_status = read_json_or_empty(refresh_status_json)
     premarket_verification = read_json_or_empty(premarket_verification_json)
@@ -1209,6 +1212,7 @@ def build_system_state(
         "research_confidence_csv": str(output_dir / "universe_expansion" / "research_confidence.csv"),
         "promotion_review_csv": str(promotion_review_csv),
         "strategy_improvement_plan_json": str(strategy_improvement_plan_json),
+        "strategy_vault_json": str(strategy_vault_json),
         "feature_wiring_audit_json": str(feature_wiring_audit_json),
         "forward_sample_queue_csv": str(forward_sample_queue_csv),
         "almost_ready_breakout_json": str(almost_ready_breakout_json),
@@ -1253,6 +1257,7 @@ def build_system_state(
         "research_confidence": research_confidence,
         "promotion_review": promotion_review,
         "strategy_improvement_plan": strategy_improvement_plan,
+        "strategy_vault": strategy_vault,
         "feature_wiring_audit": feature_wiring_audit,
         "refresh_status": refresh_status,
         "premarket_verification": premarket,
@@ -1290,6 +1295,8 @@ def build_system_state(
                 "promotion_review_md": promotion_review["source_report"],
                 "strategy_improvement_plan_json": file_state(strategy_improvement_plan_json),
                 "strategy_improvement_plan_md": file_state(strategy_improvement_plan_md),
+                "strategy_vault_json": file_state(strategy_vault_json),
+                "strategy_vault_md": file_state(strategy_vault_md),
                 "feature_wiring_audit_json": file_state(feature_wiring_audit_json),
                 "feature_wiring_audit_md": file_state(feature_wiring_audit_md),
                 "dashboard_md": file_state(dashboard_md),

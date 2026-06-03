@@ -80,6 +80,7 @@ ALLOWED_REPORTS = {
     "automation_timeline": "daily_automation_timeline.md",
     "premarket": "premarket_verification.md",
     "setup_replay": "setup_replay.md",
+    "strategy_vault": "strategy_vault.md",
     "strategy_improvement_plan": "strategy_improvement_plan.md",
     "feature_wiring_audit": "feature_wiring_audit.md",
     "research_confidence": "universe_expansion/research_confidence.md",

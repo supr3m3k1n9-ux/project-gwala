@@ -168,6 +168,30 @@ Practice Replay
 Reports
 ```
 
+## Strategy Vault
+
+The Strategy Vault is the research router. It compares the current broad-market
+backdrop with the strategy families in the vault and recommends where attention
+belongs:
+
+```text
+active = existing paper-watch strategy is favored by the current regime
+watch = strategy is usable only if the normal scanner/sizing gates are perfect
+caution = strategy is not favored; stand aside unless the setup is unusually clean
+research_priority = build or test this strategy next
+research_backlog = keep it in the vault, but do not prioritize it today
+```
+
+Open the full report from:
+
+```text
+Reports -> Research -> Strategy Vault
+```
+
+The vault does not approve trades, import paper entries, place orders, create
+broker alerts, or bypass the paper gate. It only helps decide which strategy
+family deserves research or manual paper-review attention.
+
 ## Home Backtest Account View
 
 The Home page includes a Backtest Performance Snapshot. Click `View trades` on
