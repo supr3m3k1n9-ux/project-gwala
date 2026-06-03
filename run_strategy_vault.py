@@ -175,6 +175,7 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
     summary = read_csv_or_empty(output_dir / "vwap_mean_reversion_summary.csv")
     walk_forward = read_csv_or_empty(output_dir / "vwap_mean_reversion_walk_forward.csv")
     shadow = read_csv_or_empty(output_dir / "vwap_mean_reversion_shadow_outcomes.csv")
+    forward = read_csv_or_empty(output_dir / "vwap_mean_reversion_forward_observation_results.csv")
     if summary.empty:
         return {
             "evidence_status": "missing",
@@ -186,6 +187,9 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
             "shadow_samples": 0,
             "matured_shadow_samples": 0,
             "shadow_average_r": 0.0,
+            "forward_observations": 0,
+            "matured_forward_observations": 0,
+            "forward_average_r": 0.0,
             "evidence_note": "Run python run_vwap_mean_reversion.py --output-dir logs.",
         }
     pass_rows = (
@@ -250,6 +254,21 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
         note = f"{note} Mean-reversion shadow lane has not collected samples yet."
     else:
         note = f"{note} Mean-reversion shadow samples: {len(shadow)} logged, {len(matured_shadow)} matured, {shadow_average:+.2f}R avg."
+
+    matured_forward = (
+        forward[forward["evaluation_status"] == "matured"].copy()
+        if not forward.empty and "evaluation_status" in forward.columns
+        else pd.DataFrame()
+    )
+    if not matured_forward.empty and "hypothetical_r" in matured_forward.columns:
+        forward_values = pd.to_numeric(matured_forward["hypothetical_r"], errors="coerce").dropna()
+        forward_average = round(float(forward_values.mean()), 4) if not forward_values.empty else 0.0
+    else:
+        forward_average = 0.0
+    if forward.empty:
+        note = f"{note} Forward observation lane has not collected samples yet."
+    else:
+        note = f"{note} Forward observations: {len(forward)} logged, {len(matured_forward)} matured, {forward_average:+.2f}R avg."
     return {
         "evidence_status": status,
         "tightened_pass_rows": int(len(pass_rows)),
@@ -260,6 +279,9 @@ def mean_reversion_evidence(output_dir: Path) -> dict[str, Any]:
         "shadow_samples": int(len(shadow)),
         "matured_shadow_samples": int(len(matured_shadow)),
         "shadow_average_r": shadow_average,
+        "forward_observations": int(len(forward)),
+        "matured_forward_observations": int(len(matured_forward)),
+        "forward_average_r": forward_average,
         "evidence_note": note,
     }
 
@@ -279,6 +301,9 @@ def evidence_for_strategy(strategy: VaultStrategy, output_dir: Path) -> dict[str
         "shadow_samples": 0,
         "matured_shadow_samples": 0,
         "shadow_average_r": 0.0,
+        "forward_observations": 0,
+        "matured_forward_observations": 0,
+        "forward_average_r": 0.0,
         "evidence_note": strategy.evidence_source,
     }
 
@@ -356,6 +381,9 @@ def strategy_decision(strategy: VaultStrategy, regime: dict[str, Any], output_di
         "shadow_samples": evidence["shadow_samples"],
         "matured_shadow_samples": evidence["matured_shadow_samples"],
         "shadow_average_r": evidence["shadow_average_r"],
+        "forward_observations": evidence["forward_observations"],
+        "matured_forward_observations": evidence["matured_forward_observations"],
+        "forward_average_r": evidence["forward_average_r"],
         "evidence_note": evidence["evidence_note"],
         "next_research_step": strategy.next_research_step,
         "reason": " ".join(reasons),

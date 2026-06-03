@@ -224,6 +224,16 @@ This report collects latest-candle mean-reversion samples when the saved data
 passes the strategy-specific filters. These samples stay separate from the
 generic near-miss shadow lane and from official paper trades.
 
+The strategy-specific forward observation lane is available from:
+
+```text
+Reports -> Research -> VWAP Mean Reversion Forward Observations
+```
+
+This report preserves qualifying latest-candle mean-reversion signals as
+forward observations. These observations are closer to paper-watch evidence
+than historical backtests, but they still do not count as official paper trades.
+
 This strategy is backtest/research only until it has enough evidence,
 walk-forward stability, shadow samples, and forward paper-validation results.
 
@@ -403,6 +413,7 @@ logs/controlled_variant_review.md
 logs/walk_forward_review.md
 logs/vwap_mean_reversion_walk_forward.md
 logs/vwap_mean_reversion_shadow_samples.md
+logs/vwap_mean_reversion_forward_observations.md
 logs/regime_review.md
 logs/deeper_research/controlled_variant_review.md
 logs/deeper_research/walk_forward_review.md

@@ -49,6 +49,7 @@ const reports = [
   ["vwap_mean_reversion", "VWAP Mean Reversion"],
   ["vwap_mean_reversion_walk_forward", "VWAP Mean Reversion Walk-Forward"],
   ["vwap_mean_reversion_shadow_samples", "VWAP Mean Reversion Shadow Samples"],
+  ["vwap_mean_reversion_forward_observations", "VWAP Mean Reversion Forward Observations"],
   ["strategy_improvement_plan", "Strategy Improvement Plan"],
   ["feature_wiring_audit", "Feature Wiring Audit"],
   ["research_confidence", "Research Confidence"],
@@ -90,7 +91,7 @@ const reportGroups = [
   },
   {
     label: "Research",
-    reports: ["strategy_vault", "vwap_mean_reversion", "vwap_mean_reversion_walk_forward", "vwap_mean_reversion_shadow_samples", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
+    reports: ["strategy_vault", "vwap_mean_reversion", "vwap_mean_reversion_walk_forward", "vwap_mean_reversion_shadow_samples", "vwap_mean_reversion_forward_observations", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
   },
   {
     label: "Deep Research",
@@ -1610,7 +1611,7 @@ function renderStrategyVault(state) {
               <td>${escapeHtml(strategy.name || "")}</td>
               <td><span class="status ${safeClassName(strategy.decision || "watch")}">${escapeHtml(titleCase(strategy.decision || ""))}</span></td>
               <td>${escapeHtml(text(strategy.score, "0"))}</td>
-              <td>${escapeHtml(strategy.evidence_status || "")}${strategy.best_symbols ? ` / ${escapeHtml(strategy.best_symbols)}` : ""}${strategy.walk_forward_status ? ` / WF: ${escapeHtml(titleCase(strategy.walk_forward_status))}` : ""}${Number(strategy.shadow_samples || 0) ? ` / Shadow: ${escapeHtml(strategy.matured_shadow_samples || 0)}/${escapeHtml(strategy.shadow_samples || 0)}` : ""}</td>
+              <td>${escapeHtml(strategy.evidence_status || "")}${strategy.best_symbols ? ` / ${escapeHtml(strategy.best_symbols)}` : ""}${strategy.walk_forward_status ? ` / WF: ${escapeHtml(titleCase(strategy.walk_forward_status))}` : ""}${Number(strategy.shadow_samples || 0) ? ` / Shadow: ${escapeHtml(strategy.matured_shadow_samples || 0)}/${escapeHtml(strategy.shadow_samples || 0)}` : ""}${Number(strategy.forward_observations || 0) ? ` / Forward: ${escapeHtml(strategy.matured_forward_observations || 0)}/${escapeHtml(strategy.forward_observations || 0)}` : ""}</td>
               <td>${escapeHtml(strategy.action || "")}</td>
             </tr>
           `,
@@ -1643,6 +1644,7 @@ function renderAppHealth(state) {
     ["VWAP mean reversion", files.vwap_mean_reversion_json?.modified_et || "not run yet"],
     ["VWAP mean reversion walk-forward", files.vwap_mean_reversion_walk_forward_json?.modified_et || "not run yet"],
     ["VWAP mean reversion shadow", files.vwap_mean_reversion_shadow_outcomes_csv?.modified_et || "not run yet"],
+    ["VWAP mean reversion forward observations", files.vwap_mean_reversion_forward_observation_results_csv?.modified_et || "not run yet"],
     ["Research confidence", files.research_confidence_csv?.modified_et || "not run yet"],
     ["Promotion review", files.promotion_review_csv?.modified_et || "not run yet"],
     ["Paper log", files.paper_csv?.modified_et || "missing"],
@@ -3410,6 +3412,7 @@ function renderFiles(state) {
     ["VWAP mean reversion", "vwap_mean_reversion.md", "Markdown"],
     ["VWAP mean reversion walk-forward", "vwap_mean_reversion_walk_forward.md", "Markdown"],
     ["VWAP mean reversion shadow samples", "vwap_mean_reversion_shadow_samples.md", "Markdown"],
+    ["VWAP mean reversion forward observations", "vwap_mean_reversion_forward_observations.md", "Markdown"],
     ["Research confidence", "universe_expansion/research_confidence.md", "Markdown"],
     ["Promotion review", "promotion_review.md", "Markdown"],
     ["Controlled variants", "controlled_variant_review.md", "Markdown"],
