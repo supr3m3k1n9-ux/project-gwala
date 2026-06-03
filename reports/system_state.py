@@ -1106,6 +1106,9 @@ def build_system_state(
     strategy_improvement_plan_md = output_dir / "strategy_improvement_plan.md"
     strategy_vault_json = output_dir / "strategy_vault.json"
     strategy_vault_md = output_dir / "strategy_vault.md"
+    vwap_mean_reversion_json = output_dir / "vwap_mean_reversion.json"
+    vwap_mean_reversion_md = output_dir / "vwap_mean_reversion.md"
+    vwap_mean_reversion_summary_csv = output_dir / "vwap_mean_reversion_summary.csv"
     feature_wiring_audit_json = output_dir / "feature_wiring_audit.json"
     feature_wiring_audit_md = output_dir / "feature_wiring_audit.md"
     dashboard_md = output_dir / "project_gwala_dashboard.md"
@@ -1213,6 +1216,7 @@ def build_system_state(
         "promotion_review_csv": str(promotion_review_csv),
         "strategy_improvement_plan_json": str(strategy_improvement_plan_json),
         "strategy_vault_json": str(strategy_vault_json),
+        "vwap_mean_reversion_json": str(vwap_mean_reversion_json),
         "feature_wiring_audit_json": str(feature_wiring_audit_json),
         "forward_sample_queue_csv": str(forward_sample_queue_csv),
         "almost_ready_breakout_json": str(almost_ready_breakout_json),
@@ -1297,6 +1301,9 @@ def build_system_state(
                 "strategy_improvement_plan_md": file_state(strategy_improvement_plan_md),
                 "strategy_vault_json": file_state(strategy_vault_json),
                 "strategy_vault_md": file_state(strategy_vault_md),
+                "vwap_mean_reversion_json": file_state(vwap_mean_reversion_json),
+                "vwap_mean_reversion_md": file_state(vwap_mean_reversion_md),
+                "vwap_mean_reversion_summary_csv": file_state(vwap_mean_reversion_summary_csv),
                 "feature_wiring_audit_json": file_state(feature_wiring_audit_json),
                 "feature_wiring_audit_md": file_state(feature_wiring_audit_md),
                 "dashboard_md": file_state(dashboard_md),

@@ -48,8 +48,8 @@ STRATEGY_VAULT: list[VaultStrategy] = [
         caution_regimes=("bullish_trend", "bearish_trend", "gap_and_go"),
         ideal_volatility=("normal_volatility", "low_volatility"),
         description="Study fades back toward VWAP when trend-continuation conditions are not clean.",
-        evidence_source="Not implemented yet. Needs backtest rules, shadow samples, and promotion gates.",
-        next_research_step="Define entry/stop/target rules and run a no-lookahead backtest.",
+        evidence_source="logs/vwap_mean_reversion.md and logs/vwap_mean_reversion_summary.csv.",
+        next_research_step="Review first-pass backtest rows, then tighten rules before any paper-watch promotion.",
     ),
     VaultStrategy(
         strategy_id="opening_range_breakout",

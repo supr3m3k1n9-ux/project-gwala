@@ -192,6 +192,21 @@ The vault does not approve trades, import paper entries, place orders, create
 broker alerts, or bypass the paper gate. It only helps decide which strategy
 family deserves research or manual paper-review attention.
 
+### VWAP Mean Reversion
+
+VWAP Mean Reversion is the first complementary vault strategy. It studies
+range/chop sessions where price stretches away from VWAP and rejects the
+extreme back toward the mean.
+
+Open the report from:
+
+```text
+Reports -> Research -> VWAP Mean Reversion
+```
+
+This strategy is backtest/research only until it has enough evidence,
+walk-forward stability, shadow samples, and forward paper-validation results.
+
 ## Home Backtest Account View
 
 The Home page includes a Backtest Performance Snapshot. Click `View trades` on

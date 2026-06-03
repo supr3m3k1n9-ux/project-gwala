@@ -46,6 +46,7 @@ const reports = [
   ["premarket", "Pre-Market Verification"],
   ["setup_replay", "Setup Replay"],
   ["strategy_vault", "Strategy Vault"],
+  ["vwap_mean_reversion", "VWAP Mean Reversion"],
   ["strategy_improvement_plan", "Strategy Improvement Plan"],
   ["feature_wiring_audit", "Feature Wiring Audit"],
   ["research_confidence", "Research Confidence"],
@@ -87,7 +88,7 @@ const reportGroups = [
   },
   {
     label: "Research",
-    reports: ["strategy_vault", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
+    reports: ["strategy_vault", "vwap_mean_reversion", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
   },
   {
     label: "Deep Research",
@@ -1595,6 +1596,7 @@ function renderAppHealth(state) {
     ["Position sizing CSV", files.sizing_csv?.modified_et || "missing"],
     ["Setup health CSV", files.setup_health_csv?.modified_et || "missing"],
     ["Strategy vault", files.strategy_vault_json?.modified_et || "not run yet"],
+    ["VWAP mean reversion", files.vwap_mean_reversion_json?.modified_et || "not run yet"],
     ["Research confidence", files.research_confidence_csv?.modified_et || "not run yet"],
     ["Promotion review", files.promotion_review_csv?.modified_et || "not run yet"],
     ["Paper log", files.paper_csv?.modified_et || "missing"],
@@ -3359,6 +3361,7 @@ function renderFiles(state) {
     ["Pre-market verification", "premarket_verification.md", "Markdown"],
     ["Setup replay", "setup_replay.md", "Markdown"],
     ["Strategy vault", "strategy_vault.md", "Markdown"],
+    ["VWAP mean reversion", "vwap_mean_reversion.md", "Markdown"],
     ["Research confidence", "universe_expansion/research_confidence.md", "Markdown"],
     ["Promotion review", "promotion_review.md", "Markdown"],
     ["Controlled variants", "controlled_variant_review.md", "Markdown"],

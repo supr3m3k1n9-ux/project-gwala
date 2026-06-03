@@ -81,6 +81,7 @@ ALLOWED_REPORTS = {
     "premarket": "premarket_verification.md",
     "setup_replay": "setup_replay.md",
     "strategy_vault": "strategy_vault.md",
+    "vwap_mean_reversion": "vwap_mean_reversion.md",
     "strategy_improvement_plan": "strategy_improvement_plan.md",
     "feature_wiring_audit": "feature_wiring_audit.md",
     "research_confidence": "universe_expansion/research_confidence.md",
