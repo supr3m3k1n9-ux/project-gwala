@@ -71,6 +71,7 @@ from run_strategy_evidence_accumulator import summarize_lane
 from run_strategy_overlap_audit import build_audit_rows, priority_plan
 from run_strategy_vault import build_selector
 from run_vwap_mean_reversion_shadow_samples import sample_row as mean_reversion_sample_row
+from run_vwap_reclaim_reject_shadow_samples import sample_row as vwap_reclaim_shadow_sample_row
 from run_vwap_reclaim_reject_walk_forward import build_review as build_vwap_reclaim_walk_forward
 from run_walk_forward_review import build_walk_forward_review
 from run_trade_checklist import current_candidates as checklist_candidates
@@ -791,6 +792,49 @@ class ResearchSelectionTests(unittest.TestCase):
         self.assertEqual(review.iloc[0]["decision"], "holding_up")
         self.assertEqual(review.iloc[0]["newer_trades"], 4)
         self.assertGreater(review.iloc[0]["newer_expectancy_r"], 0.10)
+
+    def test_vwap_reclaim_shadow_sample_row_builds_valid_plan(self) -> None:
+        args = argparse.Namespace(
+            target_r_multiple=1.25,
+            reward_multiple_floor=0.80,
+            min_quality_score=4,
+            min_relative_volume=0.70,
+            max_relative_volume=2.50,
+            max_vwap_gap_pct=0.012,
+            max_trend_gap_pct=0.010,
+        )
+        row = pd.Series(
+            {
+                "vwap_reclaim_long_signal": True,
+                "vwap_rr_quality_score": 6,
+                "vwap_rr_quality_grade": "A",
+                "vwap_rr_relative_volume": 1.1,
+                "vwap_rr_gap_pct": 0.001,
+                "vwap_rr_trend_gap_pct": 0.002,
+                "close": 101.0,
+                "low": 99.8,
+                "high": 101.2,
+                "vwap": 100.0,
+                "ema_9": 100.7,
+                "ema_21": 100.2,
+            }
+        )
+
+        sample = vwap_reclaim_shadow_sample_row(
+            symbol="QQQ",
+            timestamp=pd.Timestamp("2026-06-02 10:30", tz="America/New_York"),
+            row=row,
+            direction="long",
+            signal_column="vwap_reclaim_long_signal",
+            observed_at_et="2026-06-02 10:35:00 EDT",
+            args=args,
+        )
+
+        self.assertIsNotNone(sample)
+        assert sample is not None
+        self.assertEqual(sample["strategy"], "vwap_reclaim_reject")
+        self.assertEqual(sample["direction"], "long")
+        self.assertGreaterEqual(sample["reward_multiple"], 0.80)
 
     def test_trend_pullback_flags_long_recovery_from_ema_band(self) -> None:
         candles = pd.DataFrame(

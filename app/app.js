@@ -55,6 +55,7 @@ const reports = [
   ["gap_fill_fade", "Gap Fill / Gap Fade"],
   ["vwap_reclaim_reject", "VWAP Reclaim / Reject"],
   ["vwap_reclaim_reject_walk_forward", "VWAP Reclaim / Reject Walk-Forward"],
+  ["vwap_reclaim_reject_shadow_samples", "VWAP Reclaim / Reject Shadow Samples"],
   ["opening_range_breakout", "Opening Range Breakout"],
   ["trend_pullback_continuation", "Trend Pullback Continuation"],
   ["opening_range_failure", "Opening Range Failure"],
@@ -101,7 +102,7 @@ const reportGroups = [
   },
   {
     label: "Research",
-    reports: ["strategy_vault", "strategy_evidence_accumulator", "paper_activation_rules", "vwap_mean_reversion", "vwap_mean_reversion_walk_forward", "vwap_mean_reversion_shadow_samples", "vwap_mean_reversion_forward_observations", "vwap_mean_reversion_paper_watch_gate", "gap_fill_fade", "vwap_reclaim_reject", "vwap_reclaim_reject_walk_forward", "opening_range_breakout", "trend_pullback_continuation", "opening_range_failure", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
+    reports: ["strategy_vault", "strategy_evidence_accumulator", "paper_activation_rules", "vwap_mean_reversion", "vwap_mean_reversion_walk_forward", "vwap_mean_reversion_shadow_samples", "vwap_mean_reversion_forward_observations", "vwap_mean_reversion_paper_watch_gate", "gap_fill_fade", "vwap_reclaim_reject", "vwap_reclaim_reject_walk_forward", "vwap_reclaim_reject_shadow_samples", "opening_range_breakout", "trend_pullback_continuation", "opening_range_failure", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
   },
   {
     label: "Deep Research",
@@ -1704,6 +1705,7 @@ function renderAppHealth(state) {
     ["Gap fill / gap fade", files.gap_fill_fade_json?.modified_et || "not run yet"],
     ["VWAP reclaim / reject", files.vwap_reclaim_reject_json?.modified_et || "not run yet"],
     ["VWAP reclaim / reject walk-forward", files.vwap_reclaim_reject_walk_forward_json?.modified_et || "not run yet"],
+    ["VWAP reclaim / reject shadow", files.vwap_reclaim_reject_shadow_outcomes_csv?.modified_et || "not run yet"],
     ["Opening range breakout", files.opening_range_breakout_json?.modified_et || "not run yet"],
     ["Trend pullback continuation", files.trend_pullback_continuation_json?.modified_et || "not run yet"],
     ["Opening range failure", files.opening_range_failure_json?.modified_et || "not run yet"],
@@ -3480,6 +3482,7 @@ function renderFiles(state) {
     ["Gap fill / gap fade", "gap_fill_fade.md", "Markdown"],
     ["VWAP reclaim / reject", "vwap_reclaim_reject.md", "Markdown"],
     ["VWAP reclaim / reject walk-forward", "vwap_reclaim_reject_walk_forward.md", "Markdown"],
+    ["VWAP reclaim / reject shadow samples", "vwap_reclaim_reject_shadow_samples.md", "Markdown"],
     ["Opening range breakout", "opening_range_breakout.md", "Markdown"],
     ["Trend pullback continuation", "trend_pullback_continuation.md", "Markdown"],
     ["Opening range failure", "opening_range_failure.md", "Markdown"],

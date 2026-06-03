@@ -285,6 +285,7 @@ def main() -> None:
     run_step([python, "run_gap_fill_fade.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_vwap_reclaim_reject.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_vwap_reclaim_reject_walk_forward.py", "--output-dir", str(args.output_dir)])
+    run_step([python, "run_vwap_reclaim_reject_shadow_samples.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_opening_range_breakout.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_trend_pullback_continuation.py", "--output-dir", str(args.output_dir)])
     run_step([python, "run_opening_range_failure.py", "--output-dir", str(args.output_dir)])

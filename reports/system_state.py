@@ -1087,6 +1087,7 @@ def build_system_state(
     forward_observations_csv = Path("data/forward_signal_observations.csv")
     shadow_samples_csv = Path("data/shadow_samples.csv")
     vwap_mean_reversion_shadow_samples_csv = Path("data/vwap_mean_reversion_shadow_samples.csv")
+    vwap_reclaim_reject_shadow_samples_csv = Path("data/vwap_reclaim_reject_shadow_samples.csv")
     vwap_mean_reversion_forward_observations_csv = Path("data/vwap_mean_reversion_forward_observations.csv")
     forward_observations_md = output_dir / "forward_signal_observations.md"
     near_miss_csv = Path("data/near_miss_observations.csv")
@@ -1094,6 +1095,7 @@ def build_system_state(
     forward_results_csv = output_dir / "forward_observation_results.csv"
     shadow_outcomes_csv = output_dir / "shadow_sample_outcomes.csv"
     vwap_mean_reversion_shadow_outcomes_csv = output_dir / "vwap_mean_reversion_shadow_outcomes.csv"
+    vwap_reclaim_reject_shadow_outcomes_csv = output_dir / "vwap_reclaim_reject_shadow_outcomes.csv"
     vwap_mean_reversion_forward_results_csv = output_dir / "vwap_mean_reversion_forward_observation_results.csv"
     candidate_aging_csv = output_dir / "candidate_aging.csv"
     forward_review_md = output_dir / "forward_observation_review.md"
@@ -1133,6 +1135,7 @@ def build_system_state(
     vwap_reclaim_reject_walk_forward_json = output_dir / "vwap_reclaim_reject_walk_forward.json"
     vwap_reclaim_reject_walk_forward_md = output_dir / "vwap_reclaim_reject_walk_forward.md"
     vwap_reclaim_reject_walk_forward_csv = output_dir / "vwap_reclaim_reject_walk_forward.csv"
+    vwap_reclaim_reject_shadow_md = output_dir / "vwap_reclaim_reject_shadow_samples.md"
     opening_range_breakout_json = output_dir / "opening_range_breakout.json"
     opening_range_breakout_md = output_dir / "opening_range_breakout.md"
     opening_range_breakout_summary_csv = output_dir / "opening_range_breakout_summary.csv"
@@ -1178,10 +1181,12 @@ def build_system_state(
     forward_observations = read_csv_or_empty(forward_observations_csv)
     shadow_samples = read_csv_or_empty(shadow_samples_csv)
     vwap_mean_reversion_shadow_samples = read_csv_or_empty(vwap_mean_reversion_shadow_samples_csv)
+    vwap_reclaim_reject_shadow_samples = read_csv_or_empty(vwap_reclaim_reject_shadow_samples_csv)
     vwap_mean_reversion_forward_observations = read_csv_or_empty(vwap_mean_reversion_forward_observations_csv)
     forward_results = read_csv_or_empty(forward_results_csv)
     shadow_outcomes = read_csv_or_empty(shadow_outcomes_csv)
     vwap_mean_reversion_shadow_outcomes = read_csv_or_empty(vwap_mean_reversion_shadow_outcomes_csv)
+    vwap_reclaim_reject_shadow_outcomes = read_csv_or_empty(vwap_reclaim_reject_shadow_outcomes_csv)
     vwap_mean_reversion_forward_results = read_csv_or_empty(vwap_mean_reversion_forward_results_csv)
     candidate_aging = read_csv_or_empty(candidate_aging_csv)
     reconciliation = read_csv_or_empty(reconciliation_csv)
@@ -1248,6 +1253,7 @@ def build_system_state(
         "forward_observations_csv": str(forward_observations_csv),
         "shadow_samples_csv": str(shadow_samples_csv),
         "vwap_mean_reversion_shadow_samples_csv": str(vwap_mean_reversion_shadow_samples_csv),
+        "vwap_reclaim_reject_shadow_samples_csv": str(vwap_reclaim_reject_shadow_samples_csv),
         "vwap_mean_reversion_forward_observations_csv": str(vwap_mean_reversion_forward_observations_csv),
         "near_miss_csv": str(near_miss_csv),
         "forward_results_csv": str(forward_results_csv),
@@ -1269,6 +1275,7 @@ def build_system_state(
         "almost_ready_breakout_json": str(almost_ready_breakout_json),
         "shadow_outcomes_csv": str(shadow_outcomes_csv),
         "vwap_mean_reversion_shadow_outcomes_csv": str(vwap_mean_reversion_shadow_outcomes_csv),
+        "vwap_reclaim_reject_shadow_outcomes_csv": str(vwap_reclaim_reject_shadow_outcomes_csv),
         "vwap_mean_reversion_forward_observation_results_csv": str(vwap_mean_reversion_forward_results_csv),
         "vwap_mean_reversion_paper_watch_gate_json": str(vwap_mean_reversion_paper_watch_gate_json),
         "gap_fill_fade_json": str(gap_fill_fade_json),
@@ -1338,6 +1345,7 @@ def build_system_state(
                 "forward_observations_csv": file_state(forward_observations_csv),
                 "shadow_samples_csv": file_state(shadow_samples_csv),
                 "vwap_mean_reversion_shadow_samples_csv": file_state(vwap_mean_reversion_shadow_samples_csv),
+                "vwap_reclaim_reject_shadow_samples_csv": file_state(vwap_reclaim_reject_shadow_samples_csv),
                 "vwap_mean_reversion_forward_observations_csv": file_state(vwap_mean_reversion_forward_observations_csv),
                 "forward_observations_md": file_state(forward_observations_md),
                 "near_miss_csv": file_state(near_miss_csv),
@@ -1372,6 +1380,8 @@ def build_system_state(
                 "vwap_mean_reversion_walk_forward_csv": file_state(vwap_mean_reversion_walk_forward_csv),
                 "vwap_mean_reversion_shadow_md": file_state(vwap_mean_reversion_shadow_md),
                 "vwap_mean_reversion_shadow_outcomes_csv": file_state(vwap_mean_reversion_shadow_outcomes_csv),
+                "vwap_reclaim_reject_shadow_md": file_state(vwap_reclaim_reject_shadow_md),
+                "vwap_reclaim_reject_shadow_outcomes_csv": file_state(vwap_reclaim_reject_shadow_outcomes_csv),
                 "vwap_mean_reversion_forward_md": file_state(vwap_mean_reversion_forward_md),
                 "vwap_mean_reversion_forward_observation_results_csv": file_state(vwap_mean_reversion_forward_results_csv),
                 "vwap_mean_reversion_paper_watch_gate_json": file_state(vwap_mean_reversion_paper_watch_gate_json),

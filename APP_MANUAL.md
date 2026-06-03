@@ -241,6 +241,7 @@ back on the other side with EMA support.
 Reports -> Research -> VWAP Reclaim / Reject
 logs/vwap_reclaim_reject.md
 logs/vwap_reclaim_reject_walk_forward.md
+logs/vwap_reclaim_reject_shadow_samples.md
 ```
 
 The research pass tests long VWAP reclaims and short VWAP rejects. It uses 30m
@@ -252,6 +253,10 @@ The walk-forward report splits promising rows into older and newer halves. A
 `holding_up` row means the newer half stayed above the early durability floor,
 but it still requires shadow samples and forward observations before any
 manual paper-watch promotion.
+
+The shadow sample report collects VWAP reclaim/reject sightings from saved
+candles without creating paper trades. These rows are used only to decide
+whether the strategy deserves manual paper-watch review later.
 
 ### Opening Range Breakout
 
@@ -575,6 +580,7 @@ logs/vwap_mean_reversion_paper_watch_gate.md
 logs/gap_fill_fade.md
 logs/vwap_reclaim_reject.md
 logs/vwap_reclaim_reject_walk_forward.md
+logs/vwap_reclaim_reject_shadow_samples.md
 logs/opening_range_breakout.md
 logs/trend_pullback_continuation.md
 logs/opening_range_failure.md

@@ -318,6 +318,7 @@ def summary_evidence(output_dir: Path, stem: str, missing_note: str) -> dict[str
 
     summary = read_csv_or_empty(output_dir / f"{stem}_summary.csv")
     walk_forward = read_csv_or_empty(output_dir / f"{stem}_walk_forward.csv")
+    shadow = read_csv_or_empty(output_dir / f"{stem}_shadow_outcomes.csv")
     if summary.empty:
         return {
             "evidence_status": "missing",
@@ -389,6 +390,19 @@ def summary_evidence(output_dir: Path, stem: str, missing_note: str) -> dict[str
         walk_forward_status = "needs_more_sample"
         note = f"{note} Walk-forward still needs more sample."
 
+    matured_shadow = (
+        shadow[shadow["evaluation_status"] == "matured"].copy()
+        if not shadow.empty and "evaluation_status" in shadow.columns
+        else pd.DataFrame()
+    )
+    if not matured_shadow.empty and "hypothetical_r" in matured_shadow.columns:
+        shadow_values = pd.to_numeric(matured_shadow["hypothetical_r"], errors="coerce").dropna()
+        shadow_average = round(float(shadow_values.mean()), 4) if not shadow_values.empty else 0.0
+    else:
+        shadow_average = 0.0
+    if not shadow.empty:
+        note = f"{note} Shadow samples: {len(shadow)} logged, {len(matured_shadow)} matured, {shadow_average:+.2f}R avg."
+
     return {
         "evidence_status": status,
         "tightened_pass_rows": int(len(pass_rows)),
@@ -396,9 +410,9 @@ def summary_evidence(output_dir: Path, stem: str, missing_note: str) -> dict[str
         "best_symbols": best_symbols,
         "walk_forward_holding_rows": int(len(holding_rows)),
         "walk_forward_status": walk_forward_status,
-        "shadow_samples": 0,
-        "matured_shadow_samples": 0,
-        "shadow_average_r": 0.0,
+        "shadow_samples": int(len(shadow)),
+        "matured_shadow_samples": int(len(matured_shadow)),
+        "shadow_average_r": shadow_average,
         "forward_observations": 0,
         "matured_forward_observations": 0,
         "forward_average_r": 0.0,
