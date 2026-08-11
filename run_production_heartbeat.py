@@ -165,14 +165,58 @@ def expected_scan_due(moment: datetime) -> bool:
 def market_scan_recency_required(moment: datetime) -> bool:
     """Return True while production should still be scanning every interval."""
 
+    return session_context(moment)["requires_recency"]
+
+
+def previous_market_session_date(moment: datetime, max_days: int = 14) -> object:
+    """Return the most recent completed market-session date before moment."""
+
+    local = moment.astimezone(MARKET_TZ)
+    regular_open = parse_clock(STRATEGY.market_open)
+    regular_close = parse_clock(STRATEGY.market_close)
+    for offset in range(1, max_days + 1):
+        candidate = market_session_for_date(local.date() - timedelta(days=offset), regular_open, regular_close)
+        if candidate.is_market_day:
+            return candidate.session_date
+    return local.date()
+
+
+def session_context(moment: datetime) -> dict[str, Any]:
+    """Return heartbeat artifact expectations for the current market phase."""
+
+    local = moment.astimezone(MARKET_TZ)
     session = market_session_for_date(
-        moment.date(),
+        local.date(),
         regular_open=parse_clock(STRATEGY.market_open),
         regular_close=parse_clock(STRATEGY.market_close),
     )
     if not session.is_market_day or session.market_open is None or session.market_close is None:
-        return False
-    return session.market_open + timedelta(minutes=5) <= moment <= session.market_close
+        return {
+            "phase": "closed_day",
+            "expected_artifact_date": previous_market_session_date(local),
+            "requires_recency": False,
+            "reason": session.reason,
+        }
+    if local < session.market_open:
+        return {
+            "phase": "premarket",
+            "expected_artifact_date": session.session_date,
+            "requires_recency": False,
+            "reason": "Before regular session open.",
+        }
+    if local <= session.market_close:
+        return {
+            "phase": "regular_session",
+            "expected_artifact_date": session.session_date,
+            "requires_recency": local >= session.market_open + timedelta(minutes=5),
+            "reason": session.reason,
+        }
+    return {
+        "phase": "after_close",
+        "expected_artifact_date": session.session_date,
+        "requires_recency": False,
+        "reason": "Regular session has closed.",
+    }
 
 
 def launchctl_text() -> str:
@@ -398,8 +442,8 @@ def scheduler_check(
     return launch_agent_check(launchctl_output if launchctl_output is not None else launchctl_text())
 
 
-def scanner_check(output_dir: Path, today: object, moment: datetime, max_age_minutes: int) -> dict[str, Any]:
-    """Verify scanner rows are from today's session and recently written."""
+def scanner_check(output_dir: Path, expected_session_date: object, moment: datetime, max_age_minutes: int) -> dict[str, Any]:
+    """Verify scanner rows belong to the expected session and are recent when market-hours scans are active."""
 
     path = output_dir / "daily_paper_signal_scanner.csv"
     scanner = read_csv_or_empty(path)
@@ -407,7 +451,7 @@ def scanner_check(output_dir: Path, today: object, moment: datetime, max_age_min
     if scanner.empty or "scan_date" not in scanner.columns:
         return {"status": "RED", "component": "Scanner", "reason": "Scanner output is missing or unreadable."}
     dates = pd.to_datetime(scanner["scan_date"], errors="coerce").dropna()
-    if dates.empty or dates.dt.date.max() != today:
+    if dates.empty or dates.dt.date.max() != expected_session_date:
         return {"status": "RED", "component": "Scanner", "reason": "Scanner session date is stale."}
     if market_scan_recency_required(moment) and not recent_enough(mtime, moment, max_age_minutes):
         if within_transient_tolerance(mtime, moment, max_age_minutes, SCANNER_TRANSIENT_TOLERANCE_SECONDS):
@@ -422,14 +466,14 @@ def scanner_check(output_dir: Path, today: object, moment: datetime, max_age_min
     return {
         "status": "GREEN",
         "component": "Scanner",
-        "reason": "Scanner wrote today's session.",
+        "reason": "Scanner artifact matches the expected market session.",
         "rows": int(len(scanner)),
         "modified_at_et": mtime.strftime("%Y-%m-%d %H:%M:%S %Z") if mtime else "",
     }
 
 
-def webull_check(data_dir: Path, today: object, moment: datetime, max_age_minutes: int) -> dict[str, Any]:
-    """Verify Webull refresh audit has current-session rows."""
+def webull_check(data_dir: Path, expected_session_date: object, moment: datetime, max_age_minutes: int) -> dict[str, Any]:
+    """Verify Webull refresh audit has expected-session rows."""
 
     path = data_dir / "market_refresh_audit.csv"
     audit = read_csv_or_empty(path)
@@ -439,12 +483,12 @@ def webull_check(data_dir: Path, today: object, moment: datetime, max_age_minute
         return {"status": "RED", "component": "Webull refresh", "reason": "Webull refresh audit is missing."}
     audit = audit.copy()
     audit["_run_at"] = audit["refresh_run_at_et"].map(parse_et_datetime)
-    today_rows = audit[audit["_run_at"].map(lambda value: is_today(value, today))]
+    today_rows = audit[audit["_run_at"].map(lambda value: is_today(value, expected_session_date))]
     if today_rows.empty:
-        return {"status": "RED", "component": "Webull refresh", "reason": "No Webull refresh rows exist for today."}
+        return {"status": "RED", "component": "Webull refresh", "reason": "No Webull refresh rows exist for the expected session."}
     if not (
-        today_rows["m30_latest_session"].astype(str).eq(str(today)).any()
-        and today_rows["m5_latest_session"].astype(str).eq(str(today)).any()
+        today_rows["m30_latest_session"].astype(str).eq(str(expected_session_date)).any()
+        and today_rows["m5_latest_session"].astype(str).eq(str(expected_session_date)).any()
     ):
         return {"status": "RED", "component": "Webull refresh", "reason": "Webull data is previous-session."}
     if market_scan_recency_required(moment) and not recent_enough(mtime, moment, max_age_minutes):
@@ -452,7 +496,7 @@ def webull_check(data_dir: Path, today: object, moment: datetime, max_age_minute
     return {
         "status": "GREEN",
         "component": "Webull refresh",
-        "reason": "Webull refresh has current-session evidence.",
+        "reason": "Webull refresh has expected-session evidence.",
         "rows_today": int(len(today_rows)),
         "modified_at_et": mtime.strftime("%Y-%m-%d %H:%M:%S %Z") if mtime else "",
     }
@@ -462,13 +506,13 @@ def json_artifact_check(
     path: Path,
     *,
     component: str,
-    today: object,
+    expected_session_date: object,
     moment: datetime,
     max_age_minutes: int,
     required_status: str | None = None,
     missing_status: str = "RED",
 ) -> dict[str, Any]:
-    """Verify a JSON artifact exists, belongs to today, and is recent."""
+    """Verify a JSON artifact exists, belongs to the expected session, and is recent when required."""
 
     payload = read_json_or_empty(path)
     mtime = modified_at_et(path)
@@ -482,7 +526,7 @@ def json_artifact_check(
             "component": component,
             "reason": f"{component} status is {payload.get('status', 'missing')}, not {required_status}.",
         }
-    if not is_today(artifact_time, today):
+    if not is_today(artifact_time, expected_session_date):
         return {"status": missing_status, "component": component, "reason": f"{component} artifact is stale."}
     if market_scan_recency_required(moment) and not recent_enough(mtime, moment, max_age_minutes):
         return {"status": missing_status, "component": component, "reason": f"{component} artifact is not recent."}
@@ -491,6 +535,38 @@ def json_artifact_check(
         "component": component,
         "reason": f"{component} artifact is current.",
         "modified_at_et": mtime.strftime("%Y-%m-%d %H:%M:%S %Z") if mtime else "",
+    }
+
+
+def after_close_supervisor_check(output_dir: Path, expected_session_date: object) -> dict[str, Any]:
+    """Verify the autonomous supervisor transitioned into the after-close workflow."""
+
+    path = output_dir / "autonomous_paper_workflow_status.json"
+    payload = read_json_or_empty(path)
+    if not payload:
+        return {
+            "status": "YELLOW",
+            "component": "After-close supervisor",
+            "reason": "After-close supervisor status artifact is missing.",
+        }
+    generated = parse_et_datetime(payload.get("generated_at_et") or payload.get("generated_at"))
+    if not is_today(generated, expected_session_date):
+        return {
+            "status": "YELLOW",
+            "component": "After-close supervisor",
+            "reason": "After-close supervisor status artifact is stale.",
+        }
+    decision = str(payload.get("decision", "") or payload.get("action", "")).strip()
+    if decision != "after_close_recap":
+        return {
+            "status": "YELLOW",
+            "component": "After-close supervisor",
+            "reason": f"Autonomous supervisor decision is {decision or 'missing'}, not after_close_recap.",
+        }
+    return {
+        "status": "GREEN",
+        "component": "After-close supervisor",
+        "reason": "Autonomous supervisor completed the after-close recap transition.",
     }
 
 
@@ -522,6 +598,8 @@ def build_heartbeat(
 
     current_time = moment or now_et()
     today = current_time.date()
+    context = session_context(current_time)
+    expected_session_date = context["expected_artifact_date"]
     max_age_minutes = max(interval_minutes * 2 + 2, 12)
     system_name = platform_name or platform.system()
     containerized = running_in_docker() if in_docker is None else in_docker
@@ -536,19 +614,19 @@ def build_heartbeat(
             moment=current_time,
             max_age_minutes=max_age_minutes,
         ),
-        webull_check(data_dir, today, current_time, max_age_minutes),
-        scanner_check(output_dir, today, current_time, max_age_minutes),
+        webull_check(data_dir, expected_session_date, current_time, max_age_minutes),
+        scanner_check(output_dir, expected_session_date, current_time, max_age_minutes),
         json_artifact_check(
             output_dir / "current_candle_capture.json",
             component="Current-candle capture",
-            today=today,
+            expected_session_date=expected_session_date,
             moment=current_time,
             max_age_minutes=max_age_minutes,
         ),
         json_artifact_check(
             output_dir / "candidate_window_ledger.json",
             component="Candidate ledger",
-            today=today,
+            expected_session_date=expected_session_date,
             moment=current_time,
             max_age_minutes=max_age_minutes,
             missing_status="YELLOW",
@@ -556,12 +634,14 @@ def build_heartbeat(
         json_artifact_check(
             output_dir / "dashboard_data_preflight.json",
             component="Dashboard preflight",
-            today=today,
+            expected_session_date=expected_session_date,
             moment=current_time,
             max_age_minutes=max_age_minutes,
             required_status="pass",
         ),
     ]
+    if context["phase"] == "after_close":
+        checks.append(after_close_supervisor_check(output_dir, expected_session_date))
     if system_name == "Linux" and (containerized or str((env or os.environ).get("GWALA_DEPLOYMENT_MODE", "")).lower() == "shadow"):
         checks.append(shadow_safety_check(env))
     status = aggregate_status(checks)
@@ -598,6 +678,8 @@ def build_heartbeat(
             "platform": system_name,
             "in_docker": bool(containerized),
             "host_systemd_health_path": str(resolved_host_systemd_health_path),
+            "market_phase": str(context["phase"]),
+            "expected_artifact_date": str(expected_session_date),
         },
     }
 
