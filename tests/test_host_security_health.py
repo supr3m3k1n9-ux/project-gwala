@@ -88,6 +88,56 @@ tcp LISTEN 0 4096 0.0.0.0:2375 0.0.0.0:* users:(("dockerd",pid=12,fd=3))
         self.assertEqual(check["status"], "RED")
         self.assertIn("Docker socket mounted", check["reason"])
 
+    def test_valid_docker_inspect_json_is_parsed_correctly(self) -> None:
+        with patch(
+            "deploy.linux.write_host_security_health.run_command_full",
+            return_value=(0, json.dumps([self.good_container()])),
+        ):
+            check = docker_inspect_check(
+                inspect_payload=None,
+                runner=lambda command, timeout: (0, "container123") if command[:2] == ["docker", "ps"] else (1, ""),
+            )
+
+        self.assertEqual(check["status"], "GREEN")
+
+    def test_malformed_docker_inspect_output_is_watch(self) -> None:
+        with patch("deploy.linux.write_host_security_health.run_command_full", return_value=(0, "not-json")):
+            check = docker_inspect_check(
+                inspect_payload=None,
+                runner=lambda command, timeout: (0, "container123") if command[:2] == ["docker", "ps"] else (1, ""),
+            )
+
+        self.assertEqual(check["status"], "WATCH")
+        self.assertIn("invalid JSON", check["reason"])
+
+    def test_no_running_oneshot_container_is_not_red(self) -> None:
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            compose = root / "compose.yaml"
+            compose.write_text("services: {}\n", encoding="utf-8")
+            compose_payload = {
+                "services": {
+                    "app": {
+                        "user": "1000:1000",
+                        "security_opt": ["no-new-privileges:true"],
+                        "cap_drop": ["ALL"],
+                    }
+                }
+            }
+            with patch(
+                "deploy.linux.write_host_security_health.run_command_full",
+                return_value=(0, json.dumps(compose_payload)),
+            ):
+                check = docker_inspect_check(
+                    inspect_payload=None,
+                    runner=lambda command, timeout: (0, "") if command[:2] == ["docker", "ps"] else (1, ""),
+                    compose_file=compose,
+                )
+
+        self.assertEqual(check["status"], "WATCH")
+        self.assertNotEqual(check["status"], "RED")
+        self.assertIn("No running Gwala container", check["reason"])
+
     def test_privileged_container_is_red(self) -> None:
         check = docker_inspect_check(
             [
@@ -108,6 +158,36 @@ tcp LISTEN 0 4096 0.0.0.0:2375 0.0.0.0:* users:(("dockerd",pid=12,fd=3))
         )
         self.assertEqual(check["status"], "RED")
         self.assertIn("privileged=true", check["reason"])
+
+    def test_host_network_container_is_red(self) -> None:
+        container = self.good_container()
+        container["HostConfig"]["NetworkMode"] = "host"
+        check = docker_inspect_check([container])
+        self.assertEqual(check["status"], "RED")
+        self.assertIn("host network", check["reason"])
+
+    def test_uid_1000_non_root_container_is_green(self) -> None:
+        check = docker_inspect_check([self.good_container()])
+        self.assertEqual(check["status"], "GREEN")
+
+    @staticmethod
+    def good_container() -> dict[str, object]:
+        return {
+            "Name": "/project-gwala-app",
+            "Config": {"User": "1000:1000"},
+            "HostConfig": {
+                "Privileged": False,
+                "NetworkMode": "bridge",
+                "PidMode": "",
+                "IpcMode": "",
+                "Devices": [],
+                "SecurityOpt": ["no-new-privileges:true"],
+                "CapAdd": [],
+                "CapDrop": ["ALL"],
+                "Binds": [],
+            },
+            "Mounts": [],
+        }
 
     def test_secret_env_file_0600_is_green(self) -> None:
         with TemporaryDirectory() as raw:

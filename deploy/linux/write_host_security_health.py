@@ -57,6 +57,18 @@ def run_command(command: list[str], timeout: int = 20) -> tuple[int, str]:
     return completed.returncode, ((completed.stdout or "") + (completed.stderr or "")).strip()[-5000:]
 
 
+def run_command_full(command: list[str], timeout: int = 30) -> tuple[int, str]:
+    """Run a command without truncating stdout for structured JSON parsing."""
+
+    try:
+        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return 127, f"{type(exc).__name__}: {exc}"
+    if completed.returncode != 0:
+        return completed.returncode, ((completed.stdout or "") + (completed.stderr or "")).strip()[-5000:]
+    return completed.returncode, completed.stdout.strip()
+
+
 def check_row(component: str, status: str, reason: str, **extra: object) -> dict[str, object]:
     row: dict[str, object] = {"component": component, "status": status, "reason": reason}
     row.update(extra)
@@ -225,6 +237,7 @@ def docker_inspect_check(
     inspect_payload: list[dict[str, Any]] | None = None,
     docker_host: str | None = None,
     runner: CommandRunner = run_command,
+    compose_file: Path | None = None,
 ) -> dict[str, object]:
     if inspect_payload is None:
         code, ids = runner(["docker", "ps", "--filter", "name=gwala", "--quiet"], 20)
@@ -232,8 +245,8 @@ def docker_inspect_check(
             return check_row("Docker security", "WATCH", "Could not inspect Docker containers.")
         container_ids = [line.strip() for line in ids.splitlines() if line.strip()]
         if not container_ids:
-            return check_row("Docker security", "WATCH", "No running Gwala container found to inspect.")
-        code, text = runner(["docker", "inspect", *container_ids], 30)
+            return compose_security_fallback(compose_file or PROJECT_ROOT / "compose.yaml", runner)
+        code, text = run_command_full(["docker", "inspect", *container_ids], 30)
         if code != 0:
             return check_row("Docker security", "WATCH", "docker inspect failed.")
         try:
@@ -249,36 +262,105 @@ def docker_inspect_check(
         host_config = container.get("HostConfig", {}) or {}
         config = container.get("Config", {}) or {}
         name = str(container.get("Name", "")).lstrip("/")
-        if host_config.get("Privileged"):
-            blockers.append(f"{name}: privileged=true")
-        if host_config.get("NetworkMode") == "host":
-            blockers.append(f"{name}: host network")
-        if host_config.get("PidMode") == "host":
-            blockers.append(f"{name}: host PID namespace")
-        if host_config.get("IpcMode") == "host":
-            blockers.append(f"{name}: host IPC namespace")
-        if host_config.get("Devices"):
-            blockers.append(f"{name}: unexpected devices")
-        user = str(config.get("User", ""))
-        if user not in {"1000:1000", "1000", "app:app"}:
-            blockers.append(f"{name}: unexpected user={user or 'root'}")
-        security_opt = [str(item) for item in host_config.get("SecurityOpt") or []]
-        if not any("no-new-privileges" in item for item in security_opt):
-            warnings.append(f"{name}: no-new-privileges not declared")
-        caps = host_config.get("CapAdd") or []
-        if caps:
-            warnings.append(f"{name}: added capabilities={caps}")
-        for mount in host_config.get("Binds") or []:
-            if str(mount).split(":", 2)[0] == "/var/run/docker.sock":
-                blockers.append(f"{name}: Docker socket mounted")
-        for mount in container.get("Mounts") or []:
-            if mount.get("Source") == "/var/run/docker.sock" or mount.get("Destination") == "/var/run/docker.sock":
-                blockers.append(f"{name}: Docker socket mounted")
+        blockers.extend(container_security_blockers(name, host_config, config, container))
+        warnings.extend(container_security_warnings(name, host_config))
     if blockers:
         return red_row("Docker security", "; ".join(blockers), "Review Docker Compose/runtime security posture before trusting host.")
     if warnings:
         return check_row("Docker security", "WATCH", "; ".join(warnings))
     return check_row("Docker security", "GREEN", "Gwala container posture matches approved Docker boundary.")
+
+
+def container_security_blockers(
+    name: str,
+    host_config: dict[str, Any],
+    config: dict[str, Any],
+    container: dict[str, Any],
+) -> list[str]:
+    blockers: list[str] = []
+    if host_config.get("Privileged"):
+        blockers.append(f"{name}: privileged=true")
+    if host_config.get("NetworkMode") == "host":
+        blockers.append(f"{name}: host network")
+    if host_config.get("PidMode") == "host":
+        blockers.append(f"{name}: host PID namespace")
+    if host_config.get("IpcMode") == "host":
+        blockers.append(f"{name}: host IPC namespace")
+    if host_config.get("Devices"):
+        blockers.append(f"{name}: unexpected devices")
+    user = str(config.get("User", ""))
+    if user not in {"1000:1000", "1000", "app:app"}:
+        blockers.append(f"{name}: unexpected user={user or 'root'}")
+    for mount in host_config.get("Binds") or []:
+        if str(mount).split(":", 2)[0] == "/var/run/docker.sock":
+            blockers.append(f"{name}: Docker socket mounted")
+    for mount in container.get("Mounts") or []:
+        if mount.get("Source") == "/var/run/docker.sock" or mount.get("Destination") == "/var/run/docker.sock":
+            blockers.append(f"{name}: Docker socket mounted")
+    return blockers
+
+
+def container_security_warnings(name: str, host_config: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    security_opt = [str(item) for item in host_config.get("SecurityOpt") or []]
+    if not any("no-new-privileges" in item for item in security_opt):
+        warnings.append(f"{name}: no-new-privileges not declared")
+    caps = host_config.get("CapAdd") or []
+    if caps:
+        warnings.append(f"{name}: added capabilities={caps}")
+    return warnings
+
+
+def compose_security_fallback(compose_file: Path, runner: CommandRunner = run_command) -> dict[str, object]:
+    if not compose_file.exists():
+        return check_row("Docker security", "WATCH", "No running Gwala container found to inspect; compose file not found.")
+    code, text = run_command_full(["docker", "compose", "-f", str(compose_file), "config", "--format", "json"], 30)
+    if code != 0:
+        return check_row("Docker security", "WATCH", "No running Gwala container found; compose security config could not be inspected.")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return check_row("Docker security", "WATCH", "No running Gwala container found; compose config returned invalid JSON.")
+    blockers: list[str] = []
+    warnings: list[str] = []
+    services = payload.get("services", {}) if isinstance(payload, dict) else {}
+    if not isinstance(services, dict) or not services:
+        return check_row("Docker security", "WATCH", "No running Gwala container found; compose config has no inspectable services.")
+    for service_name, service in services.items():
+        if not isinstance(service, dict):
+            continue
+        name = str(service_name)
+        if service.get("privileged"):
+            blockers.append(f"{name}: privileged=true")
+        if service.get("network_mode") == "host":
+            blockers.append(f"{name}: host network")
+        if service.get("pid") == "host":
+            blockers.append(f"{name}: host PID namespace")
+        if service.get("ipc") == "host":
+            blockers.append(f"{name}: host IPC namespace")
+        if service.get("devices"):
+            blockers.append(f"{name}: unexpected devices")
+        user = str(service.get("user", ""))
+        if user and user not in {"1000:1000", "1000", "app:app"}:
+            blockers.append(f"{name}: unexpected user={user}")
+        if not user:
+            warnings.append(f"{name}: compose user not declared")
+        security_opt = [str(item) for item in service.get("security_opt") or []]
+        if not any("no-new-privileges" in item for item in security_opt):
+            warnings.append(f"{name}: no-new-privileges not declared")
+        if service.get("cap_add"):
+            warnings.append(f"{name}: added capabilities={service.get('cap_add')}")
+        for volume in service.get("volumes") or []:
+            source = str(volume.get("source", "") if isinstance(volume, dict) else str(volume).split(":", 1)[0])
+            target = str(volume.get("target", "") if isinstance(volume, dict) else "")
+            if source == "/var/run/docker.sock" or target == "/var/run/docker.sock":
+                blockers.append(f"{name}: Docker socket mounted")
+    if blockers:
+        return red_row("Docker security", "; ".join(blockers), "Review Docker Compose security posture before trusting host.")
+    reason = "No running Gwala container found; compose config has no RED Docker security blockers. Runtime-only fields remain unverified."
+    if warnings:
+        reason += " " + "; ".join(warnings)
+    return check_row("Docker security", "WATCH", reason)
 
 
 def mode_string(path: Path) -> str:
