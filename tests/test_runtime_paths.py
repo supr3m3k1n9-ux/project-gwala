@@ -13,6 +13,7 @@ from deploy.linux.verify_docker_runtime_boundary import (
     docker_permission_message,
     load_compose_config,
     validate_compose_boundary,
+    validate_compose_template_env_file,
     validate_deployment_roots,
 )
 from deploy.linux.verify_vps_production import docker_boundary_check
@@ -213,6 +214,33 @@ class RuntimePathTests(unittest.TestCase):
         }
 
         errors = validate_deployment_roots(payload, Path("/srv/projects/gwala/app"), Path("/srv/projects/gwala"))
+
+        self.assertEqual(errors, [])
+
+    def test_deploy_verifier_accepts_rendered_compose_without_env_file_field(self) -> None:
+        payload = {
+            "services": {
+                "gwala": {
+                    "build": {"context": "/srv/projects/gwala/app", "dockerfile": "Dockerfile"},
+                    "environment": {"GWALA_DATA_DIR": "/app/runtime_data"},
+                    "volumes": [
+                        {"source": "/srv/projects/gwala/data", "target": "/app/runtime_data"},
+                        {"source": "/srv/projects/gwala/logs", "target": "/app/logs"},
+                        {"source": "/srv/projects/gwala/backups", "target": "/app/backups"},
+                        {"source": "/srv/projects/gwala/config/webull_tokens", "target": "/app/.webull_tokens"},
+                    ],
+                }
+            }
+        }
+
+        errors = validate_deployment_roots(payload, Path("/srv/projects/gwala/app"), Path("/srv/projects/gwala"))
+
+        self.assertEqual(errors, [])
+
+    def test_compose_template_requires_stack_root_env_file(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+
+        errors = validate_compose_template_env_file(root / "compose.yaml")
 
         self.assertEqual(errors, [])
 

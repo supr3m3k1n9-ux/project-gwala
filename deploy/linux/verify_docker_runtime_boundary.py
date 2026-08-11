@@ -173,7 +173,7 @@ def validate_deployment_roots(payload: dict[str, Any], app_dir: Path, stack_dir:
     env_files = service.get("env_file") or []
     env_text = [str(item.get("path", item)) if isinstance(item, dict) else str(item) for item in env_files]
     expected_env = stack / "config" / "gwala.env"
-    if not any(resolve_compose_path(value, stack) == expected_env for value in env_text):
+    if env_text and not any(resolve_compose_path(value, stack) == expected_env for value in env_text):
         errors.append(f"Compose env_file must use STACK_DIR config/gwala.env ({expected_env}).")
 
     expected_sources = {
@@ -191,6 +191,28 @@ def validate_deployment_roots(payload: dict[str, Any], app_dir: Path, stack_dir:
         if resolve_compose_path(matching[0], stack) != normalized(expected_source):
             errors.append(f"Compose {target} source must be {expected_source}, not {matching[0]}.")
     return errors
+
+
+def validate_compose_template_env_file(compose_file: Path) -> list[str]:
+    """Validate the source Compose template keeps env_file rooted at STACK_DIR.
+
+    `docker compose config` expands env_file values into the rendered
+    environment and may omit the env_file field. The source template is the
+    durable place to enforce this deployment boundary.
+    """
+
+    try:
+        text = compose_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"Compose template is unreadable: {exc}"]
+    required = "${GWALA_STACK_DIR:-.}/config/gwala.env"
+    if required not in text:
+        return [f"Compose env_file must be declared as {required}."]
+    forbidden = ("./config/gwala.env", "${GWALA_APP_DIR:-.}/config/gwala.env", "/app/config")
+    for value in forbidden:
+        if value in text:
+            return [f"Compose template contains forbidden config source reference: {value}."]
+    return []
 
 
 def source_checksum(path: Path) -> str:
@@ -234,7 +256,8 @@ def runtime_source_check(compose_file: Path, app_dir: Path, stack_dir: Path) -> 
 def main() -> None:
     args = parse_args()
     payload = load_compose_config(args.compose_file, args.compose_json, app_dir=args.app_dir, stack_dir=args.stack_dir)
-    errors = validate_compose_boundary(payload)
+    errors = validate_compose_template_env_file(args.compose_file)
+    errors.extend(validate_compose_boundary(payload))
     errors.extend(validate_deployment_roots(payload, args.app_dir, args.stack_dir))
     if errors:
         print("source_package_shadowing=FAIL", file=sys.stderr)
