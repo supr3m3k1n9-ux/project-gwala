@@ -3980,6 +3980,37 @@ class MarketCalendarTests(unittest.TestCase):
         self.assertFalse(alert["notification_required"])
         self.assertFalse(notifications)
 
+    def test_production_alert_linux_docker_none_host_systemd_path_is_watch_not_crash(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs_dir = root / "logs"
+            data_dir = root / "data"
+            logs_dir.mkdir()
+            data_dir.mkdir()
+            moment = datetime(2026, 5, 26, 10, 0, tzinfo=MARKET_TZ)
+            write_healthy_heartbeat_artifacts(logs_dir, data_dir, moment)
+            notifications: list[tuple[str, str]] = []
+
+            with patch.dict(os.environ, {"GWALA_HOST_SYSTEMD_HEALTH_JSON": str(logs_dir / "missing_host_health.json")}):
+                alert = build_production_alert(
+                    logs_dir,
+                    data_dir=data_dir,
+                    moment=moment,
+                    recheck_seconds=0,
+                    notifier=lambda title, message: notifications.append((title, message)) is None or True,
+                    platform_name="Linux",
+                    in_docker=True,
+                    host_systemd_health_path=None,
+                    env=LINUX_DOCKER_SHADOW_ENV,
+                )
+                heartbeat = json.loads((logs_dir / "production_heartbeat.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(alert["status"], "YELLOW")
+        self.assertEqual(alert["internal_severity"], "WATCH")
+        self.assertEqual(heartbeat["runtime"]["host_systemd_health_path"], str(logs_dir / "missing_host_health.json"))
+        self.assertFalse(alert["notification_required"])
+        self.assertFalse(notifications)
+
     def test_production_alert_dedupes_repeated_unresolved_condition(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)

@@ -429,6 +429,45 @@ AssertionError: expected true
             self.assertTrue(client.api_client._stream_logger_set)
             self.assertFalse((source_root / "webull_data_sdk.log").exists())
 
+    def test_real_webull_data_client_initializes_without_application_root_sdk_log(self) -> None:
+        import data.webull_data as webull_data
+
+        try:
+            import webull.data.data_client  # noqa: F401
+        except ImportError:
+            self.skipTest("Webull SDK is not installed.")
+
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            source_root = root / "app"
+            token_dir = root / ".webull_tokens"
+            source_root.mkdir()
+            token_dir.mkdir()
+            os.chmod(source_root, 0o555)
+            cwd = Path.cwd()
+            try:
+                os.chdir(source_root)
+                with patch.dict(
+                    os.environ,
+                    {
+                        **SAFE_ENV,
+                        "WEBULL_APP_KEY": "test-app-key",
+                        "WEBULL_APP_SECRET": "test-app-secret",
+                        "WEBULL_REGION_ID": "us",
+                    },
+                    clear=False,
+                ), patch.object(webull_data, "TOKEN_DIR", token_dir), patch(
+                    "webull.core.http.initializer.client_initializer.ClientInitializer.initializer",
+                    return_value=None,
+                ):
+                    client = webull_data.build_data_client()
+            finally:
+                os.chdir(cwd)
+                os.chmod(source_root, 0o755)
+
+            self.assertIsNotNone(client)
+            self.assertFalse((source_root / "webull_data_sdk.log").exists())
+
     def test_webull_sdk_log_output_does_not_contain_secrets_when_disabled(self) -> None:
         with TemporaryDirectory() as raw:
             log_path = Path(raw) / "webull_data_sdk.log"

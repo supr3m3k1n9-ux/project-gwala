@@ -60,6 +60,19 @@ def now_et() -> datetime:
     return datetime.now(tz=MARKET_TZ)
 
 
+def resolve_host_systemd_health_path(path: Path | None = None) -> Path:
+    """Return the host systemd artifact path for Linux/Docker heartbeats."""
+
+    if path is not None:
+        return path
+    configured = os.environ.get("GWALA_HOST_SYSTEMD_HEALTH_JSON", "").strip()
+    if configured:
+        return Path(configured)
+    if running_in_docker():
+        return Path("/app/logs/host_systemd_health.json")
+    return HOST_SYSTEMD_HEALTH_PATH
+
+
 def read_json_or_empty(path: Path) -> dict[str, Any]:
     """Read a JSON object if it exists and is valid."""
 
@@ -368,7 +381,7 @@ def scheduler_check(
     *,
     platform_name: str | None = None,
     in_docker: bool | None = None,
-    host_systemd_health_path: Path = HOST_SYSTEMD_HEALTH_PATH,
+    host_systemd_health_path: Path | None = HOST_SYSTEMD_HEALTH_PATH,
     moment: datetime | None = None,
     max_age_minutes: int = 12,
 ) -> dict[str, Any]:
@@ -378,7 +391,8 @@ def scheduler_check(
     if system_name == "Linux":
         containerized = running_in_docker() if in_docker is None else in_docker
         if containerized:
-            return host_systemd_artifact_check(host_systemd_health_path, moment or now_et(), max_age_minutes)
+            resolved_path = resolve_host_systemd_health_path(host_systemd_health_path)
+            return host_systemd_artifact_check(resolved_path, moment or now_et(), max_age_minutes)
         return systemd_service_check(systemd_output if systemd_output is not None else systemd_text())
     return launch_agent_check(launchctl_output if launchctl_output is not None else launchctl_text())
 
@@ -500,7 +514,7 @@ def build_heartbeat(
     systemd_output: str | None = None,
     platform_name: str | None = None,
     in_docker: bool | None = None,
-    host_systemd_health_path: Path = HOST_SYSTEMD_HEALTH_PATH,
+    host_systemd_health_path: Path | None = HOST_SYSTEMD_HEALTH_PATH,
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build production heartbeat state from scheduler state and artifacts."""
@@ -510,13 +524,14 @@ def build_heartbeat(
     max_age_minutes = max(interval_minutes * 2 + 2, 12)
     system_name = platform_name or platform.system()
     containerized = running_in_docker() if in_docker is None else in_docker
+    resolved_host_systemd_health_path = resolve_host_systemd_health_path(host_systemd_health_path)
     checks = [
         scheduler_check(
             launchctl_output=launchctl_output,
             systemd_output=systemd_output,
             platform_name=system_name,
             in_docker=containerized,
-            host_systemd_health_path=host_systemd_health_path,
+            host_systemd_health_path=resolved_host_systemd_health_path,
             moment=current_time,
             max_age_minutes=max_age_minutes,
         ),
@@ -581,7 +596,7 @@ def build_heartbeat(
         "runtime": {
             "platform": system_name,
             "in_docker": bool(containerized),
-            "host_systemd_health_path": str(host_systemd_health_path),
+            "host_systemd_health_path": str(resolved_host_systemd_health_path),
         },
     }
 

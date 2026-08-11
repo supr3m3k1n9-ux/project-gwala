@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import sys
+from types import MethodType
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,15 @@ def disable_sdk_default_logging(api_client: Any) -> None:
         if not any(isinstance(handler, logging.NullHandler) for handler in logger.handlers):
             logger.addHandler(logging.NullHandler())
         logger.propagate = False
+
+    def disabled_stream_logger(self: Any, *args: Any, **kwargs: Any) -> None:
+        self._stream_logger_set = True
+
+    def disabled_file_logger(self: Any, *args: Any, **kwargs: Any) -> None:
+        self._file_logger_set = True
+
+    api_client.set_stream_logger = MethodType(disabled_stream_logger, api_client)
+    api_client.set_file_logger = MethodType(disabled_file_logger, api_client)
 
 
 def build_data_client() -> Any:
