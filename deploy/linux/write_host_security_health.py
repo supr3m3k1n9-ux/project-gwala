@@ -303,7 +303,8 @@ def container_security_blockers(
 def container_security_warnings(name: str, host_config: dict[str, Any]) -> list[str]:
     warnings: list[str] = []
     security_opt = [str(item) for item in host_config.get("SecurityOpt") or []]
-    if not any("no-new-privileges" in item for item in security_opt):
+    is_transient_compose_run = "-run-" in name
+    if not any("no-new-privileges" in item for item in security_opt) and not is_transient_compose_run:
         warnings.append(f"{name}: no-new-privileges not declared")
     caps = host_config.get("CapAdd") or []
     if caps:

@@ -18,6 +18,9 @@ from deploy.linux.verify_docker_runtime_boundary import (
     validate_deployment_roots,
 )
 from deploy.linux.verify_vps_production import docker_boundary_check
+from deploy.linux.verify_vps_production import extract_json_line
+from deploy.linux.verify_vps_production import parse_artifact_timestamp
+from deploy.linux.write_host_security_health import container_security_warnings
 from run_refresh_audit import default_audit_csv, parse_args as parse_refresh_audit_args
 
 
@@ -329,6 +332,22 @@ class RuntimePathTests(unittest.TestCase):
 
         self.assertEqual(check.status, "FAIL")
         self.assertIn("sudo", check.reason)
+
+    def test_vps_readiness_parses_host_systemd_et_timestamp(self) -> None:
+        parsed = parse_artifact_timestamp("2026-08-11 19:38:43 EDT")
+
+        self.assertIsNotNone(parsed)
+        self.assertEqual(str(parsed.date()), "2026-08-11")
+
+    def test_vps_readiness_extracts_json_from_noisy_container_output(self) -> None:
+        payload = extract_json_line('Container Creating\n{"status": "GREEN", "reason": "ok"}\nContainer Removing')
+
+        self.assertEqual(payload, {"status": "GREEN", "reason": "ok"})
+
+    def test_host_security_ignores_no_new_privileges_warning_for_transient_run_container(self) -> None:
+        warnings = container_security_warnings("gwala-gwala-run-abc123", {"SecurityOpt": []})
+
+        self.assertEqual(warnings, [])
 
     def test_deploy_verifier_rejects_build_context_from_stack_runtime_root(self) -> None:
         payload = {
