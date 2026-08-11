@@ -16,6 +16,7 @@ from typing import Any
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from run_playbook import markdown_table
 
 
@@ -71,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ledger-csv",
         type=Path,
-        default=Path("data/candidate_window_ledger.csv"),
+        default=runtime_data_path("candidate_window_ledger.csv"),
         help="Durable candidate-window ledger CSV.",
     )
     parser.add_argument(
@@ -381,13 +382,14 @@ Paper Gate-ready rows preserved: {payload["paper_gate_ready_rows"]}
 
 def build_ledger(
     output_dir: Path = Path("logs"),
-    ledger_csv: Path = Path("data/candidate_window_ledger.csv"),
+    ledger_csv: Path | None = None,
     *,
     seen_at: str | None = None,
     dispatch_events: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Append the latest current/grace snapshot rows to the durable ledger."""
 
+    ledger_csv = ledger_csv or runtime_data_path("candidate_window_ledger.csv")
     scanner = read_csv_or_empty(output_dir / "daily_paper_signal_scanner.csv")
     sizing = read_csv_or_empty(output_dir / "position_sizing.csv")
     router = read_csv_or_empty(output_dir / "market_regime_router_candidates.csv")

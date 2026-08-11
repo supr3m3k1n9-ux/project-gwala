@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_path
 from run_open_paper_monitor import monitor_trade, text_value
 from run_paper_import import read_existing
 from run_playbook import markdown_table
@@ -38,7 +39,7 @@ AUDIT_COLUMNS = [
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit Project Gwala local paper exits.")
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"), help="Paper trade log.")
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"), help="Paper trade log.")
     parser.add_argument("--data-dir", type=Path, default=Path("logs"), help="Directory with saved Webull M5 candles.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where audit reports are saved.")
     return parser.parse_args()

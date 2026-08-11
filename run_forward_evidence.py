@@ -14,6 +14,7 @@ from typing import Any
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_path
 from run_playbook import markdown_table
 
 
@@ -24,17 +25,17 @@ STRONG_GATE = 60
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build Project Gwala forward evidence report.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"), help="Raw local paper log.")
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"), help="Raw local paper log.")
     parser.add_argument(
         "--observations-csv",
         type=Path,
-        default=Path("data/forward_signal_observations.csv"),
+        default=runtime_data_path("forward_signal_observations.csv"),
         help="Append-only forward observation journal.",
     )
     parser.add_argument(
         "--shadow-csv",
         type=Path,
-        default=Path("data/shadow_samples.csv"),
+        default=runtime_data_path("shadow_samples.csv"),
         help="Append-only shadow sample journal.",
     )
     return parser.parse_args()

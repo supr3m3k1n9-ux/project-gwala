@@ -12,8 +12,8 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 
 COPY . /app
 
-RUN mkdir -p /app/logs /app/runtime_data /app/config /app/backups /app/.webull_tokens \
-    && chown -R 1000:1000 /app/logs /app/runtime_data /app/config /app/backups /app/.webull_tokens
+RUN mkdir -p /app/logs /app/runtime_data /app/backups /app/.webull_tokens \
+    && chown -R 1000:1000 /app/logs /app/runtime_data /app/backups /app/.webull_tokens
 
 USER 1000:1000
 

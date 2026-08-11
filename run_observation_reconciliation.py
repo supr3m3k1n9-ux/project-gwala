@@ -7,13 +7,14 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_path
 from run_playbook import markdown_table
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Reconcile paper trades with forward observations.")
-    parser.add_argument("--observations-csv", type=Path, default=Path("data/forward_signal_observations.csv"))
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"))
+    parser.add_argument("--observations-csv", type=Path, default=runtime_data_path("forward_signal_observations.csv"))
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"))
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
     return parser.parse_args()
 

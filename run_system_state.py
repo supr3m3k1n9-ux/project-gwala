@@ -16,6 +16,7 @@ from typing import Any
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_path
 from reports.system_state import build_system_state, file_state
 from run_playbook import markdown_table
 
@@ -46,7 +47,7 @@ def json_safe(value: Any) -> Any:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build app-ready Project Gwala system state.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"), help="Paper trade log.")
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"), help="Paper trade log.")
     return parser.parse_args()
 
 

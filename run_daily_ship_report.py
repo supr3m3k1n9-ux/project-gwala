@@ -17,6 +17,7 @@ from typing import Any
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from run_playbook import markdown_table
 
 
@@ -29,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--samples-csv",
         type=Path,
-        default=Path("data/paper_validation_samples.csv"),
+        default=runtime_data_path("paper_validation_samples.csv"),
         help="Official paper-validation sample ledger.",
     )
     return parser.parse_args()
@@ -270,9 +271,10 @@ def morning_index_orb_progress(output_dir: Path) -> dict[str, Any]:
     }
 
 
-def build_ship_report(output_dir: Path = Path("logs"), samples_csv: Path = Path("data/paper_validation_samples.csv")) -> dict[str, Any]:
+def build_ship_report(output_dir: Path = Path("logs"), samples_csv: Path | None = None) -> dict[str, Any]:
     """Build the ship-mode funnel payload."""
 
+    samples_csv = samples_csv or runtime_data_path("paper_validation_samples.csv")
     scanner = read_csv_or_empty(output_dir / "daily_paper_signal_scanner.csv")
     sizing = read_csv_or_empty(output_dir / "position_sizing.csv")
     pre_entry = read_csv_or_empty(output_dir / "pre_entry_review.csv")

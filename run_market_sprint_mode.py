@@ -16,6 +16,7 @@ from typing import Any
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from run_playbook import markdown_table
 
 
@@ -26,7 +27,7 @@ PAPER_TRADE_GATE = 30
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the market sprint mode report.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"), help="Official paper trade log.")
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"), help="Official paper trade log.")
     return parser.parse_args()
 
 
@@ -154,9 +155,10 @@ def paper_progress(paper_csv: Path) -> dict[str, Any]:
     }
 
 
-def build_payload(output_dir: Path, paper_csv: Path = Path("data/paper_trades.csv")) -> dict[str, Any]:
+def build_payload(output_dir: Path, paper_csv: Path | None = None) -> dict[str, Any]:
     """Build the sprint payload from existing reports."""
 
+    paper_csv = paper_csv or runtime_data_path("paper_trades.csv")
     vault = read_json_or_empty(output_dir / "strategy_vault.json")
     activation = read_json_or_empty(output_dir / "paper_activation_rules.json")
     router = read_json_or_empty(output_dir / "market_regime_router.json")

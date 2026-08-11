@@ -19,6 +19,7 @@ import pandas as pd
 
 from config.filter_policy import OPTIONS_CONTRACT_THRESHOLDS
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from reports.refresh_status import market_refresh_state
 from run_paper_gate_v2 import build_payload as build_paper_gate_payload
 from run_playbook import markdown_table
@@ -60,9 +61,9 @@ DELTA_MODEL_NAME = "black_scholes"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Import option-chain CSVs for A-tier paper candidates.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--chain-dir", type=Path, default=Path("data/options_chains/active"))
-    parser.add_argument("--samples-csv", type=Path, default=Path("data/paper_validation_samples.csv"))
-    parser.add_argument("--candidate-ledger-csv", type=Path, default=Path("data/candidate_window_ledger.csv"))
+    parser.add_argument("--chain-dir", type=Path, default=runtime_data_path("options_chains", "active"))
+    parser.add_argument("--samples-csv", type=Path, default=runtime_data_path("paper_validation_samples.csv"))
+    parser.add_argument("--candidate-ledger-csv", type=Path, default=runtime_data_path("candidate_window_ledger.csv"))
     parser.add_argument("--account-size", type=float, default=10_000.0)
     parser.add_argument("--max-dte", type=float, default=OPTIONS_CONTRACT_THRESHOLDS["max_dte"])
     parser.add_argument("--provider", choices=["yfinance"], default="yfinance")
@@ -355,14 +356,17 @@ def write_metadata(path: Path, *, symbol: str, chain: pd.DataFrame, session_date
 def build_import(
     *,
     output_dir: Path = Path("logs"),
-    chain_dir: Path = Path("data/options_chains"),
-    samples_csv: Path = Path("data/paper_validation_samples.csv"),
-    candidate_ledger_csv: Path = Path("data/candidate_window_ledger.csv"),
+    chain_dir: Path | None = None,
+    samples_csv: Path | None = None,
+    candidate_ledger_csv: Path | None = None,
     account_size: float = 10_000.0,
     max_dte: float = OPTIONS_CONTRACT_THRESHOLDS["max_dte"],
     provider: str = "yfinance",
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    chain_dir = chain_dir or runtime_data_path("options_chains")
+    samples_csv = samples_csv or runtime_data_path("paper_validation_samples.csv")
+    candidate_ledger_csv = candidate_ledger_csv or runtime_data_path("candidate_window_ledger.csv")
     market = market_refresh_state()
     today = text(market.get("today")) or datetime.now(MARKET_TZ).date().isoformat()
     now = datetime.now(MARKET_TZ)

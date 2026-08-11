@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_path
 from run_playbook import markdown_table
 
 
@@ -26,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--paper-csv",
         type=Path,
-        default=Path("data/paper_trades.csv"),
+        default=runtime_data_path("paper_trades.csv"),
         help="Manual paper trade log to review.",
     )
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
@@ -220,7 +221,7 @@ def write_report(path: Path, trades: pd.DataFrame, paper_csv: Path | None = None
     by_vehicle = summarize(trades, ["vehicle", "risk_tier"])
     by_plan = summarize(trades, ["followed_plan"])
     by_exit = summarize(trades, ["exit_reason"])
-    paper_csv = paper_csv or Path("data/paper_trades.csv")
+    paper_csv = paper_csv or runtime_data_path("paper_trades.csv")
     output_dir = output_dir or Path("logs")
 
     path.write_text(

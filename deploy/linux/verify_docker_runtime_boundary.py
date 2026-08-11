@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,7 +18,9 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_COMPOSE = PROJECT_ROOT / "compose.yaml"
+DEFAULT_COMPOSE = Path(os.environ.get("GWALA_COMPOSE_FILE", PROJECT_ROOT / "compose.yaml"))
+DEFAULT_APP_DIR = Path(os.environ.get("GWALA_APP_DIR", PROJECT_ROOT))
+DEFAULT_STACK_DIR = Path(os.environ.get("GWALA_STACK_DIR", PROJECT_ROOT))
 SOURCE_PROBE = Path("data/webull_data.py")
 SOURCE_PACKAGE_TARGETS = {
     "/app/data": "data",
@@ -35,6 +38,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Verify Project Gwala Docker runtime/source boundary.")
     parser.add_argument("--compose-file", type=Path, default=DEFAULT_COMPOSE)
     parser.add_argument("--compose-json", type=Path, help="Pre-rendered docker compose config JSON for tests.")
+    parser.add_argument("--app-dir", type=Path, default=DEFAULT_APP_DIR)
+    parser.add_argument("--stack-dir", type=Path, default=DEFAULT_STACK_DIR)
     parser.add_argument("--runtime-check", action="store_true", help="Run a short docker compose container source check.")
     return parser.parse_args()
 
@@ -93,12 +98,65 @@ def validate_compose_boundary(payload: dict[str, Any]) -> list[str]:
     return errors
 
 
+def normalized(path: Path) -> Path:
+    return path.expanduser().resolve()
+
+
+def volume_source_and_target(volume: object) -> tuple[str, str]:
+    if isinstance(volume, dict):
+        return str(volume.get("source", "")), str(volume.get("target", ""))
+    text = str(volume)
+    parts = text.split(":")
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    return "", ""
+
+
+def validate_deployment_roots(payload: dict[str, Any], app_dir: Path, stack_dir: Path) -> list[str]:
+    """Validate production APP_DIR/STACK_DIR separation in rendered Compose."""
+
+    errors: list[str] = []
+    app = normalized(app_dir)
+    stack = normalized(stack_dir)
+    services = payload.get("services", {}) if isinstance(payload, dict) else {}
+    service = services.get("gwala", {}) if isinstance(services, dict) else {}
+    if not isinstance(service, dict):
+        return ["Compose gwala service is not inspectable."]
+
+    build = service.get("build") or {}
+    context = build.get("context") if isinstance(build, dict) else ""
+    if context and normalized(Path(str(context))) != app:
+        errors.append(f"Docker build context must be APP_DIR ({app}), not {context}.")
+
+    env_files = service.get("env_file") or []
+    env_text = [str(item.get("path", item)) if isinstance(item, dict) else str(item) for item in env_files]
+    expected_env = stack / "config" / "gwala.env"
+    if not any(normalized(Path(value)) == expected_env for value in env_text):
+        errors.append(f"Compose env_file must use STACK_DIR config/gwala.env ({expected_env}).")
+
+    expected_sources = {
+        "/app/runtime_data": stack / "data",
+        "/app/logs": stack / "logs",
+        "/app/backups": stack / "backups",
+        "/app/.webull_tokens": stack / "config" / "webull_tokens",
+    }
+    volumes = service.get("volumes") or []
+    for target, expected_source in expected_sources.items():
+        matching = [source for source, volume_target_text in map(volume_source_and_target, volumes) if volume_target_text == target]
+        if not matching:
+            errors.append(f"Compose must bind {expected_source} to {target}.")
+            continue
+        if normalized(Path(matching[0])) != normalized(expected_source):
+            errors.append(f"Compose {target} source must be {expected_source}, not {matching[0]}.")
+    return errors
+
+
 def source_checksum(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def runtime_source_check(compose_file: Path) -> None:
-    expected = source_checksum(PROJECT_ROOT / SOURCE_PROBE)
+def runtime_source_check(compose_file: Path, app_dir: Path) -> None:
+    expected = source_checksum(app_dir / SOURCE_PROBE)
     code, text = run_command(
         [
             "docker",
@@ -131,6 +189,7 @@ def main() -> None:
     args = parse_args()
     payload = load_compose_config(args.compose_file, args.compose_json)
     errors = validate_compose_boundary(payload)
+    errors.extend(validate_deployment_roots(payload, args.app_dir, args.stack_dir))
     if errors:
         print("source_package_shadowing=FAIL", file=sys.stderr)
         for error in errors:
@@ -138,7 +197,7 @@ def main() -> None:
         raise SystemExit(1)
     print("source_package_shadowing=PASS")
     if args.runtime_check:
-        runtime_source_check(args.compose_file)
+        runtime_source_check(args.compose_file, args.app_dir)
     print("Docker runtime boundary: PASS")
 
 

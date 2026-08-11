@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ, market_session_for_date, next_market_session
+from config.runtime_paths import runtime_data_path
 from config.settings import STRATEGY
 from config.symbol_playbook import playbook_symbols
 from data.candle_cache import preferred_candle_path
@@ -38,8 +39,8 @@ class CheckResult:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the market-open readiness report.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"), help="Paper trade log.")
-    parser.add_argument("--mistake-csv", type=Path, default=Path("data/paper_mistakes.csv"))
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"), help="Paper trade log.")
+    parser.add_argument("--mistake-csv", type=Path, default=runtime_data_path("paper_mistakes.csv"))
     parser.add_argument("--env-file", type=Path, default=Path(".env"), help="Local environment file.")
     parser.add_argument("--date", help="Readiness date in YYYY-MM-DD. Defaults to today's New York date.")
     return parser.parse_args()

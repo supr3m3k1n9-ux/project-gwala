@@ -24,11 +24,12 @@ import pandas as pd
 
 from config.filter_policy import OPTIONS_CONTRACT_THRESHOLDS
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from run_paper_gate_v2 import build_payload as build_paper_gate_payload
 from run_playbook import markdown_table
 
 
-CONTRACT_AUDIT_CSV = Path("data/options_contract_audit.csv")
+CONTRACT_AUDIT_CSV = runtime_data_path("options_contract_audit.csv")
 CONTRACT_AUDIT_COLUMNS = [
     "sample_date",
     "entry_time_et",
@@ -88,8 +89,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build Options Contract Gate v1 report.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
     parser.add_argument("--contract-audit-csv", type=Path, default=CONTRACT_AUDIT_CSV)
-    parser.add_argument("--samples-csv", type=Path, default=Path("data/paper_validation_samples.csv"))
-    parser.add_argument("--candidate-ledger-csv", type=Path, default=Path("data/candidate_window_ledger.csv"))
+    parser.add_argument("--samples-csv", type=Path, default=runtime_data_path("paper_validation_samples.csv"))
+    parser.add_argument("--candidate-ledger-csv", type=Path, default=runtime_data_path("candidate_window_ledger.csv"))
     parser.add_argument("--account-size", type=float, default=10_000.0)
     parser.add_argument(
         "--skip-autonomous-lifecycle",
@@ -391,13 +392,16 @@ def clean_records(frame: pd.DataFrame) -> list[dict[str, Any]]:
 
 def build_gate(
     output_dir: Path = Path("logs"),
-    contract_audit_csv: Path = CONTRACT_AUDIT_CSV,
-    samples_csv: Path = Path("data/paper_validation_samples.csv"),
-    candidate_ledger_csv: Path = Path("data/candidate_window_ledger.csv"),
+    contract_audit_csv: Path | None = None,
+    samples_csv: Path | None = None,
+    candidate_ledger_csv: Path | None = None,
     account_size: float = 10_000.0,
 ) -> dict[str, Any]:
     """Build the Options Contract Gate v1 payload."""
 
+    contract_audit_csv = contract_audit_csv or CONTRACT_AUDIT_CSV
+    samples_csv = samples_csv or runtime_data_path("paper_validation_samples.csv")
+    candidate_ledger_csv = candidate_ledger_csv or runtime_data_path("candidate_window_ledger.csv")
     paper_gate = build_paper_gate_payload(
         output_dir=output_dir,
         scanner_csv=output_dir / "daily_paper_signal_scanner.csv",

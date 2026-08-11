@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ, market_session_for_date
+from config.runtime_paths import runtime_data_path
 from config.settings import ACCOUNT, STRATEGY
 from config.symbol_playbook import APPROVED_PLAYBOOK, WATCH_PLAYBOOK
 from reports.refresh_status import market_refresh_state
@@ -25,7 +26,7 @@ from run_playbook import markdown_table
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the daily pre-market paper plan.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"), help="Paper log CSV.")
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"), help="Paper log CSV.")
     parser.add_argument("--date", help="Plan date in YYYY-MM-DD. Defaults to today's New York date.")
     parser.add_argument("--account-size", type=float, default=ACCOUNT.starting_equity, help="Paper account size.")
     parser.add_argument("--risk-per-trade-pct", type=float, default=ACCOUNT.risk_per_trade_pct)

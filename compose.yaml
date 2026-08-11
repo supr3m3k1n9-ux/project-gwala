@@ -4,12 +4,12 @@ services:
   gwala:
     image: project-gwala:shadow
     build:
-      context: .
+      context: ${GWALA_APP_DIR:-.}
       dockerfile: Dockerfile
     user: "1000:1000"
     working_dir: /app
     env_file:
-      - ./config/gwala.env
+      - ${GWALA_STACK_DIR:-.}/config/gwala.env
     environment:
       GWALA_DEPLOYMENT_MODE: shadow
       GWALA_SHADOW_MODE: "true"
@@ -27,10 +27,10 @@ services:
     ports:
       - "127.0.0.1:8765:8765"
     volumes:
-      - ./data:/app/runtime_data
-      - ./logs:/app/logs
-      - ./backups:/app/backups
-      - ./config/webull_tokens:/app/.webull_tokens
+      - ${GWALA_STACK_DIR:-.}/data:/app/runtime_data
+      - ${GWALA_STACK_DIR:-.}/logs:/app/logs
+      - ${GWALA_STACK_DIR:-.}/backups:/app/backups
+      - ${GWALA_STACK_DIR:-.}/config/webull_tokens:/app/.webull_tokens
     security_opt:
       - no-new-privileges:true
     command: ["python", "run_app.py", "--host", "127.0.0.1", "--port", "8765"]

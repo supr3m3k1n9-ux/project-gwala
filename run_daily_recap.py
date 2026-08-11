@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_path
 from run_dashboard import paper_progress, read_csv_or_empty
 from run_playbook import markdown_table
 
@@ -19,8 +20,8 @@ from run_playbook import markdown_table
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the daily Project Gwala recap.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"), help="Paper log CSV.")
-    parser.add_argument("--mistake-csv", type=Path, default=Path("data/paper_mistakes.csv"))
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"), help="Paper log CSV.")
+    parser.add_argument("--mistake-csv", type=Path, default=runtime_data_path("paper_mistakes.csv"))
     return parser.parse_args()
 
 

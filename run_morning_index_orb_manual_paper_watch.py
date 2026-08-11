@@ -21,6 +21,7 @@ from typing import Any
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from config.runtime_paths import runtime_data_root
 from config.settings import ACCOUNT
 from reports.refresh_status import market_refresh_state
@@ -43,11 +44,11 @@ PROMOTED_SYMBOLS = {"SPY", "QQQ"}
 CHECKPOINT_TRADES = 20
 BEFORE_NOON_ET = "12:00"
 
-OBSERVATION_CSV = Path("data/opening_range_breakout_forward_observations.csv")
+OBSERVATION_CSV = runtime_data_path("opening_range_breakout_forward_observations.csv")
 OUTCOME_CSV = Path("logs/opening_range_breakout_forward_observation_results.csv")
-REVIEW_CSV = Path("data/morning_index_orb_manual_reviews.csv")
-CONTRACT_AUDIT_CSV = Path("data/morning_index_orb_contract_audit.csv")
-LEDGER_CSV = Path("data/morning_index_orb_manual_paper_trades.csv")
+REVIEW_CSV = runtime_data_path("morning_index_orb_manual_reviews.csv")
+CONTRACT_AUDIT_CSV = runtime_data_path("morning_index_orb_contract_audit.csv")
+LEDGER_CSV = runtime_data_path("morning_index_orb_manual_paper_trades.csv")
 
 REVIEW_COLUMNS = [
     "candidate_id",

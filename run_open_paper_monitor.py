@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from config.settings import STRATEGY
 from data.market_data import load_candles_from_csv
 from indicators.session import add_session_columns
@@ -41,7 +42,7 @@ UPDATE_COLUMNS = [
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Monitor open Project Gwala paper trades.")
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"), help="Paper trade log.")
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"), help="Paper trade log.")
     parser.add_argument("--data-dir", type=Path, default=Path("logs"), help="Directory with Webull M5 candle CSVs.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where monitor reports are saved.")
     parser.add_argument(

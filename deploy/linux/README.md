@@ -5,13 +5,14 @@ shadow mode. It does not replace or disable the current macOS LaunchAgents.
 
 ## Architecture
 
-- Project root: `/opt/project-gwala`
-- Environment file: `/etc/project-gwala/gwala.env`
+- Production stack root: `/srv/projects/gwala`
+- Git checkout/source app root: `/srv/projects/gwala/app`
+- Docker environment file: `/srv/projects/gwala/config/gwala.env`
 - Service logs: `/var/log/project-gwala`
 - Scheduler: `systemd` services and timers
 - Dashboard: Python `http.server` through `run_app.py`
 - Trading posture: local paper-validation shadow mode only
-- Host systemd health artifact: `/opt/project-gwala/logs/host_systemd_health.json`
+- Host systemd health artifact: `/srv/projects/gwala/logs/host_systemd_health.json`
 - Runtime data: host evidence remains under `/srv/projects/gwala/data`; inside
   Docker it is mounted at `/app/runtime_data` so `/app/data` remains the Python
   source package. Host config is not mounted over `/app/config`; secrets still
@@ -42,20 +43,21 @@ Run these on the Ubuntu VPS, not on the macOS production machine.
 ```bash
 sudo apt update
 sudo apt install -y python3.11 python3.11-venv python3-pip git
-sudo mkdir -p /opt/project-gwala
-sudo chown "$USER:$USER" /opt/project-gwala
+sudo mkdir -p /srv/projects/gwala/app /srv/projects/gwala/data /srv/projects/gwala/logs /srv/projects/gwala/config/webull_tokens /srv/projects/gwala/backups
+sudo chown -R "$USER:$USER" /srv/projects/gwala
 ```
 
-Copy the repository to `/opt/project-gwala`, then:
+Clone the repository to `/srv/projects/gwala/app`, then keep persistent runtime
+state in `/srv/projects/gwala`:
 
 ```bash
-cd /opt/project-gwala
+cd /srv/projects/gwala/app
 python3.11 -m venv .venv-webull
 .venv-webull/bin/pip install --upgrade pip
 .venv-webull/bin/pip install -r requirements.txt
 .venv-webull/bin/pip install -r requirements-webull.txt
-sudo GWALA_PROJECT_ROOT=/opt/project-gwala deploy/linux/install_linux_shadow.sh
-sudo editor /etc/project-gwala/gwala.env
+sudo GWALA_PROJECT_ROOT=/srv/projects/gwala/app deploy/linux/install_linux_shadow.sh
+sudo editor /srv/projects/gwala/config/gwala.env
 .venv-webull/bin/python deploy/linux/preflight.py
 ```
 
@@ -72,7 +74,7 @@ sudo systemctl enable --now project-gwala-eod-executive-report.timer
 ## Manual Shadow Commands
 
 ```bash
-cd /opt/project-gwala
+cd /srv/projects/gwala/app
 .venv-webull/bin/python run_app.py --host 127.0.0.1 --port 8765
 .venv-webull/bin/python run_autonomous_paper_workflow.py --interval-minutes 5 --auto-confirm-paper-exits --once
 .venv-webull/bin/python run_production_alert.py --output-dir logs --data-dir "${GWALA_DATA_DIR:-data}" --interval-minutes 5 --cooldown-minutes 30 --recheck-seconds 25 --outage-threshold-minutes 5 --down-confirmation-failures 2
@@ -123,6 +125,38 @@ Then run assurance inside Docker:
 /srv/projects/gwala/run_in_docker.sh python run_continuous_assurance.py --layer weekly --run-tests
 ```
 
+## GitHub to VPS Deployment
+
+The VPS deployment layout intentionally separates source from durable runtime
+state:
+
+```text
+/srv/projects/gwala/app      Git checkout and Docker build context
+/srv/projects/gwala          Compose stack root, runtime data, logs, config, backups
+/srv/projects/gwala/data     Persistent evidence mounted at /app/runtime_data
+/srv/projects/gwala/config   Host env file and Webull token cache, never mounted at /app/config
+```
+
+Deploy the latest GitHub `main` commit from the host stack root:
+
+```bash
+sudo /srv/projects/gwala/deploy_latest.sh
+```
+
+The deploy script fetches and fast-forwards the Git checkout in `APP_DIR`,
+copies approved version-controlled deployment files into `STACK_DIR`, validates
+that Compose does not shadow `/app/data` or `/app/config`, builds the Docker
+image from `APP_DIR`, refreshes host health artifacts, runs runtime assurance,
+and ends with:
+
+```bash
+python3 /srv/projects/gwala/app/deploy/linux/verify_vps_production.py --app-dir /srv/projects/gwala/app --stack-dir /srv/projects/gwala
+```
+
+The readiness verifier prints `VPS PRODUCTION READINESS: PASS`, `WATCH`, or
+`FAIL`. It is read-only and does not start timers, generate reports, import
+trades, or place orders.
+
 The proposed systemd cadence is documented for review in
 `deploy/linux/CONTINUOUS_ASSURANCE.md`. Do not enable new assurance timers until
 that schedule is reviewed on the VPS.
@@ -154,19 +188,22 @@ real-money trading.
 ## Rollback
 
 ```bash
-cd /opt/project-gwala
+cd /srv/projects/gwala/app
 sudo deploy/linux/rollback_linux_shadow.sh
 ```
 
 Rollback removes the systemd services and timers. It preserves:
 
-- `/etc/project-gwala/gwala.env`
-- `/opt/project-gwala`
+- `/srv/projects/gwala/config/gwala.env`
+- `/srv/projects/gwala/app`
+- `/srv/projects/gwala/data`
+- `/srv/projects/gwala/logs`
+- `/srv/projects/gwala/backups`
 - `/var/log/project-gwala`
 
 ## Files Not To Commit
 
-- `/etc/project-gwala/gwala.env`
+- `/srv/projects/gwala/config/gwala.env`
 - `.env`
 - `.webull_tokens/`
 - Gmail app passwords

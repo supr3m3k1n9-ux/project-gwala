@@ -20,12 +20,12 @@ import pandas as pd
 
 from config.filter_policy import PAPER_GATE_THRESHOLDS
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from reports.refresh_status import market_refresh_state
 from run_playbook import markdown_table
 
 
 FIRST_SAMPLE_GATE = 30
-VALIDATION_SAMPLE_CSV = Path("data/paper_validation_samples.csv")
 HARD_BLOCKER_TEXT = {
     "market is closed",
     "scanner row is not from today's session",
@@ -36,11 +36,17 @@ HARD_BLOCKER_TEXT = {
 PAPER_VALIDATION_FRESHNESS = {"current_candle", "grace_candle"}
 
 
+def validation_sample_csv() -> Path:
+    """Return the durable Paper Gate validation-sample CSV path."""
+
+    return runtime_data_path("paper_validation_samples.csv")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build Paper Gate v2 tiered validation report.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
     parser.add_argument("--scanner-csv", type=Path, default=Path("logs/daily_paper_signal_scanner.csv"))
-    parser.add_argument("--samples-csv", type=Path, default=VALIDATION_SAMPLE_CSV)
+    parser.add_argument("--samples-csv", type=Path, default=validation_sample_csv())
     parser.add_argument("--account-size", type=float, default=10_000.0)
     return parser.parse_args()
 
@@ -523,13 +529,15 @@ def apply_duplicate_grace_guard(rows: list[dict[str, Any]]) -> list[dict[str, An
 def build_payload(
     output_dir: Path = Path("logs"),
     scanner_csv: Path = Path("logs/daily_paper_signal_scanner.csv"),
-    samples_csv: Path = VALIDATION_SAMPLE_CSV,
+    samples_csv: Path | None = None,
     account_size: float = 10_000.0,
     promotion_source: str = "scanner",
-    candidate_ledger_csv: Path = Path("data/candidate_window_ledger.csv"),
+    candidate_ledger_csv: Path | None = None,
 ) -> dict[str, Any]:
     """Build the Paper Gate v2 payload."""
 
+    samples_csv = samples_csv or validation_sample_csv()
+    candidate_ledger_csv = candidate_ledger_csv or runtime_data_path("candidate_window_ledger.csv")
     scanner = read_csv_or_empty(scanner_csv)
     ledger = read_csv_or_empty(candidate_ledger_csv)
     router = read_json_or_empty(output_dir / "market_regime_router.json")

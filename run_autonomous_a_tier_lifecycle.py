@@ -20,6 +20,7 @@ import uuid
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from config.settings import STRATEGY
 from execution.paper_trader import (
     PAPER_ORDER_COLUMNS,
@@ -71,19 +72,19 @@ REPORT_COLUMNS = [
     "validation_rows_written",
 ]
 VALID_EXIT_REASONS = {"stop_loss_5m", "profit_target_5m", "end_of_day_exit"}
-OPTION_CHAIN_ACTIVE_DIR = Path("data/options_chains/active")
+OPTION_CHAIN_ACTIVE_DIR = runtime_data_path("options_chains", "active")
 OPTION_CHAIN_MAX_AGE_MINUTES = 20.0
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run autonomous clean A-tier local paper lifecycle.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--contract-audit-csv", type=Path, default=Path("data/options_contract_audit.csv"))
-    parser.add_argument("--samples-csv", type=Path, default=Path("data/paper_validation_samples.csv"))
-    parser.add_argument("--candidate-ledger-csv", type=Path, default=Path("data/candidate_window_ledger.csv"))
-    parser.add_argument("--paper-orders-csv", type=Path, default=Path("data/paper_orders.csv"))
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"))
-    parser.add_argument("--approvals-csv", type=Path, default=Path("data/paper_command_center_approvals.csv"))
+    parser.add_argument("--contract-audit-csv", type=Path, default=runtime_data_path("options_contract_audit.csv"))
+    parser.add_argument("--samples-csv", type=Path, default=runtime_data_path("paper_validation_samples.csv"))
+    parser.add_argument("--candidate-ledger-csv", type=Path, default=runtime_data_path("candidate_window_ledger.csv"))
+    parser.add_argument("--paper-orders-csv", type=Path, default=runtime_data_path("paper_orders.csv"))
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"))
+    parser.add_argument("--approvals-csv", type=Path, default=runtime_data_path("paper_command_center_approvals.csv"))
     parser.add_argument("--account-size", type=float, default=10_000.0)
     parser.add_argument("--option-chain-dir", type=Path, default=OPTION_CHAIN_ACTIVE_DIR)
     return parser.parse_args()
@@ -590,18 +591,24 @@ def run_exit_monitor(*, output_dir: Path, paper_csv: Path) -> tuple[int, int]:
 def build_lifecycle(
     *,
     output_dir: Path = Path("logs"),
-    contract_audit_csv: Path = Path("data/options_contract_audit.csv"),
-    samples_csv: Path = Path("data/paper_validation_samples.csv"),
-    candidate_ledger_csv: Path = Path("data/candidate_window_ledger.csv"),
-    paper_orders_csv: Path = Path("data/paper_orders.csv"),
-    paper_csv: Path = Path("data/paper_trades.csv"),
-    approvals_csv: Path = Path("data/paper_command_center_approvals.csv"),
+    contract_audit_csv: Path | None = None,
+    samples_csv: Path | None = None,
+    candidate_ledger_csv: Path | None = None,
+    paper_orders_csv: Path | None = None,
+    paper_csv: Path | None = None,
+    approvals_csv: Path | None = None,
     account_size: float = 10_000.0,
     option_chain_dir: Path = OPTION_CHAIN_ACTIVE_DIR,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Run autonomous A-tier lifecycle and return an audit payload."""
 
+    contract_audit_csv = contract_audit_csv or runtime_data_path("options_contract_audit.csv")
+    samples_csv = samples_csv or runtime_data_path("paper_validation_samples.csv")
+    candidate_ledger_csv = candidate_ledger_csv or runtime_data_path("candidate_window_ledger.csv")
+    paper_orders_csv = paper_orders_csv or runtime_data_path("paper_orders.csv")
+    paper_csv = paper_csv or runtime_data_path("paper_trades.csv")
+    approvals_csv = approvals_csv or runtime_data_path("paper_command_center_approvals.csv")
     output_dir.mkdir(parents=True, exist_ok=True)
     current_time = now or datetime.now(MARKET_TZ)
     market = market_refresh_state()

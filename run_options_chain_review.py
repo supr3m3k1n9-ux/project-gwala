@@ -22,6 +22,7 @@ import pandas as pd
 
 from config.filter_policy import OPTIONS_CONTRACT_THRESHOLDS
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from run_options_contract_gate import (
     CONTRACT_AUDIT_COLUMNS,
     CONTRACT_AUDIT_CSV,
@@ -86,7 +87,7 @@ def parse_args() -> argparse.Namespace:
             "for each ready sample."
         ),
     )
-    parser.add_argument("--chain-dir", type=Path, default=Path("data/options_chains/active"))
+    parser.add_argument("--chain-dir", type=Path, default=runtime_data_path("options_chains", "active"))
     parser.add_argument("--symbol", help="Only review ready samples for this symbol.")
     parser.add_argument(
         "--tier",
@@ -96,8 +97,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-dte", type=float, default=OPTIONS_CONTRACT_THRESHOLDS["max_dte"])
     parser.add_argument("--contract-audit-csv", type=Path, default=CONTRACT_AUDIT_CSV)
-    parser.add_argument("--samples-csv", type=Path, default=Path("data/paper_validation_samples.csv"))
-    parser.add_argument("--candidate-ledger-csv", type=Path, default=Path("data/candidate_window_ledger.csv"))
+    parser.add_argument("--samples-csv", type=Path, default=runtime_data_path("paper_validation_samples.csv"))
+    parser.add_argument("--candidate-ledger-csv", type=Path, default=runtime_data_path("candidate_window_ledger.csv"))
     parser.add_argument("--account-size", type=float, default=10_000.0)
     parser.add_argument("--max-chain-age-minutes", type=float, default=20.0)
     parser.add_argument(
@@ -142,9 +143,10 @@ def yes_value(value: object) -> bool:
     return text(value).lower() in {"1", "true", "yes", "y"}
 
 
-def chain_path_for_sample(sample: dict[str, Any], explicit: Path | None, chain_dir: Path = Path("data/options_chains")) -> Path:
+def chain_path_for_sample(sample: dict[str, Any], explicit: Path | None, chain_dir: Path | None = None) -> Path:
     if explicit:
         return explicit
+    chain_dir = chain_dir or runtime_data_path("options_chains")
     return chain_dir / f"{text(sample.get('symbol')).upper()}.csv"
 
 

@@ -12,12 +12,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_path
 from run_paper_import import PAPER_COLUMNS, read_existing
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Update one paper-trade log row.")
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"), help="Paper trade log.")
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"), help="Paper trade log.")
     parser.add_argument("--list-open", action="store_true", help="List rows missing an outcome and exit.")
     parser.add_argument("--row", type=int, help="One-based row number from the CSV data rows, not counting the header.")
     parser.add_argument("--actual-entry", type=float, help="Actual paper entry price.")

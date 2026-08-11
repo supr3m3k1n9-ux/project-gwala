@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from run_options_contract_gate import build_gate as build_options_contract_gate
 from run_playbook import markdown_table
 
@@ -72,9 +73,9 @@ SAMPLE_COLUMNS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Import confirmed Paper Gate v2 validation samples.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--samples-csv", type=Path, default=Path("data/paper_validation_samples.csv"))
-    parser.add_argument("--contract-audit-csv", type=Path, default=Path("data/options_contract_audit.csv"))
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"))
+    parser.add_argument("--samples-csv", type=Path, default=runtime_data_path("paper_validation_samples.csv"))
+    parser.add_argument("--contract-audit-csv", type=Path, default=runtime_data_path("options_contract_audit.csv"))
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"))
     parser.add_argument("--confirm-samples", action="store_true", help="Actually append ready A/B samples.")
     return parser.parse_args()
 
@@ -324,13 +325,16 @@ def sync_completed_outcomes(samples: pd.DataFrame, paper_csv: Path) -> tuple[pd.
 
 def build_import(
     output_dir: Path = Path("logs"),
-    samples_csv: Path = Path("data/paper_validation_samples.csv"),
-    contract_audit_csv: Path = Path("data/options_contract_audit.csv"),
+    samples_csv: Path | None = None,
+    contract_audit_csv: Path | None = None,
     confirm_samples: bool = False,
-    paper_csv: Path = Path("data/paper_trades.csv"),
+    paper_csv: Path | None = None,
 ) -> dict:
     """Build or write a validation sample import."""
 
+    samples_csv = samples_csv or runtime_data_path("paper_validation_samples.csv")
+    contract_audit_csv = contract_audit_csv or runtime_data_path("options_contract_audit.csv")
+    paper_csv = paper_csv or runtime_data_path("paper_trades.csv")
     gate = build_options_contract_gate(
         output_dir=output_dir,
         contract_audit_csv=contract_audit_csv,

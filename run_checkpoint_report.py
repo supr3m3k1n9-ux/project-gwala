@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_path
 from run_paper_review import ALLOWED_BASELINE_R, BLOCKED_BASELINE_R
 from run_playbook import markdown_table
 
@@ -31,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--paper-csv",
         type=Path,
-        default=Path("data/paper_trades.csv"),
+        default=runtime_data_path("paper_trades.csv"),
         help="Raw paper trade log.",
     )
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
@@ -156,7 +157,7 @@ def write_report(
 ) -> None:
     """Write the checkpoint report."""
 
-    paper_csv = paper_csv or Path("data/paper_trades.csv")
+    paper_csv = paper_csv or runtime_data_path("paper_trades.csv")
     paper_review_csv = paper_review_csv or Path("logs/paper_review_clean_trades.csv")
     allowed = review[review["signal_status"] == "allowed"] if not review.empty else pd.DataFrame()
     blocked = review[review["signal_status"] == "blocked"] if not review.empty else pd.DataFrame()

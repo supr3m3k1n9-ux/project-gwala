@@ -21,6 +21,7 @@ from data.market_data_sources import read_sources
 from run_data_integrity import coverage_is_issue
 
 from config.market_calendar import MARKET_TZ, market_session_for_date, next_market_session
+from config.runtime_paths import runtime_data_path
 from config.runtime_paths import runtime_data_root
 from config.settings import STRATEGY
 from run_forward_sample_queue import build_queue as build_forward_sample_queue
@@ -1426,28 +1427,29 @@ def readiness_verdict(
 
 def build_system_state(
     output_dir: Path = Path("logs"),
-    paper_csv: Path = Path("data/paper_trades.csv"),
+    paper_csv: Path | None = None,
 ) -> dict[str, Any]:
     """Build the full system state dictionary."""
 
+    paper_csv = paper_csv or runtime_data_path("paper_trades.csv")
     scanner_csv = output_dir / "daily_paper_signal_scanner.csv"
     sizing_csv = output_dir / "position_sizing.csv"
-    forward_observations_csv = Path("data/forward_signal_observations.csv")
-    shadow_samples_csv = Path("data/shadow_samples.csv")
-    vwap_mean_reversion_shadow_samples_csv = Path("data/vwap_mean_reversion_shadow_samples.csv")
-    vwap_reclaim_reject_shadow_samples_csv = Path("data/vwap_reclaim_reject_shadow_samples.csv")
-    trend_pullback_continuation_shadow_samples_csv = Path("data/trend_pullback_continuation_shadow_samples.csv")
-    gap_fill_fade_shadow_samples_csv = Path("data/gap_fill_fade_shadow_samples.csv")
-    opening_range_breakout_shadow_samples_csv = Path("data/opening_range_breakout_shadow_samples.csv")
-    opening_range_failure_shadow_samples_csv = Path("data/opening_range_failure_shadow_samples.csv")
-    vwap_mean_reversion_forward_observations_csv = Path("data/vwap_mean_reversion_forward_observations.csv")
-    vwap_reclaim_reject_forward_observations_csv = Path("data/vwap_reclaim_reject_forward_observations.csv")
-    trend_pullback_continuation_forward_observations_csv = Path("data/trend_pullback_continuation_forward_observations.csv")
-    gap_fill_fade_forward_observations_csv = Path("data/gap_fill_fade_forward_observations.csv")
-    opening_range_breakout_forward_observations_csv = Path("data/opening_range_breakout_forward_observations.csv")
-    opening_range_failure_forward_observations_csv = Path("data/opening_range_failure_forward_observations.csv")
+    forward_observations_csv = runtime_data_path("forward_signal_observations.csv")
+    shadow_samples_csv = runtime_data_path("shadow_samples.csv")
+    vwap_mean_reversion_shadow_samples_csv = runtime_data_path("vwap_mean_reversion_shadow_samples.csv")
+    vwap_reclaim_reject_shadow_samples_csv = runtime_data_path("vwap_reclaim_reject_shadow_samples.csv")
+    trend_pullback_continuation_shadow_samples_csv = runtime_data_path("trend_pullback_continuation_shadow_samples.csv")
+    gap_fill_fade_shadow_samples_csv = runtime_data_path("gap_fill_fade_shadow_samples.csv")
+    opening_range_breakout_shadow_samples_csv = runtime_data_path("opening_range_breakout_shadow_samples.csv")
+    opening_range_failure_shadow_samples_csv = runtime_data_path("opening_range_failure_shadow_samples.csv")
+    vwap_mean_reversion_forward_observations_csv = runtime_data_path("vwap_mean_reversion_forward_observations.csv")
+    vwap_reclaim_reject_forward_observations_csv = runtime_data_path("vwap_reclaim_reject_forward_observations.csv")
+    trend_pullback_continuation_forward_observations_csv = runtime_data_path("trend_pullback_continuation_forward_observations.csv")
+    gap_fill_fade_forward_observations_csv = runtime_data_path("gap_fill_fade_forward_observations.csv")
+    opening_range_breakout_forward_observations_csv = runtime_data_path("opening_range_breakout_forward_observations.csv")
+    opening_range_failure_forward_observations_csv = runtime_data_path("opening_range_failure_forward_observations.csv")
     forward_observations_md = output_dir / "forward_signal_observations.md"
-    near_miss_csv = Path("data/near_miss_observations.csv")
+    near_miss_csv = runtime_data_path("near_miss_observations.csv")
     near_miss_md = output_dir / "near_miss_analytics.md"
     forward_results_csv = output_dir / "forward_observation_results.csv"
     shadow_outcomes_csv = output_dir / "shadow_sample_outcomes.csv"
@@ -1486,11 +1488,11 @@ def build_system_state(
     options_contract_gate_md = output_dir / "options_contract_gate.md"
     options_contract_gate_csv = output_dir / "options_contract_gate.csv"
     options_contract_gate_template_csv = output_dir / "options_contract_gate_template.csv"
-    options_contract_audit_csv = Path("data/options_contract_audit.csv")
+    options_contract_audit_csv = runtime_data_path("options_contract_audit.csv")
     paper_validation_sample_import_json = output_dir / "paper_validation_sample_import.json"
     paper_validation_sample_import_md = output_dir / "paper_validation_sample_import.md"
     paper_validation_sample_import_csv = output_dir / "paper_validation_sample_import.csv"
-    paper_validation_samples_csv = Path("data/paper_validation_samples.csv")
+    paper_validation_samples_csv = runtime_data_path("paper_validation_samples.csv")
     setup_health_csv = output_dir / "setup_health.csv"
     promotion_review_csv = output_dir / "promotion_review.csv"
     strategy_improvement_plan_json = output_dir / "strategy_improvement_plan.json"
@@ -1630,7 +1632,7 @@ def build_system_state(
     probation_watch_json = output_dir / "probation_watch.json"
     probation_watch_md = output_dir / "probation_watch.md"
     probation_watch_csv = output_dir / "probation_watch.csv"
-    probation_watch_ledger_csv = Path("data/probation_watch_observations.csv")
+    probation_watch_ledger_csv = runtime_data_path("probation_watch_observations.csv")
     post_scan_digest_json = output_dir / "post_scan_digest.json"
     post_scan_digest_md = output_dir / "post_scan_digest.md"
     premarket_verification_json = output_dir / "premarket_verification.json"

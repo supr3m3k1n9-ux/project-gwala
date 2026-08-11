@@ -24,6 +24,7 @@ import pandas as pd
 
 from config.market_calendar import MARKET_TZ
 from config.runtime_paths import runtime_data_root
+from config.runtime_paths import runtime_data_path
 from config.settings import STRATEGY
 from indicators.session import add_session_columns, parse_clock
 from notification_format import executive_report_notification
@@ -33,8 +34,8 @@ from run_production_alert import internal_severity, send_mac_notification
 OPENING_REPORT_VERSION = "opening-v1.0"
 EOD_REPORT_VERSION = "eod-v1.0"
 REPORTS_DIR = Path("logs/executive_reports")
-PAPER_CSV = Path("data/paper_trades.csv")
-SAMPLES_CSV = Path("data/paper_validation_samples.csv")
+PAPER_CSV = runtime_data_path("paper_trades.csv")
+SAMPLES_CSV = runtime_data_path("paper_validation_samples.csv")
 MACOS_DELIVERY_METHOD = "macos_notification"
 EMAIL_DELIVERY_METHOD = "email_smtp"
 

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_path
 from config.runtime_paths import runtime_data_root
 from reports.refresh_status import market_refresh_state
 
@@ -64,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--paper-csv",
         type=Path,
-        default=Path("data/paper_trades.csv"),
+        default=runtime_data_path("paper_trades.csv"),
         help="Manual paper-trade log to append to.",
     )
     parser.add_argument(

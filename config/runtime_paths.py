@@ -56,6 +56,12 @@ def runtime_data_root() -> Path:
     return project_root() / "data"
 
 
+def runtime_data_path(*parts: str) -> Path:
+    """Return a path below the durable runtime-data directory."""
+
+    return runtime_data_root().joinpath(*parts)
+
+
 def project_python() -> Path:
     """Return the configured Python interpreter for operational commands."""
 

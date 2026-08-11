@@ -17,6 +17,7 @@ from typing import Any
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_path
 from config.runtime_paths import runtime_data_root
 from reports.refresh_status import market_refresh_state
 from reports.system_state import data_freshness_state, market_state, paper_state, risk_guard_state
@@ -35,7 +36,7 @@ def default_refresh_audit_csv() -> Path:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build pre-entry paper review gate.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--paper-csv", type=Path, default=Path("data/paper_trades.csv"), help="Paper trade log.")
+    parser.add_argument("--paper-csv", type=Path, default=runtime_data_path("paper_trades.csv"), help="Paper trade log.")
     parser.add_argument(
         "--refresh-audit-csv",
         type=Path,

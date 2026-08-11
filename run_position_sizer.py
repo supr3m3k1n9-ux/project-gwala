@@ -16,6 +16,7 @@ import pandas as pd
 
 from config.filter_policy import PAPER_GATE_THRESHOLDS
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from config.runtime_paths import runtime_data_root
 from config.settings import ACCOUNT
 from reports.refresh_status import market_refresh_state
@@ -62,7 +63,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--paper-csv",
         type=Path,
-        default=Path("data/paper_trades.csv"),
+        default=runtime_data_path("paper_trades.csv"),
         help="Paper trade log used to derive realized loss-stop R.",
     )
     parser.add_argument(

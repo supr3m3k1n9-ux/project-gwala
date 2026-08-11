@@ -28,6 +28,7 @@ import pandas as pd
 from config.market_calendar import MARKET_TZ
 from config.runtime_paths import runtime_data_root
 from config.runtime_paths import project_root
+from config.runtime_paths import runtime_data_path
 from run_data_flow_sentinel import build_data_flow_sentinel
 from run_dashboard_data_preflight import build_checks as build_dashboard_preflight
 from run_playbook import markdown_table
@@ -67,10 +68,10 @@ CRITICAL_MODULES = [
     "deploy/linux/write_host_systemd_health.py",
 ]
 LEDGER_FILES = {
-    "vwap_official_validation": Path("data/paper_validation_samples.csv"),
-    "vwap_paper_trades": Path("data/paper_trades.csv"),
-    "candidate_window_ledger": Path("data/candidate_window_ledger.csv"),
-    "orb_manual_paper_watch": Path("data/morning_index_orb_manual_paper_trades.csv"),
+    "vwap_official_validation": runtime_data_path("paper_validation_samples.csv"),
+    "vwap_paper_trades": runtime_data_path("paper_trades.csv"),
+    "candidate_window_ledger": runtime_data_path("candidate_window_ledger.csv"),
+    "orb_manual_paper_watch": runtime_data_path("morning_index_orb_manual_paper_trades.csv"),
 }
 SECRET_NAMES = [
     "WEBULL_APP_KEY",

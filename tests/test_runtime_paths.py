@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from config import runtime_paths
-from deploy.linux.verify_docker_runtime_boundary import validate_compose_boundary
+from deploy.linux.verify_docker_runtime_boundary import validate_compose_boundary, validate_deployment_roots
 from run_refresh_audit import default_audit_csv, parse_args as parse_refresh_audit_args
 
 
@@ -65,6 +65,14 @@ class RuntimePathTests(unittest.TestCase):
         from reports.refresh_status import build_refresh_status
         from run_morning_index_orb_manual_paper_watch import default_refresh_audit_csv as orb_audit_csv
         from run_paper_import import parse_args as parse_paper_import_args
+        from run_paper_gate_v2 import parse_args as parse_paper_gate_args
+        from run_update_paper_trade import parse_args as parse_update_paper_args
+        from run_open_paper_monitor import parse_args as parse_open_monitor_args
+        from run_dashboard import parse_args as parse_dashboard_args
+        from run_daily_recap import parse_args as parse_daily_recap_args
+        from run_readiness_check import parse_args as parse_readiness_args
+        from run_premarket_plan import parse_args as parse_premarket_args
+        from run_system_state import parse_args as parse_system_state_args
         from run_position_sizer import parse_args as parse_position_sizer_args
         from run_pre_entry_review import parse_args as parse_pre_entry_args
         from run_provider_stability_audit import (
@@ -78,6 +86,26 @@ class RuntimePathTests(unittest.TestCase):
 
             with patch("sys.argv", ["run_paper_import.py"]):
                 self.assertEqual(parse_paper_import_args().refresh_audit_csv, expected)
+            with patch("sys.argv", ["run_paper_gate_v2.py"]):
+                self.assertEqual(parse_paper_gate_args().samples_csv, Path("/app/runtime_data/paper_validation_samples.csv"))
+            with patch("sys.argv", ["run_update_paper_trade.py"]):
+                self.assertEqual(parse_update_paper_args().paper_csv, Path("/app/runtime_data/paper_trades.csv"))
+            with patch("sys.argv", ["run_open_paper_monitor.py"]):
+                self.assertEqual(parse_open_monitor_args().paper_csv, Path("/app/runtime_data/paper_trades.csv"))
+            with patch("sys.argv", ["run_dashboard.py"]):
+                self.assertEqual(parse_dashboard_args().paper_csv, Path("/app/runtime_data/paper_trades.csv"))
+            with patch("sys.argv", ["run_daily_recap.py"]):
+                daily_args = parse_daily_recap_args()
+                self.assertEqual(daily_args.paper_csv, Path("/app/runtime_data/paper_trades.csv"))
+                self.assertEqual(daily_args.mistake_csv, Path("/app/runtime_data/paper_mistakes.csv"))
+            with patch("sys.argv", ["run_readiness_check.py"]):
+                readiness_args = parse_readiness_args()
+                self.assertEqual(readiness_args.paper_csv, Path("/app/runtime_data/paper_trades.csv"))
+                self.assertEqual(readiness_args.mistake_csv, Path("/app/runtime_data/paper_mistakes.csv"))
+            with patch("sys.argv", ["run_premarket_plan.py"]):
+                self.assertEqual(parse_premarket_args().paper_csv, Path("/app/runtime_data/paper_trades.csv"))
+            with patch("sys.argv", ["run_system_state.py"]):
+                self.assertEqual(parse_system_state_args().paper_csv, Path("/app/runtime_data/paper_trades.csv"))
             with patch("sys.argv", ["run_position_sizer.py"]):
                 self.assertEqual(parse_position_sizer_args().refresh_audit_csv, expected)
             with patch("sys.argv", ["run_pre_entry_review.py"]):
@@ -106,10 +134,11 @@ class RuntimePathTests(unittest.TestCase):
     def test_repository_compose_mounts_runtime_data_not_source_package(self) -> None:
         text = (Path(__file__).resolve().parents[1] / "compose.yaml").read_text(encoding="utf-8")
 
-        self.assertIn("./data:/app/runtime_data", text)
-        self.assertNotIn("./data:/app/data", text)
-        self.assertNotIn("./config:/app/config", text)
-        self.assertIn("./config/webull_tokens:/app/.webull_tokens", text)
+        self.assertIn("${GWALA_APP_DIR:-.}", text)
+        self.assertIn("${GWALA_STACK_DIR:-.}/data:/app/runtime_data", text)
+        self.assertNotIn(":/app/data", text)
+        self.assertNotIn(":/app/config", text)
+        self.assertIn("${GWALA_STACK_DIR:-.}/config/webull_tokens:/app/.webull_tokens", text)
         self.assertIn("GWALA_DATA_DIR: /app/runtime_data", text)
 
     def test_deploy_verifier_rejects_data_source_shadowing(self) -> None:
@@ -158,6 +187,80 @@ class RuntimePathTests(unittest.TestCase):
         }
 
         self.assertEqual(validate_compose_boundary(payload), [])
+
+    def test_deploy_verifier_accepts_production_app_stack_roots(self) -> None:
+        payload = {
+            "services": {
+                "gwala": {
+                    "build": {"context": "/srv/projects/gwala/app", "dockerfile": "Dockerfile"},
+                    "env_file": ["/srv/projects/gwala/config/gwala.env"],
+                    "environment": {"GWALA_DATA_DIR": "/app/runtime_data"},
+                    "volumes": [
+                        {"source": "/srv/projects/gwala/data", "target": "/app/runtime_data"},
+                        {"source": "/srv/projects/gwala/logs", "target": "/app/logs"},
+                        {"source": "/srv/projects/gwala/backups", "target": "/app/backups"},
+                        {"source": "/srv/projects/gwala/config/webull_tokens", "target": "/app/.webull_tokens"},
+                    ],
+                }
+            }
+        }
+
+        errors = validate_deployment_roots(payload, Path("/srv/projects/gwala/app"), Path("/srv/projects/gwala"))
+
+        self.assertEqual(errors, [])
+
+    def test_deploy_verifier_rejects_build_context_from_stack_runtime_root(self) -> None:
+        payload = {
+            "services": {
+                "gwala": {
+                    "build": {"context": "/srv/projects/gwala", "dockerfile": "Dockerfile"},
+                    "env_file": ["/srv/projects/gwala/config/gwala.env"],
+                    "environment": {"GWALA_DATA_DIR": "/app/runtime_data"},
+                    "volumes": [
+                        {"source": "/srv/projects/gwala/data", "target": "/app/runtime_data"},
+                        {"source": "/srv/projects/gwala/logs", "target": "/app/logs"},
+                        {"source": "/srv/projects/gwala/backups", "target": "/app/backups"},
+                        {"source": "/srv/projects/gwala/config/webull_tokens", "target": "/app/.webull_tokens"},
+                    ],
+                }
+            }
+        }
+
+        errors = validate_deployment_roots(payload, Path("/srv/projects/gwala/app"), Path("/srv/projects/gwala"))
+
+        self.assertTrue(any("Docker build context must be APP_DIR" in error for error in errors))
+
+    def test_deploy_verifier_rejects_runtime_mount_from_app_source_root(self) -> None:
+        payload = {
+            "services": {
+                "gwala": {
+                    "build": {"context": "/srv/projects/gwala/app", "dockerfile": "Dockerfile"},
+                    "env_file": ["/srv/projects/gwala/config/gwala.env"],
+                    "environment": {"GWALA_DATA_DIR": "/app/runtime_data"},
+                    "volumes": [
+                        {"source": "/srv/projects/gwala/app/data", "target": "/app/runtime_data"},
+                        {"source": "/srv/projects/gwala/logs", "target": "/app/logs"},
+                        {"source": "/srv/projects/gwala/backups", "target": "/app/backups"},
+                        {"source": "/srv/projects/gwala/config/webull_tokens", "target": "/app/.webull_tokens"},
+                    ],
+                }
+            }
+        }
+
+        errors = validate_deployment_roots(payload, Path("/srv/projects/gwala/app"), Path("/srv/projects/gwala"))
+
+        self.assertTrue(any("Compose /app/runtime_data source must be" in error for error in errors))
+
+    def test_deploy_scripts_preserve_app_and_stack_boundary(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        deploy_text = (root / "deploy_latest.sh").read_text(encoding="utf-8")
+        wrapper_text = (root / "run_in_docker.sh").read_text(encoding="utf-8")
+
+        self.assertIn('cd "$APP_DIR"', deploy_text)
+        self.assertIn('docker compose -f "$COMPOSE_FILE" build gwala', deploy_text)
+        self.assertIn("verify_vps_production.py", deploy_text)
+        self.assertIn('export GWALA_APP_DIR="$APP_DIR"', wrapper_text)
+        self.assertIn('cd "$STACK_DIR"', wrapper_text)
 
     def test_data_source_package_imports_remain_available(self) -> None:
         from data.webull_data import disable_sdk_default_logging

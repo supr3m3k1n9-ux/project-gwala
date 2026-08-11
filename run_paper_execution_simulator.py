@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_path
 from execution.paper_trader import (
     build_local_paper_orders,
     eligible_sizing_rows,
@@ -33,13 +34,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--paper-orders-csv",
         type=Path,
-        default=Path("data/paper_orders.csv"),
+        default=runtime_data_path("paper_orders.csv"),
         help="Local paper order ledger.",
     )
     parser.add_argument(
         "--paper-csv",
         type=Path,
-        default=Path("data/paper_trades.csv"),
+        default=runtime_data_path("paper_trades.csv"),
         help="Paper trade log to append open simulated trades to.",
     )
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where preview reports are saved.")

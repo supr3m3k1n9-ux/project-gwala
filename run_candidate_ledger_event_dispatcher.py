@@ -22,6 +22,7 @@ import pandas as pd
 
 from config.filter_policy import OPTIONS_CONTRACT_THRESHOLDS
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_path
 from reports.refresh_status import market_refresh_state
 from run_autonomous_a_tier_lifecycle import build_lifecycle as build_autonomous_lifecycle
 from run_option_chain_import import build_import as build_option_chain_import
@@ -60,11 +61,11 @@ EVENT_STATE_COLUMNS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Dispatch Candidate Ledger Contract Gate events.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"))
-    parser.add_argument("--ledger-csv", type=Path, default=Path("data/candidate_window_ledger.csv"))
-    parser.add_argument("--event-state-csv", type=Path, default=Path("data/candidate_ledger_event_state.csv"))
-    parser.add_argument("--chain-dir", type=Path, default=Path("data/options_chains/active"))
-    parser.add_argument("--contract-audit-csv", type=Path, default=Path("data/options_contract_audit.csv"))
-    parser.add_argument("--samples-csv", type=Path, default=Path("data/paper_validation_samples.csv"))
+    parser.add_argument("--ledger-csv", type=Path, default=runtime_data_path("candidate_window_ledger.csv"))
+    parser.add_argument("--event-state-csv", type=Path, default=runtime_data_path("candidate_ledger_event_state.csv"))
+    parser.add_argument("--chain-dir", type=Path, default=runtime_data_path("options_chains", "active"))
+    parser.add_argument("--contract-audit-csv", type=Path, default=runtime_data_path("options_contract_audit.csv"))
+    parser.add_argument("--samples-csv", type=Path, default=runtime_data_path("paper_validation_samples.csv"))
     parser.add_argument("--account-size", type=float, default=10_000.0)
     parser.add_argument("--max-chain-age-minutes", type=float, default=20.0)
     return parser.parse_args()
@@ -311,11 +312,11 @@ def dispatch_event(
 def build_dispatch(
     *,
     output_dir: Path = Path("logs"),
-    ledger_csv: Path = Path("data/candidate_window_ledger.csv"),
-    event_state_csv: Path = Path("data/candidate_ledger_event_state.csv"),
-    chain_dir: Path = Path("data/options_chains/active"),
-    contract_audit_csv: Path = Path("data/options_contract_audit.csv"),
-    samples_csv: Path = Path("data/paper_validation_samples.csv"),
+    ledger_csv: Path | None = None,
+    event_state_csv: Path | None = None,
+    chain_dir: Path | None = None,
+    contract_audit_csv: Path | None = None,
+    samples_csv: Path | None = None,
     account_size: float = 10_000.0,
     max_chain_age_minutes: float = 20.0,
     market: dict[str, Any] | None = None,
@@ -323,6 +324,11 @@ def build_dispatch(
 ) -> dict[str, Any]:
     """Dispatch every unprocessed eligible Candidate Ledger event."""
 
+    ledger_csv = ledger_csv or runtime_data_path("candidate_window_ledger.csv")
+    event_state_csv = event_state_csv or runtime_data_path("candidate_ledger_event_state.csv")
+    chain_dir = chain_dir or runtime_data_path("options_chains", "active")
+    contract_audit_csv = contract_audit_csv or runtime_data_path("options_contract_audit.csv")
+    samples_csv = samples_csv or runtime_data_path("paper_validation_samples.csv")
     output_dir.mkdir(parents=True, exist_ok=True)
     current_market = market or market_refresh_state()
     ledger = read_csv_or_empty(ledger_csv)

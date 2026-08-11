@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ, market_session_for_date, next_market_session
+from config.runtime_paths import runtime_data_path
 from config.settings import STRATEGY
 from reports.system_state import build_system_state
 from run_playbook import markdown_table
@@ -31,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--paper-csv",
         type=Path,
-        default=Path("data/paper_trades.csv"),
+        default=runtime_data_path("paper_trades.csv"),
         help="Manual paper-trade log.",
     )
     return parser.parse_args()
