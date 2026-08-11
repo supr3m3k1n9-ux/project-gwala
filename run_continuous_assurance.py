@@ -700,36 +700,36 @@ def check_required_secret_env(env: dict[str, str] | None = None) -> AssuranceChe
 
 
 def check_host_security_artifact(path: Path, moment: datetime, max_age_minutes: int = 1440) -> AssuranceCheck:
-    """Classify host-side secret/token permission verification."""
+    """Classify host-side security verification."""
 
     payload = read_json(path)
     if not payload:
         return AssuranceCheck(
-            "Host secret file permissions",
+            "Host security",
             "WATCH",
-            "Host security/permission artifact is missing; Docker/Linux secrets are expected via Compose env_file.",
+            "Host security/permission artifact is missing; Docker/Linux host controls are verified by host artifact.",
             business_impact="Host secret file permissions have not been confirmed by this container run.",
             research_impact="No direct research impact when env vars are injected.",
             engineering_trigger="INVESTIGATE",
-            recommended_next_action="Run a host-side permission audit for /srv/projects/gwala/config/gwala.env.",
+            recommended_next_action="Run deploy/linux/write_host_security_health.py on the host.",
         )
     if not artifact_is_fresh(path, payload, moment, max_age_minutes):
         return AssuranceCheck(
-            "Host secret file permissions",
+            "Host security",
             "WATCH",
-            f"Host security/permission artifact is stale: {path}.",
+            f"Host security artifact is stale: {path}.",
             business_impact="Host secret file permission state may have changed.",
             research_impact="No direct research impact when env vars are injected.",
             engineering_trigger="INVESTIGATE",
-            recommended_next_action="Refresh the host-side security/permission artifact.",
+            recommended_next_action="Refresh the host-side security artifact.",
         )
     status = str(payload.get("status", "")).upper()
     if status == "GREEN":
-        return AssuranceCheck("Host secret file permissions", "GREEN", "Host security artifact reports GREEN.")
+        return AssuranceCheck("Host security", "GREEN", "Host security artifact reports GREEN.")
     if status in {"WATCH", "YELLOW", "UNKNOWN"}:
-        return AssuranceCheck("Host secret file permissions", "WATCH", f"Host security artifact reports {status}.")
+        return AssuranceCheck("Host security", "WATCH", f"Host security artifact reports {status}.")
     return AssuranceCheck(
-        "Host secret file permissions",
+        "Host security",
         "RED",
         str(payload.get("red_reason") or payload.get("reason") or "Host security artifact reports unsafe secret permissions."),
         business_impact="Host secrets may be readable more broadly than intended.",

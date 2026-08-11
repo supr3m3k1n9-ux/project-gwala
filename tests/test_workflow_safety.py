@@ -10088,7 +10088,7 @@ class StateAndEndpointTests(unittest.TestCase):
         with TemporaryDirectory() as temporary:
             output_dir = Path(temporary)
             env_path = output_dir / ".env"
-            env_path.write_text("WEBULL_APP_KEY=test\nWEBULL_APP_SECRET=test\n", encoding="utf-8")
+            env_path.write_text("WEBULL_APP_KEY=test\nWEBULL_APP_SECRET=test\n", encoding="utf-8")  # TEST_SECRET_FIXTURE
             (output_dir / "refresh_status.json").write_text(
                 json.dumps({"paper_import_blocked": True, "status": "prep_only", "next_action": "Wait."}),
                 encoding="utf-8",

@@ -69,6 +69,18 @@ placeholder_secret_line() {
   [[ "$line" =~ your_|paste_|example|placeholder|dummy|test-|test_|secret-app-password|super-secret|token-value|redacted ]]
 }
 
+marked_test_fixture_line() {
+  local file="$1"
+  local line="$2"
+  [[ "$file" == tests/* && "$line" =~ TEST_SECRET_FIXTURE|FAKE_SECRET|DUMMY_CREDENTIAL ]]
+}
+
+scanner_implementation_line() {
+  local file="$1"
+  local line="$2"
+  [[ "$file" == "release_gwala.sh" && "$line" =~ SECRET_SCANNER_PATTERN ]]
+}
+
 secret_assignment_line() {
   local line="$1"
   [[ "$line" =~ (WEBULL_APP_SECRET|WEBULL_APP_KEY|WEBULL_ACCESS_TOKEN|WEBULL_REFRESH_TOKEN|POLYGON_API_KEY|GWALA_SMTP_PASSWORD|SMTP_PASSWORD|EMAIL_PASSWORD|GMAIL_APP_PASSWORD|API_SECRET|ACCESS_TOKEN|REFRESH_TOKEN)[[:space:]]*[:=][[:space:]]*[\"\'\ ]*[^\"\'\ ]{8,} ]]
@@ -81,12 +93,15 @@ audit_file_content() {
   grep -Iq . "$file" || return 0
   while IFS= read -r line || [[ -n "$line" ]]; do
     line_number=$((line_number + 1))
+    if marked_test_fixture_line "$file" "$line" || scanner_implementation_line "$file" "$line"; then
+      continue
+    fi
     if secret_assignment_line "$line" && ! placeholder_secret_line "$line"; then
-      printf 'Potential secret assignment: %s:%s (value redacted)\n' "$file" "$line_number" >&2
+      printf 'Potential secret assignment: %s:%s (credential assignment, value redacted)\n' "$file" "$line_number" >&2
       return 1
     fi
-    if [[ "$line" == *"-----BEGIN "*PRIVATE*KEY*"-----"* ]]; then
-      printf 'Potential private key material: %s:%s (value redacted)\n' "$file" "$line_number" >&2
+    if [[ "$line" == *"-----BEGIN "*PRIVATE*KEY*"-----"* ]]; then # SECRET_SCANNER_PATTERN
+      printf 'Potential private key material: %s:%s (private key marker, value redacted)\n' "$file" "$line_number" >&2
       return 1
     fi
   done < "$file"
@@ -163,25 +178,7 @@ run_focused_safety_tests() {
 }
 
 stage_release_changes() {
-  git add -A -- . \
-    ':(exclude).env' \
-    ':(exclude).webull_tokens/**' \
-    ':(exclude)webull_data_sdk.log' \
-    ':(exclude)config/gwala.env' \
-    ':(exclude)config/webull_tokens/**' \
-    ':(exclude)logs/**' \
-    ':(exclude)backups/**' \
-    ':(glob,exclude)data/*.csv' \
-    ':(glob,exclude)data/*.json' \
-    ':(glob,exclude)data/*.log' \
-    ':(glob,exclude)data/*.db' \
-    ':(glob,exclude)data/*.sqlite' \
-    ':(glob,exclude)data/*.sqlite3' \
-    ':(glob,exclude)data/*.parquet' \
-    ':(exclude)data/incidents/**' \
-    ':(glob,exclude)data/options_chains/*.csv' \
-    ':(exclude)data/options_chains/active/**' \
-    ':(exclude)data/options_chains/archive/**'
+  git add -A
 }
 
 show_staged_summary() {

@@ -98,12 +98,13 @@ reports RED.
 The continuous assurance runner coordinates existing read-only checks and
 host-generated artifacts into durable runtime, premarket, EOD, and weekly
 assurance artifacts. The application container must not require the Docker CLI
-or host Docker socket. Refresh host Docker health on the Ubuntu host before a
-containerized runtime smoke check:
+or host Docker socket. Refresh host Docker and host security health on the
+Ubuntu host before containerized assurance checks:
 
 ```bash
 cd /srv/projects/gwala
 python3 deploy/linux/write_host_docker_health.py --output logs/host_docker_health.json
+python3 deploy/linux/write_host_security_health.py --output logs/host_security_health.json
 ```
 
 Then run assurance inside Docker:
@@ -123,9 +124,9 @@ For Docker/Linux premarket checks, `/app/.env` is not expected. Secrets are
 injected into the container process by the host Compose `env_file`, sourced from
 `/srv/projects/gwala/config/gwala.env`. Premarket assurance verifies required
 secret variable names inside the container without printing values. Host secret
-file permissions should be verified by a host-generated security artifact; until
-that exists, host permission status is WATCH rather than a false missing `.env`
-warning.
+file permissions and host security posture are verified by the read-only
+`logs/host_security_health.json` artifact. If that artifact is missing or stale,
+premarket assurance reports WATCH rather than a false missing `.env` warning.
 
 ## Safety Requirements
 

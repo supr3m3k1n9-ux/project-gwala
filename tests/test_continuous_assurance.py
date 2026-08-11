@@ -260,10 +260,53 @@ AssertionError: expected true
                 env=env,
             )
             env_check = next(check for check in checks if check.component == "Secret environment variables")
-            host_check = next(check for check in checks if check.component == "Host secret file permissions")
+            host_check = next(check for check in checks if check.component == "Host security")
             self.assertEqual(env_check.status, "GREEN")
             self.assertEqual(host_check.status, "WATCH")
             self.assertNotEqual(host_check.reason, ".env is missing.")
+
+    def test_fresh_green_host_security_artifact_is_green(self) -> None:
+        with TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            artifact = tmp / "logs" / "host_security_health.json"
+            write_json(artifact, fresh_payload("GREEN"))
+            checks = secret_configuration_checks(
+                env_file=tmp / ".env",
+                host_security_json=artifact,
+                moment=now_et(),
+                platform_name="Linux",
+                in_docker=True,
+                env={**SAFE_ENV, "WEBULL_APP_KEY": "key", "WEBULL_APP_SECRET": "secret", "WEBULL_REGION_ID": "us"},
+            )
+
+        host_check = next(check for check in checks if check.component == "Host security")
+        self.assertEqual(host_check.status, "GREEN")
+
+    def test_fresh_red_host_security_artifact_is_red(self) -> None:
+        with TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            artifact = tmp / "logs" / "host_security_health.json"
+            write_json(
+                artifact,
+                fresh_payload(
+                    "RED",
+                    red_component="Secret file permissions",
+                    red_reason="gwala.env permissions 0o644",
+                    recommended_next_action="Restrict host secret file permissions.",
+                ),
+            )
+            checks = secret_configuration_checks(
+                env_file=tmp / ".env",
+                host_security_json=artifact,
+                moment=now_et(),
+                platform_name="Linux",
+                in_docker=True,
+                env={**SAFE_ENV, "WEBULL_APP_KEY": "key", "WEBULL_APP_SECRET": "secret", "WEBULL_REGION_ID": "us"},
+            )
+
+        host_check = next(check for check in checks if check.component == "Host security")
+        self.assertEqual(host_check.status, "RED")
+        self.assertIn("0o644", host_check.reason)
 
     def test_missing_required_secret_env_is_red_without_printing_values(self) -> None:
         env = {**SAFE_ENV, "WEBULL_APP_KEY": "key", "WEBULL_APP_SECRET": "super-secret"}
