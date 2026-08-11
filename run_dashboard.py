@@ -120,7 +120,7 @@ def scanner_data_state(scanner: pd.DataFrame, context: dict[str, object]) -> dic
         action = "Review only until the session is open and data has been refreshed."
     else:
         status = "stale"
-        action = f"Refresh Webull data on {next_session_date} before importing or sizing any paper trade."
+        action = f"Refresh market data on {next_session_date} before importing or sizing any paper trade."
 
     return {
         "latest_scanner_session": latest or "unknown",
@@ -305,7 +305,7 @@ def build_warnings(
     else:
         if data_state["data_status"] == "stale":
             warnings.append(
-                "Scanner data is stale. Do not import or size paper trades until Webull data is refreshed on the next market session."
+                "Scanner data is stale. Do not import or size paper trades until market data is refreshed on the next market session."
             )
         elif data_state["data_status"] == "prepared_for_next_session":
             warnings.append("Scanner data is for a future/next session state. Treat it as prep-only until refreshed during market hours.")

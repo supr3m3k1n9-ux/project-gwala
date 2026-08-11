@@ -28,6 +28,10 @@ from strategies.opening_range_breakout import add_opening_range_breakout_signals
 
 
 DEFAULT_SYMBOLS = playbook_symbols("approved_plus_watch")
+SEED_MIN_TRADES = 2
+SEED_MIN_EXPECTANCY_R = 0.10
+SEED_MIN_PROFIT_FACTOR = 1.20
+SEED_MAX_DRAWDOWN_R = -2.0
 
 
 @dataclass
@@ -283,6 +287,14 @@ def research_status(metrics: dict[str, Any]) -> str:
     trades = int(metrics.get("trades", 0) or 0)
     expectancy = float(metrics.get("expectancy_r", 0) or 0)
     profit_factor = finite_number(metrics.get("profit_factor", 0))
+    max_drawdown = float(metrics.get("max_drawdown_r", 0) or 0)
+    if (
+        trades >= SEED_MIN_TRADES
+        and expectancy >= SEED_MIN_EXPECTANCY_R
+        and profit_factor >= SEED_MIN_PROFIT_FACTOR
+        and max_drawdown >= SEED_MAX_DRAWDOWN_R
+    ):
+        return "watch_more"
     if trades < 8:
         return "too_few_trades"
     if expectancy > 0.10 and profit_factor >= 1.30:
@@ -397,6 +409,13 @@ def write_report(output_dir: Path, summary: pd.DataFrame, all_trades: pd.DataFra
             "min_expectancy_r": args.promotion_min_expectancy_r,
             "min_profit_factor": args.promotion_min_profit_factor,
             "max_drawdown_r": args.promotion_max_drawdown_r,
+        },
+        "seed_review_thresholds": {
+            "min_trades": SEED_MIN_TRADES,
+            "min_expectancy_r": SEED_MIN_EXPECTANCY_R,
+            "min_profit_factor": SEED_MIN_PROFIT_FACTOR,
+            "max_drawdown_r": SEED_MAX_DRAWDOWN_R,
+            "status": "watch_more",
         },
         "summary_rows": int(len(summary)),
         "total_trades": int(len(all_trades)),

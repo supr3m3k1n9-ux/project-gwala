@@ -17,6 +17,7 @@ import pandas as pd
 
 from config.settings import STRATEGY
 from config.strategy_vault import STRATEGY_VAULT, VaultStrategy
+from data.candle_cache import preferred_candle_path
 from data.market_data import load_candles_from_csv
 from indicators.trend import add_core_indicators
 from run_playbook import markdown_table
@@ -26,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build Project Gwala strategy vault report.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
     parser.add_argument("--market-symbol", default="SPY", help="Market symbol used as the broad regime proxy.")
-    parser.add_argument("--timeframe", default="M30", help="Saved Webull candle timeframe used for regime detection.")
+    parser.add_argument("--timeframe", default="M30", help="Saved market-data candle timeframe used for regime detection.")
     return parser.parse_args()
 
 
@@ -70,7 +71,7 @@ def true_range_percent(candles: pd.DataFrame) -> pd.Series:
 def load_market_candles(output_dir: Path, market_symbol: str, timeframe: str) -> pd.DataFrame:
     """Load the saved broad-market candles used for the current regime label."""
 
-    path = output_dir / f"webull_{market_symbol.upper()}_{timeframe.upper()}_candles.csv"
+    path = preferred_candle_path(output_dir, market_symbol.upper(), timeframe.upper())
     if not path.exists():
         return pd.DataFrame()
     try:
@@ -317,8 +318,11 @@ def summary_evidence(output_dir: Path, stem: str, missing_note: str) -> dict[str
     """Summarize a strategy report that has a standard summary CSV."""
 
     summary = read_csv_or_empty(output_dir / f"{stem}_summary.csv")
+    tightened_review = read_csv_or_empty(output_dir / f"{stem}_tightened_review.csv")
     walk_forward = read_csv_or_empty(output_dir / f"{stem}_walk_forward.csv")
     shadow = read_csv_or_empty(output_dir / f"{stem}_shadow_outcomes.csv")
+    forward = read_csv_or_empty(output_dir / f"{stem}_forward_observation_results.csv")
+    gate = read_json_or_empty(output_dir / f"{stem}_paper_watch_gate.json")
     if summary.empty:
         return {
             "evidence_status": "missing",
@@ -343,6 +347,14 @@ def summary_evidence(output_dir: Path, stem: str, missing_note: str) -> dict[str
         if "tightened_review" in summary.columns
         else pd.DataFrame()
     )
+    if stem in {"gap_fill_fade", "opening_range_breakout", "opening_range_failure", "trend_pullback_continuation"} and not tightened_review.empty and "decision" in tightened_review.columns:
+        review_pass_rows = tightened_review[
+            tightened_review["decision"].astype(str).isin(
+                ["passes_tightened_research", "provisional_tightened_pass", "seed_shadow_candidate"]
+            )
+        ].copy()
+        if not review_pass_rows.empty:
+            pass_rows = review_pass_rows
     promising = (
         summary[summary["research_status"].isin(["promising", "watch_more"])].copy()
         if "research_status" in summary.columns
@@ -403,6 +415,39 @@ def summary_evidence(output_dir: Path, stem: str, missing_note: str) -> dict[str
     if not shadow.empty:
         note = f"{note} Shadow samples: {len(shadow)} logged, {len(matured_shadow)} matured, {shadow_average:+.2f}R avg."
 
+    matured_forward = (
+        forward[forward["evaluation_status"] == "matured"].copy()
+        if not forward.empty and "evaluation_status" in forward.columns
+        else pd.DataFrame()
+    )
+    if not matured_forward.empty and "hypothetical_r" in matured_forward.columns:
+        forward_values = pd.to_numeric(matured_forward["hypothetical_r"], errors="coerce").dropna()
+        forward_average = round(float(forward_values.mean()), 4) if not forward_values.empty else 0.0
+    else:
+        forward_average = 0.0
+    if not forward.empty:
+        note = f"{note} Forward observations: {len(forward)} logged, {len(matured_forward)} matured, {forward_average:+.2f}R avg."
+
+    gate_decision = str(gate.get("decision", "not_applicable") or "not_applicable")
+    gate_blocker = str(gate.get("next_blocker", "") or "")
+    gate_blocked_count = int(gate.get("blocked_count", 0) or 0)
+    if gate:
+        if gate_decision == "paper_watch_eligible":
+            note = f"{note} Paper-watch gate: eligible for manual review."
+        else:
+            note = f"{note} Paper-watch gate: {gate_decision}; next blocker: {gate_blocker}."
+        shadow_count = int(gate.get("shadow_samples", len(shadow)) or 0)
+        matured_shadow_count = int(gate.get("matured_shadow_samples", len(matured_shadow)) or 0)
+        shadow_average = float(gate.get("shadow_average_r", shadow_average) or 0.0)
+        forward_count = int(gate.get("forward_observations", len(forward)) or 0)
+        matured_forward_count = int(gate.get("matured_forward_observations", len(matured_forward)) or 0)
+        forward_average = float(gate.get("forward_average_r", forward_average) or 0.0)
+    else:
+        shadow_count = int(len(shadow))
+        matured_shadow_count = int(len(matured_shadow))
+        forward_count = int(len(forward))
+        matured_forward_count = int(len(matured_forward))
+
     return {
         "evidence_status": status,
         "tightened_pass_rows": int(len(pass_rows)),
@@ -410,15 +455,15 @@ def summary_evidence(output_dir: Path, stem: str, missing_note: str) -> dict[str
         "best_symbols": best_symbols,
         "walk_forward_holding_rows": int(len(holding_rows)),
         "walk_forward_status": walk_forward_status,
-        "shadow_samples": int(len(shadow)),
-        "matured_shadow_samples": int(len(matured_shadow)),
+        "shadow_samples": shadow_count,
+        "matured_shadow_samples": matured_shadow_count,
         "shadow_average_r": shadow_average,
-        "forward_observations": 0,
-        "matured_forward_observations": 0,
-        "forward_average_r": 0.0,
-        "paper_watch_decision": "not_applicable",
-        "paper_watch_blocker": "",
-        "paper_watch_blocked_count": 0,
+        "forward_observations": forward_count,
+        "matured_forward_observations": matured_forward_count,
+        "forward_average_r": forward_average,
+        "paper_watch_decision": gate_decision,
+        "paper_watch_blocker": gate_blocker,
+        "paper_watch_blocked_count": gate_blocked_count,
         "evidence_note": note,
     }
 

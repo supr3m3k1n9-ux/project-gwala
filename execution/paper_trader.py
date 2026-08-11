@@ -38,6 +38,12 @@ PAPER_ORDER_COLUMNS = [
     "status",
     "source",
     "notes",
+    "invalid_for_validation",
+    "invalid_reason",
+    "invalidated_at_et",
+    "original_creation_timestamp",
+    "incident_id",
+    "source_contract_gate_identity",
 ]
 
 
@@ -117,6 +123,12 @@ def build_local_paper_orders(rows: pd.DataFrame, now: datetime | None = None) ->
                 "status": "local_paper_filled",
                 "source": "position_sizing_size_ok",
                 "notes": "Local paper simulation only; no broker order was sent.",
+                "invalid_for_validation": "",
+                "invalid_reason": "",
+                "invalidated_at_et": "",
+                "original_creation_timestamp": "",
+                "incident_id": "",
+                "source_contract_gate_identity": "",
             }
         )
     return pd.DataFrame(orders, columns=PAPER_ORDER_COLUMNS)
@@ -149,6 +161,12 @@ def orders_to_open_paper_trades(orders: pd.DataFrame) -> pd.DataFrame:
                 "followed_plan": "",
                 "exit_reason": "",
                 "notes": f"Opened by local paper simulator; order_id={row['paper_order_id']}",
+                "invalid_for_validation": row.get("invalid_for_validation", ""),
+                "invalid_reason": row.get("invalid_reason", ""),
+                "invalidated_at_et": row.get("invalidated_at_et", ""),
+                "original_creation_timestamp": row.get("original_creation_timestamp", ""),
+                "incident_id": row.get("incident_id", ""),
+                "source_contract_gate_identity": row.get("source_contract_gate_identity", ""),
             }
         )
     return pd.DataFrame(rows, columns=PAPER_COLUMNS)

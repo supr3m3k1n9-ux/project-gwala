@@ -15,6 +15,8 @@ import pandas as pd
 from config.market_calendar import MARKET_TZ, market_session_for_date
 from config.settings import STRATEGY
 from config.symbol_playbook import playbook_symbols
+from data.candle_cache import preferred_candle_path
+from data.market_data_sources import latest_source_for
 from run_playbook import markdown_table
 
 
@@ -23,9 +25,15 @@ PROVIDER_FINAL_BAR_TOLERANCE_MINUTES = 5
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Check local Webull candle-data integrity.")
-    parser.add_argument("--data-dir", type=Path, default=Path("logs"), help="Where Webull candle CSVs live.")
+    parser = argparse.ArgumentParser(description="Check local market-data candle integrity.")
+    parser.add_argument("--data-dir", type=Path, default=Path("logs"), help="Where market-data candle CSVs live.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
+    parser.add_argument(
+        "--source-csv",
+        type=Path,
+        default=Path("logs") / "market_data_sources.csv",
+        help="Provider metadata audit CSV.",
+    )
     return parser.parse_args()
 
 
@@ -88,10 +96,23 @@ def coverage_is_issue(status: object, session_coverage: object) -> bool:
     return str(status) != "ok" or str(session_coverage) == "partial_session"
 
 
-def inspect_file(symbol: str, timeframe: str, path: Path, now: datetime | None = None) -> dict:
+def inspect_file(
+    symbol: str,
+    timeframe: str,
+    path: Path,
+    now: datetime | None = None,
+    source_csv: Path | None = None,
+) -> dict:
     """Inspect one local candle CSV."""
 
-    base = {"symbol": symbol, "timeframe": timeframe, "path": str(path)}
+    source = latest_source_for(source_csv, symbol, timeframe) if source_csv is not None else {}
+    base = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "provider": source.get("provider", "unknown"),
+        "source_refreshed_at_et": source.get("refreshed_at_et", ""),
+        "path": str(path),
+    }
     if not path.exists():
         return {**base, "status": "missing", "rows": 0, "duplicate_timestamps": 0, "invalid_rows": 0, "latest_session": "", "latest_bar_et": "", "session_coverage": "missing"}
 
@@ -137,13 +158,20 @@ def inspect_file(symbol: str, timeframe: str, path: Path, now: datetime | None =
     }
 
 
-def build_integrity(data_dir: Path) -> pd.DataFrame:
+def build_integrity(data_dir: Path, source_csv: Path | None = None) -> pd.DataFrame:
     """Inspect all local M30/M5 files for approved symbols."""
 
     rows = []
     for symbol in approved_symbols():
         for timeframe in ["M30", "M5"]:
-            rows.append(inspect_file(symbol, timeframe, data_dir / f"webull_{symbol}_{timeframe}_candles.csv"))
+            rows.append(
+                inspect_file(
+                    symbol,
+                    timeframe,
+                    preferred_candle_path(data_dir, symbol, timeframe),
+                    source_csv=source_csv,
+                )
+            )
     return pd.DataFrame(rows)
 
 
@@ -197,7 +225,7 @@ logs/candle_data_integrity.md
 def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    integrity = build_integrity(args.data_dir)
+    integrity = build_integrity(args.data_dir, source_csv=args.source_csv)
     csv_path = args.output_dir / "candle_data_integrity.csv"
     report_path = args.output_dir / "candle_data_integrity.md"
     integrity.to_csv(csv_path, index=False)

@@ -15,9 +15,11 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
+from pandas.errors import EmptyDataError
 
 from backtesting.metrics import calculate_metrics, calculate_metrics_by_group
 from config.symbol_playbook import PLAYBOOKS, PlaybookEntry
+from data.candle_cache import preferred_candle_path
 from run_webull_watchlist import (
     MARKET_CONFIRMED_VARIANTS,
     normalize_metric,
@@ -55,6 +57,15 @@ def selected_trade_log_path(entry: PlaybookEntry, output_dir: Path) -> Path:
     )
     trade_type = "baseline" if use_baseline_candidate_metrics(entry.variant) else "elite"
     return output_dir / f"{output_stem}_{trade_type}_trades.csv"
+
+
+def read_trade_log(path: Path) -> pd.DataFrame:
+    """Read a selected trade log, allowing valid zero-trade CSV outputs."""
+
+    try:
+        return pd.read_csv(path)
+    except EmptyDataError:
+        return pd.DataFrame()
 
 
 def markdown_table(frame: pd.DataFrame) -> str:
@@ -157,11 +168,11 @@ logs/playbook_{mode}_summary.md
 def run_entry(entry: PlaybookEntry, data_dir: Path, output_dir: Path, market_regime_symbol: str) -> tuple[dict, pd.DataFrame]:
     """Run one playbook entry and return its summary row plus selected trades."""
 
-    entry_csv = data_dir / f"webull_{entry.symbol}_M30_candles.csv"
-    exit_csv = data_dir / f"webull_{entry.symbol}_M5_candles.csv"
+    entry_csv = preferred_candle_path(data_dir, entry.symbol, "M30")
+    exit_csv = preferred_candle_path(data_dir, entry.symbol, "M5")
     market_csv = None
     if entry.variant in MARKET_CONFIRMED_VARIANTS:
-        market_csv = data_dir / f"webull_{market_regime_symbol.upper()}_M30_candles.csv"
+        market_csv = preferred_candle_path(data_dir, market_regime_symbol.upper(), "M30")
 
     result = run_symbol_backtest(
         symbol=entry.symbol,
@@ -175,7 +186,7 @@ def run_entry(entry: PlaybookEntry, data_dir: Path, output_dir: Path, market_reg
     )
 
     trade_log = selected_trade_log_path(entry, output_dir)
-    trades = pd.read_csv(trade_log)
+    trades = read_trade_log(trade_log)
     trades["playbook_setup"] = entry.setup_name
     trades["playbook_variant"] = entry.variant
     trades["playbook_exit_profile"] = entry.exit_profile

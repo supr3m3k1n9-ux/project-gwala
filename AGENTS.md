@@ -5,7 +5,36 @@ for a VWAP + EMA opening trend continuation trading strategy.
 
 ## Current Phase
 
-Stay in research and backtesting mode.
+Stay in paper-collection mode for the next 10 market sessions.
+
+The primary KPI is:
+
+- Completed Official Paper Trades
+
+Allowed work during this mode:
+
+- Candidate capture.
+- Candidate review.
+- Contract review.
+- Paper trade logging.
+- Exit management.
+- Safety-critical bug fixes.
+
+Disallowed work during this mode:
+
+- New strategies.
+- New indicators.
+- New dashboard features.
+- New research systems.
+- New routing logic.
+- New filters.
+- New data providers.
+- New architecture projects.
+
+Exception:
+
+- Only make a disallowed-category change if it directly increases completed
+  official paper trades or fixes a blocker preventing official paper trades.
 
 Do not add live Webull execution, real-money trading, broker order placement,
 or automated trade execution unless the user explicitly asks after backtesting
@@ -67,11 +96,11 @@ Never add:
 
 The next useful development tasks are:
 
-1. Add CSV import support so the backtester does not depend only on Yahoo data.
-2. Add a multi-symbol runner for SPY, QQQ, NVDA, TSLA, AMD, AAPL, META, MSFT.
-3. Add a more reliable data provider later, such as Webull OpenAPI, Alpaca, or Polygon.
-4. Add live alert mode only after backtests are usable.
-5. Add paper trading only after live alerts behave correctly.
+1. Run candidate capture during each market session.
+2. Review A/B paper candidates.
+3. Complete contract review for valid candidates.
+4. Log official paper trades that pass the current workflow.
+5. Manage exits and record completed official paper-trade outcomes.
 
 ## Data Source Note
 

@@ -7,12 +7,18 @@ const investmentNarrativeUrl = "/api/investment-narrative";
 const backtestTradesUrl = "/api/backtest-trades";
 const backtestPortfolioUrl = "/api/backtest-portfolio";
 const openPaperTradesUrl = "/api/open-paper-trades";
+const paperCommandCenterUrl = "/api/paper-command-center";
 const refreshStatusActionUrl = "/api/actions/refresh-status";
 const refreshWebullDataActionUrl = "/api/actions/refresh-webull-data";
 const premarketCheckActionUrl = "/api/actions/premarket-check";
 const paperSessionPreviewActionUrl = "/api/actions/paper-session-preview";
 const paperSessionConfirmEntryActionUrl = "/api/actions/paper-session-confirm-entry";
 const paperSessionConfirmExitsActionUrl = "/api/actions/paper-session-confirm-exits";
+const paperCommandChartApprovalUrl = "/api/actions/paper-command-center/chart-approval";
+const paperCommandContractApprovalUrl = "/api/actions/paper-command-center/contract-approval";
+const paperCommandAutoSelectContractUrl = "/api/actions/paper-command-center/auto-select-contract";
+const paperCommandConfirmEntryUrl = "/api/actions/paper-command-center/confirm-entry";
+const paperCommandConfirmExitUrl = "/api/actions/paper-command-center/confirm-exit";
 const updatePaperTradeActionUrl = "/api/actions/update-paper-trade";
 const replayJournalStorageKey = "project_gwala_replay_practice_v1";
 const autoRefreshMs = 60_000;
@@ -27,11 +33,18 @@ const reports = [
   ["refresh_audit", "Refresh Audit"],
   ["setup_health", "Setup Health"],
   ["paper_session", "Paper Session"],
+  ["paper_entry_packet", "Paper Entry Packet"],
+  ["paper_gate_v2", "Paper Gate v2"],
+  ["options_contract_gate", "Options Contract Gate"],
+  ["paper_validation_sample_import", "Validation Sample Import"],
+  ["daily_ship_report", "Daily Ship Report"],
   ["pre_entry_review", "Pre-Entry Review"],
   ["paper_execution", "Paper Execution"],
   ["candidate_alerts", "Candidate Alerts"],
   ["forward_sample_queue", "Forward Sample Queue"],
   ["almost_ready_breakout", "Almost-Ready Breakout"],
+  ["market_sprint_mode", "Market Sprint Mode"],
+  ["probation_watch", "Probation Watch"],
   ["post_scan_digest", "Post-Scan Digest"],
   ["forward_evidence", "Forward Evidence"],
   ["candidate_aging", "Candidate Aging"],
@@ -42,11 +55,17 @@ const reports = [
   ["readiness", "Readiness"],
   ["checkpoint", "Checkpoint"],
   ["refresh_status", "Refresh Status"],
+  ["provider_stability_audit", "Provider Stability Audit"],
   ["morning_watchdog", "Morning Watchdog"],
   ["automation_timeline", "Automation Timeline"],
+  ["after_close_evidence_maturity", "After-Close Evidence Maturity"],
+  ["phase_milestones", "Phase Milestones"],
+  ["historical_bucket_sync", "Historical Bucket Sync"],
   ["premarket", "Pre-Market Verification"],
   ["setup_replay", "Setup Replay"],
   ["strategy_vault", "Strategy Vault"],
+  ["market_regime_router", "Market Regime Router"],
+  ["controlled_universe_expansion", "Controlled Expansion"],
   ["vwap_mean_reversion", "VWAP Mean Reversion"],
   ["vwap_mean_reversion_walk_forward", "VWAP Mean Reversion Walk-Forward"],
   ["vwap_mean_reversion_shadow_samples", "VWAP Mean Reversion Shadow Samples"],
@@ -56,11 +75,20 @@ const reports = [
   ["vwap_reclaim_reject", "VWAP Reclaim / Reject"],
   ["vwap_reclaim_reject_walk_forward", "VWAP Reclaim / Reject Walk-Forward"],
   ["vwap_reclaim_reject_shadow_samples", "VWAP Reclaim / Reject Shadow Samples"],
+  ["vwap_reclaim_reject_evidence_maturity", "VWAP Reclaim / Reject Evidence Maturity"],
   ["opening_range_breakout", "Opening Range Breakout"],
   ["trend_pullback_continuation", "Trend Pullback Continuation"],
+  ["trend_pullback_continuation_tightened_review", "Trend Pullback Tightened Review"],
+  ["trend_pullback_continuation_shadow_samples", "Trend Pullback Shadow Samples"],
+  ["trend_pullback_continuation_forward_observations", "Trend Pullback Forward Observations"],
+  ["trend_pullback_continuation_paper_watch_gate", "Trend Pullback Paper-Watch Gate"],
   ["opening_range_failure", "Opening Range Failure"],
   ["strategy_evidence_accumulator", "Strategy Evidence Accumulator"],
   ["paper_activation_rules", "Paper Activation Rules"],
+  ["strategy_walk_forward_matrix", "Strategy Walk-Forward Matrix"],
+  ["strategy_backtest_coverage", "Strategy Backtest Coverage"],
+  ["validation_deepening_queue", "Validation Deepening Queue"],
+  ["strategy_triage", "Strategy Triage"],
   ["strategy_improvement_plan", "Strategy Improvement Plan"],
   ["feature_wiring_audit", "Feature Wiring Audit"],
   ["research_confidence", "Research Confidence"],
@@ -75,6 +103,7 @@ const reports = [
   ["deep_controlled_variant_review", "Deep Controlled"],
   ["deep_walk_forward_review", "Deep Walk Forward"],
   ["deep_regime_review", "Deep Regime"],
+  ["dashboard_data_preflight", "Dashboard Data Preflight"],
   ["system_state", "System State"],
 ];
 const reportGroups = [
@@ -90,19 +119,25 @@ const reportGroups = [
       "integrity",
       "refresh_audit",
       "refresh_status",
+      "provider_stability_audit",
+      "dashboard_data_preflight",
       "morning_watchdog",
       "automation_timeline",
+      "after_close_evidence_maturity",
+      "phase_milestones",
+      "historical_bucket_sync",
+      "market_regime_router",
       "premarket",
       "setup_health",
     ],
   },
   {
     label: "Paper Review",
-    reports: ["paper_session", "pre_entry_review", "paper_execution", "candidate_alerts", "forward_sample_queue", "almost_ready_breakout", "post_scan_digest", "forward_evidence", "candidate_aging", "no_trade_analysis", "shadow_samples", "open_paper_monitor", "exit_audit", "readiness", "checkpoint", "setup_replay"],
+    reports: ["paper_session", "paper_entry_packet", "paper_gate_v2", "options_contract_gate", "paper_validation_sample_import", "daily_ship_report", "pre_entry_review", "paper_execution", "candidate_alerts", "forward_sample_queue", "almost_ready_breakout", "market_sprint_mode", "probation_watch", "post_scan_digest", "forward_evidence", "candidate_aging", "no_trade_analysis", "shadow_samples", "open_paper_monitor", "exit_audit", "readiness", "checkpoint", "setup_replay"],
   },
   {
     label: "Research",
-    reports: ["strategy_vault", "strategy_evidence_accumulator", "paper_activation_rules", "vwap_mean_reversion", "vwap_mean_reversion_walk_forward", "vwap_mean_reversion_shadow_samples", "vwap_mean_reversion_forward_observations", "vwap_mean_reversion_paper_watch_gate", "gap_fill_fade", "vwap_reclaim_reject", "vwap_reclaim_reject_walk_forward", "vwap_reclaim_reject_shadow_samples", "opening_range_breakout", "trend_pullback_continuation", "opening_range_failure", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
+    reports: ["strategy_vault", "market_regime_router", "controlled_universe_expansion", "strategy_evidence_accumulator", "paper_activation_rules", "strategy_walk_forward_matrix", "research_strategy_tightened_review", "strategy_backtest_coverage", "validation_deepening_queue", "strategy_triage", "vwap_mean_reversion", "vwap_mean_reversion_walk_forward", "vwap_mean_reversion_shadow_samples", "vwap_mean_reversion_forward_observations", "vwap_mean_reversion_paper_watch_gate", "gap_fill_fade", "gap_fill_fade_tightened_review", "gap_fill_fade_shadow_samples", "gap_fill_fade_forward_observations", "gap_fill_fade_paper_watch_gate", "vwap_reclaim_reject", "vwap_reclaim_reject_walk_forward", "vwap_reclaim_reject_shadow_samples", "vwap_reclaim_reject_evidence_maturity", "opening_range_breakout", "opening_range_breakout_tightened_review", "opening_range_breakout_walk_forward_deepening", "opening_range_breakout_shadow_samples", "opening_range_breakout_forward_observations", "opening_range_breakout_paper_watch_gate", "trend_pullback_continuation", "trend_pullback_continuation_tightened_review", "trend_pullback_continuation_shadow_samples", "trend_pullback_continuation_forward_observations", "trend_pullback_continuation_paper_watch_gate", "opening_range_failure", "opening_range_failure_tightened_review", "opening_range_failure_walk_forward_deepening", "opening_range_failure_shadow_samples", "opening_range_failure_forward_observations", "opening_range_failure_paper_watch_gate", "strategy_improvement_plan", "feature_wiring_audit", "research_confidence", "promotion_review", "controlled_variant_review", "walk_forward_review", "regime_review", "strategy_overlap_audit", "opening_range_relaxation"],
   },
   {
     label: "Deep Research",
@@ -116,18 +151,18 @@ const reportGroups = [
   },
   {
     label: "System",
-    reports: ["system_state"],
+    reports: ["dashboard_data_preflight", "system_state"],
   },
 ];
 const glossary = {
   "scanner-freshness": "Whether the scanner output comes from today's latest saved candles. Stale scanner data should not be used for current paper review.",
-  "data-pipe": "The path that brings Webull candle data into local CSV files and reports.",
+  "data-pipe": "The path that brings Polygon or another market-data provider into local CSV files and reports.",
   "market-clock": "Checks whether the regular stock-market session is open, closed, or waiting for the next session.",
   "paper-gate": "A local safety gate that blocks paper logging until a fresh candidate has been reviewed. It never sends broker orders.",
   "candidate-review": "A setup that appeared on the latest relevant candle and is available for manual review.",
   "sample-queue": "Read-only queue for collecting forward paper samples cleanly. It ranks ready, blocked, and almost-ready scanner rows.",
   "refresh-status": "A small JSON/report that says whether the latest scanner and candle files are fresh enough for review.",
-  "refresh-audit": "A log proving when each symbol's Webull candles were last refreshed and whether they match the current session.",
+  "refresh-audit": "A log proving when each symbol's market-data candles were last refreshed and whether they match the current session.",
   "pre-market-gate": "Checks that should pass before trusting market-hours scanner output.",
   "pre-market-probe": "A data-access check before the session. It confirms the app can reach the expected data source.",
   "current-candidates": "Setups found on the latest relevant candle, available for manual review only.",
@@ -198,6 +233,8 @@ let alertStateInitialized = false;
 let lastReadyCandidateKeys = new Set();
 let lastOpenPaperKeys = new Set();
 let terminalFocus = null;
+let paperCommandCenter = { candidates: [], open_trades: [] };
+let selectedPaperCommandKey = "";
 const preEntryReviewedKeys = new Set();
 let activePreEntryKey = "";
 
@@ -236,6 +273,68 @@ function setStatusPill(element, status) {
 function updateAutoRefreshStatus(message) {
   const target = $("auto-refresh-status");
   if (target) target.textContent = message;
+}
+
+function setFeedRailCollapsed(collapsed) {
+  document.body.classList.toggle("feed-rail-collapsed", collapsed);
+  try {
+    localStorage.setItem("gwalaFeedRailCollapsed", collapsed ? "1" : "0");
+  } catch {
+    // Local storage can be unavailable in hardened browser contexts.
+  }
+  const toggle = $("feed-rail-toggle");
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    toggle.textContent = collapsed ? "Feed" : "Hide Feed";
+  }
+}
+
+function hydrateFeedRailPreference() {
+  let collapsed = false;
+  try {
+    collapsed = localStorage.getItem("gwalaFeedRailCollapsed") === "1";
+  } catch {
+    collapsed = false;
+  }
+  setFeedRailCollapsed(collapsed);
+}
+
+function localTimezoneLabel() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+}
+
+function compactTimezoneLabel() {
+  const zone = localTimezoneLabel();
+  const parts = zone.split("/");
+  return parts[parts.length - 1].replace(/_/g, " ");
+}
+
+function parseMarketTime(value) {
+  const match = text(value, "").match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) (EST|EDT)$/);
+  if (!match) return null;
+  const offset = match[3] === "EDT" ? "-04:00" : "-05:00";
+  const parsed = new Date(`${match[1]}T${match[2]}${offset}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function appStateGeneratedLabel(state) {
+  const generated = state.app_health?.generated_at_et || state.generated_at_et || "";
+  const parsed = parseMarketTime(generated);
+  if (!parsed) return generated || "unknown";
+  const marketTime = generated.match(/\d{2}:\d{2}:\d{2} (EST|EDT)$/)?.[0] || generated;
+  return `${marketTime} market`;
+}
+
+function appStateAgeLabel(state) {
+  const generated = state.app_health?.generated_at_et || state.generated_at_et || "";
+  const parsed = parseMarketTime(generated);
+  if (!parsed) return "unknown age";
+  const ageMinutes = Math.max(0, Math.round((Date.now() - parsed.getTime()) / 60000));
+  if (ageMinutes < 1) return "less than 1 min old";
+  if (ageMinutes < 60) return `${ageMinutes} min old`;
+  const hours = Math.floor(ageMinutes / 60);
+  const minutes = ageMinutes % 60;
+  return `${hours} hr ${minutes} min old`;
 }
 
 function helpBubble(key) {
@@ -335,7 +434,7 @@ function chartFreshnessState(chart, state) {
   if (lag > threshold) {
     return {
       tone: "caution",
-      message: `Stale ${chart.timeframe} candles: ${minutesLabel(lag)} old. Refresh Webull data before paper review.`,
+      message: `Stale ${chart.timeframe} candles: ${minutesLabel(lag)} old. Refresh market data before paper review.`,
     };
   }
   return {
@@ -350,6 +449,7 @@ function readinessSummary(state) {
   const market = refresh.market || state.market || {};
   const scanner = refresh.scanner || state.scanner || {};
   const freshness = state.data_freshness || {};
+  const marketSources = state.market_data_sources || {};
   const candidateCount = Number(state.current_candidates?.count || state.scanner?.current_candidate_count || 0);
   const eligibleSizeCount = Number(state.position_sizing?.eligible_size_count || 0);
   const dataPipeReady = premarket.status === "passed" && ["pass", "previous_pass"].includes(premarket.probe_status);
@@ -362,7 +462,7 @@ function readinessSummary(state) {
   const blockedReason = refresh.paper_import_reason || "Blocked until a fresh reviewed current-candle candidate exists.";
   let status = "watch";
   let label = "Waiting";
-  let message = "The data pipe is ready. Wait for regular market-hours candles, then refresh Webull data.";
+  let message = "The data pipe is ready. Wait for regular market-hours candles, then refresh market data.";
 
   if (!dataPipeReady || !integrityReady) {
     status = "caution";
@@ -394,8 +494,8 @@ function readinessSummary(state) {
     cards: [
       {
         title: "Data Pipe",
-        value: dataPipeReady && integrityReady ? "Ready" : "Check",
-        detail: `Probe: ${titleCase(premarket.probe_status || "not_run")} / Integrity: ${integrityReady ? "Pass" : "Review"}`,
+        value: dataPipeReady && integrityReady ? titleCase(marketSources.latest_provider || "Ready") : "Check",
+        detail: `Latest provider: ${titleCase(marketSources.latest_provider || "unknown")}. Integrity: ${integrityReady ? "Pass" : "Review"}`,
         level: dataPipeReady && integrityReady ? "healthy" : "caution",
       },
       {
@@ -478,8 +578,8 @@ function commandCenterDecision(state) {
     return {
       tone: "watch",
       title: "Market is open, but the scanner data is stale.",
-      detail: "Refresh Webull data before reviewing candidates. This rebuilds reports and stays research-only.",
-      button: "Refresh Webull Data",
+      detail: "Refresh Webull market data before reviewing candidates. This rebuilds reports and stays research-only.",
+      button: "Refresh Market Data",
       action: "refresh-webull",
     };
   }
@@ -488,8 +588,8 @@ function commandCenterDecision(state) {
     return {
       tone: "caution",
       title: "Market is open, but candle timestamps need a refresh.",
-      detail: `${candleState.detail} Refresh Webull data before reviewing paper candidates.`,
-      button: "Refresh Webull Data",
+      detail: `${candleState.detail} Refresh Webull market data before reviewing paper candidates.`,
+      button: "Refresh Market Data",
       action: "refresh-webull",
     };
   }
@@ -617,7 +717,8 @@ function renderCommandCenter(state) {
     : "No autonomous workflow status file yet. The dashboard can still be used manually.";
   const dataTone = appStatusLevel(state.data_freshness?.data_status);
   const dataStatus = titleCase(state.data_freshness?.data_status || "unknown");
-  const dataDetail = `Latest scanner session: ${state.data_freshness?.latest_scanner_session || "unknown"}.`;
+  const marketSources = state.market_data_sources || {};
+  const dataDetail = `Latest scanner: ${state.data_freshness?.latest_scanner_session || "unknown"}. Provider: ${titleCase(marketSources.latest_provider || "unknown")} ${marketSources.latest_refreshed_at_et || ""}.`;
   const candleState = candleFreshnessState(state);
   const reviewable = Number(candidateState.ready_for_review_count || 0);
   const current = Number(candidateState.count || 0);
@@ -662,6 +763,407 @@ function renderCommandCenter(state) {
   }
 }
 
+function launchStatusLabel(status) {
+  if (status === "gate_complete") return "Gate Complete";
+  if (status === "moving") return "Moving Toward Launch";
+  if (status === "blocked") return "Blocked";
+  if (status === "scanning") return "Scanning";
+  return titleCase(status || "checking");
+}
+
+function renderPaperTradeCommandCenter(state) {
+  loadPaperCommandCenter();
+}
+
+function selectedPaperCommandCandidate() {
+  return (paperCommandCenter.candidates || []).find((candidate) => candidate.sample_key === selectedPaperCommandKey) || null;
+}
+
+function paperCommandTone(status) {
+  if (status === "ready_for_paper_entry") return "healthy";
+  if (status === "waiting_for_contract_review") return "watch";
+  if (status === "waiting_for_chart_review") return "scanning";
+  return "blocked";
+}
+
+function renderPaperCommandCandidate(candidate) {
+  const card = $("paper-command-candidate-card");
+  if (!card) return;
+  if (!candidate) {
+    card.innerHTML = '<p class="paper-empty">No Paper Gate survivor is ready right now.</p>';
+    return;
+  }
+  card.innerHTML = `
+    <div><span>Symbol</span><strong>${escapeHtml(candidate.symbol || "--")}</strong></div>
+    <div><span>Setup</span><strong>${escapeHtml(candidate.setup || "--")}</strong></div>
+    <div><span>Direction</span><strong>${escapeHtml(titleCase(candidate.direction || "--"))}</strong></div>
+    <div><span>Tier</span><strong>${escapeHtml(candidate.sample_tier || "--")}</strong></div>
+    <div><span>Entry</span><strong>${escapeHtml(candidate.planned_entry || "--")}</strong></div>
+    <div><span>Stop</span><strong>${escapeHtml(candidate.planned_stop || "--")}</strong></div>
+    <div><span>Target</span><strong>${escapeHtml(candidate.planned_target || "--")}</strong></div>
+    <div><span>Shares</span><strong>${escapeHtml(candidate.suggested_shares || "--")}</strong></div>
+    <div><span>Freshness</span><strong>${escapeHtml(titleCase(candidate.signal_freshness || "--"))}</strong></div>
+    <div><span>Router</span><strong>${escapeHtml(titleCase(candidate.router_route || "--"))}</strong></div>
+  `;
+}
+
+function fillPaperContractForm(candidate) {
+  if (!candidate) return;
+  const contract = candidate.contract || {};
+  $("paper-option-type").value = contract.option_type || (String(candidate.direction || "").toLowerCase() === "short" ? "PUT" : "CALL");
+  $("paper-contract-symbol").value = contract.contract_symbol || "";
+  $("paper-expiration").value = contract.expiration || "";
+  $("paper-dte").value = contract.dte || "";
+  $("paper-strike").value = contract.strike || "";
+  $("paper-delta").value = contract.delta || "";
+  $("paper-bid").value = contract.bid || "";
+  $("paper-ask").value = contract.ask || "";
+  $("paper-mid").value = contract.mid || "";
+  $("paper-spread-pct").value = contract.spread_pct || "";
+  $("paper-volume").value = contract.volume || "";
+  $("paper-open-interest").value = contract.open_interest || "";
+  $("paper-premium").value = contract.premium || "";
+  $("paper-iv").value = contract.implied_volatility || "";
+  $("paper-earnings").checked = Boolean(contract.earnings_within_window);
+  $("paper-contract-notes").value = contract.notes || "";
+}
+
+function renderPaperCommandCenterPayload(payload) {
+  paperCommandCenter = payload || { candidates: [], open_trades: [] };
+  const candidates = paperCommandCenter.candidates || [];
+  if (!selectedPaperCommandKey || !candidates.some((candidate) => candidate.sample_key === selectedPaperCommandKey)) {
+    selectedPaperCommandKey = candidates[0]?.sample_key || "";
+  }
+  const candidate = selectedPaperCommandCandidate();
+  const status = candidate?.status || (candidates.length ? "waiting_for_chart_review" : "waiting");
+  const tone = candidate ? paperCommandTone(status) : "watch";
+  const chartApproved = candidate?.chart_approval?.decision === "approved";
+  const contractPassed = Boolean(candidate?.contract?.contract_gate_pass);
+  const openCount = Number(paperCommandCenter.open_trade_count || 0);
+
+  $("paper-command-verdict").className = `paper-command-verdict ${tone} command-flow-verdict`;
+  setText("paper-command-status", candidate ? titleCase(status) : "Waiting");
+  setText(
+    "paper-command-summary",
+    candidate
+      ? `${candidate.symbol} ${candidate.setup}: ${candidate.next_action || "Continue the four-decision workflow."}`
+      : "No Paper Gate survivor is ready right now.",
+  );
+  setText("paper-command-guardrail", paperCommandCenter.guardrail || "Same gates. Same safety. Fewer handoffs.");
+  setText("paper-command-chart-step", chartApproved ? "Chart approved." : candidate ? "Review the saved chart and approve or reject." : "Waiting for a Paper Gate survivor.");
+  setText("paper-command-contract-step", contractPassed ? "Contract Gate passed." : candidate ? "Fill contract details and approve through Contract Gate." : "Waiting.");
+  setText("paper-command-entry-step", chartApproved && contractPassed ? "Ready for one official paper entry confirmation." : "Requires chart approval and Contract Gate pass.");
+  setText("paper-command-exit-step", openCount ? `${openCount} open paper row${openCount === 1 ? "" : "s"} available.` : "No open paper rows.");
+
+  const picker = $("paper-command-candidate-select");
+  picker.innerHTML = candidates.length
+    ? candidates
+        .map(
+          (item) =>
+            `<option value="${escapeHtml(item.sample_key)}">${escapeHtml(item.symbol)} ${escapeHtml(item.setup)} ${escapeHtml(titleCase(item.direction || ""))} ${escapeHtml(item.sample_tier || "")}</option>`,
+        )
+        .join("")
+    : '<option value="">No ready candidates</option>';
+  picker.value = selectedPaperCommandKey;
+  picker.disabled = candidates.length === 0;
+
+  setText("paper-command-candidate-title", candidate ? `${candidate.symbol} ${candidate.setup}` : "No candidate selected");
+  $("paper-command-candidate-status").className = `status ${tone}`;
+  $("paper-command-candidate-status").textContent = candidate ? titleCase(status) : "Waiting";
+  renderPaperCommandCandidate(candidate);
+  fillPaperContractForm(candidate);
+
+  const chartDisabled = !candidate;
+  $("paper-command-approve-chart").disabled = chartDisabled;
+  $("paper-command-reject-chart").disabled = chartDisabled;
+  $("paper-command-open-chart").href = candidate ? `/chart.html?symbol=${encodeURIComponent(candidate.symbol)}&timeframe=M30` : "#trading-workspace";
+  $("paper-command-contract-status").className = `status ${contractPassed ? "healthy" : candidate ? "watch" : "review_only"}`;
+  $("paper-command-contract-status").textContent = contractPassed ? "Passed" : candidate ? "Needs review" : "Waiting";
+  const chainState = candidate?.option_chain_csv || {};
+  const contractReason =
+    candidate?.contract?.contract_gate_reason
+    || (candidate && chainState.status === "missing" ? chainState.message : "")
+    || "Contract details are checked by the existing Contract Gate.";
+  setText("paper-command-contract-reason", contractReason);
+  $("paper-command-auto-select-contract").disabled = !(candidate && String(candidate.sample_tier || "").toUpperCase() === "A");
+  $("paper-command-run-contract").disabled = !candidate;
+  $("paper-command-entry-status").className = `status ${chartApproved && contractPassed ? "healthy" : "watch"}`;
+  $("paper-command-entry-status").textContent = chartApproved && contractPassed ? "Ready" : "Waiting";
+  setText(
+    "paper-command-entry-detail",
+    chartApproved && contractPassed
+      ? "This will write validation sample, paper order, and open paper trade rows. No broker order is placed."
+      : "Chart approval and Contract Gate pass are required before entry confirmation.",
+  );
+  $("paper-command-confirm-entry").disabled = !(candidate && chartApproved && contractPassed);
+  $("paper-command-exit-status").className = `status ${openCount ? "watch" : "review_only"}`;
+  $("paper-command-exit-status").textContent = openCount ? `${openCount} open` : "No open rows";
+  $("paper-command-confirm-exit").disabled = openCount === 0;
+  $("paper-command-open-trades").innerHTML = openCount
+    ? (paperCommandCenter.open_trades || [])
+        .slice(0, 4)
+        .map(
+          (row) => `<p><strong>#${escapeHtml(row.row)} ${escapeHtml(row.symbol)}</strong> ${escapeHtml(row.setup)} ${escapeHtml(row.entry_time_et)}</p>`,
+        )
+        .join("")
+    : '<p class="paper-empty">No open paper rows need exit confirmation.</p>';
+}
+
+async function loadPaperCommandCenter() {
+  const message = $("paper-command-action-message");
+  try {
+    const response = await fetch(paperCommandCenterUrl, { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || `Command center request failed: ${response.status}`);
+    renderPaperCommandCenterPayload(payload);
+    if (message && !message.classList.contains("running")) {
+      message.className = "action-message";
+      message.textContent = payload.candidate_count
+        ? "Choose one candidate and work left to right."
+        : "Waiting for Paper Gate survivors.";
+    }
+  } catch (error) {
+    if (message) {
+      message.className = "action-message failure";
+      message.textContent = error.message;
+    }
+  }
+}
+
+function candidateTier(card) {
+  const grade = String(card.quality_grade || card.grade || "").trim().toUpperCase();
+  if (grade.startsWith("A")) return "A";
+  if (grade.startsWith("B")) return "B";
+  if (String(card.paper_gate_tier || "").toUpperCase().startsWith("A")) return "A";
+  if (String(card.paper_gate_tier || "").toUpperCase().startsWith("B")) return "B";
+  return "";
+}
+
+function renderTradeDeskSummary(state) {
+  const cards = state.current_candidates?.cards || [];
+  const aTier = cards.filter((card) => candidateTier(card) === "A");
+  const bTier = cards.filter((card) => candidateTier(card) === "B");
+  const readyCards = cards.filter((card) => card.ready_for_review);
+  const primary = readyCards[0] || aTier[0] || bTier[0] || cards[0];
+  const vaultRegime = state.strategy_vault?.regime || {};
+  const router = state.market_regime_router || {};
+  const dataFresh = state.data_freshness?.data_status === "fresh_for_today";
+  const safetyOk =
+    state.safety?.live_trading_enabled === false &&
+    state.safety?.broker_order_execution_enabled === false &&
+    state.safety?.real_money_ready === false;
+  const healthOk = dataFresh && safetyOk;
+
+  setText("trade-desk-regime", titleCase(vaultRegime.regime || router.market_regime || "unknown"));
+  setText(
+    "trade-desk-regime-detail",
+    vaultRegime.description || router.next_action || "Router state has not been summarized yet.",
+  );
+  setText("trade-desk-a-tier", `${aTier.length}`);
+  setText("trade-desk-b-tier", `${bTier.length}`);
+  setText("trade-desk-health", healthOk ? "Healthy" : dataFresh ? "Check safety" : "Refresh data");
+  setText(
+    "trade-desk-health-detail",
+    `${titleCase(state.data_freshness?.data_status || "unknown")} data. Broker execution: ${state.safety?.broker_order_execution_enabled}.`,
+  );
+
+  if (!primary) {
+    setText("trade-desk-answer", "No trade right now");
+    setText("trade-desk-detail", "No current-candle A/B candidate is available.");
+    setText("trade-desk-status", "Waiting");
+    setText("trade-desk-status-detail", "Scanner has no current candidate to review.");
+    setText("trade-desk-contract", "No candidate");
+    setText("trade-desk-contract-detail", "Contract gate waits for a paper candidate.");
+    return;
+  }
+
+  const tier = candidateTier(primary) || titleCase(primary.quality_grade || "watch");
+  const status = primary.ready_for_review ? "Ready to review" : titleCase(primary.router_route || "Blocked");
+  setText("trade-desk-answer", primary.ready_for_review ? `${primary.symbol} ${tier}-tier candidate` : "Candidate blocked");
+  setText(
+    "trade-desk-detail",
+    `${primary.symbol} ${primary.setup} ${titleCase(primary.direction)}. Entry ${primary.entry || "--"}, stop ${primary.stop || "--"}, target ${primary.target || "--"}.`,
+  );
+  setText("trade-desk-status", status);
+  setText(
+    "trade-desk-status-detail",
+    primary.ready_for_review
+      ? "Manual chart review and paper preview are next."
+      : primary.router_action || primary.blockers?.join(" ") || "Candidate is not eligible for paper review.",
+  );
+  setText("trade-desk-contract", primary.ready_for_review ? "Run contract gate" : "Blocked");
+  setText(
+    "trade-desk-contract-detail",
+    primary.ready_for_review
+      ? `Use ${titleCase(primary.direction)} contract only after options gate passes spread, delta, volume/OI, premium, and DTE checks.`
+      : "No contract recommendation while the candidate is blocked.",
+  );
+}
+
+function renderHomeDashboard(state) {
+  const candidateState = state.current_candidates || {};
+  const cards = candidateState.cards || [];
+  const ready = Number(candidateState.ready_for_review_count || 0);
+  const current = Number(candidateState.count || cards.length || 0);
+  const center = state.paper_trade_command_center || {};
+  const completed = Number(center.completed_official_paper_trades || state.paper_progress?.allowed_completed_trades || 0);
+  const remaining = Number(center.remaining_to_30 ?? state.paper_progress?.first_gate_remaining ?? 30);
+  const vaultRegime = state.strategy_vault?.regime || {};
+  const dataFresh = state.data_freshness?.data_status === "fresh_for_today";
+  const safetyOk =
+    state.safety?.live_trading_enabled === false &&
+    state.safety?.broker_order_execution_enabled === false &&
+    state.safety?.real_money_ready === false;
+  const systemHealthy = dataFresh && safetyOk;
+  const tradeLabel = ready > 0 ? `${ready} ready` : current > 0 ? `${current} blocked/watch` : "No trade";
+  const tradeDetail = ready > 0
+    ? "Open Trade Desk for manual chart review."
+    : current > 0
+      ? "Candidates exist, but none are ready for paper review."
+      : "No current-candle trade candidate.";
+
+  setText("home-answer", ready > 0 ? "Trade review needed" : systemHealthy ? "No immediate trade" : "System check needed");
+  setText(
+    "home-detail",
+    center.next_action || state.refresh_status?.next_action || "Use the cards below to choose the next page.",
+  );
+  setText("home-trade-status", tradeLabel);
+  setText("home-trade-detail", tradeDetail);
+  setText("home-system-status", systemHealthy ? "Healthy" : dataFresh ? "Safety check" : "Refresh data");
+  setText(
+    "home-system-detail",
+    `${titleCase(state.data_freshness?.data_status || "unknown")} data. Broker execution: ${state.safety?.broker_order_execution_enabled}.`,
+  );
+  setText("home-validation-status", `${completed} / 30`);
+  setText("home-validation-detail", `${remaining} left to first paper checkpoint.`);
+  setText("home-regime-status", titleCase(vaultRegime.regime || center.market_regime || "unknown"));
+  setText(
+    "home-regime-detail",
+    vaultRegime.description || `${titleCase(center.volatility_regime || "unknown")} volatility context.`,
+  );
+
+  const feedStatus = $("feed-rail-status");
+  if (feedStatus) {
+    feedStatus.className = "status watch";
+    feedStatus.textContent = "Not Connected";
+  }
+  const feed = $("feed-rail-list");
+  if (feed) {
+    feed.innerHTML = `
+      <article class="feed-post empty">
+        <strong>X/Twitter source not connected</strong>
+        <p>Once an approved source is configured, this rail can display your timeline across every Gwala page. Narrative and social context remain excluded from trade rules.</p>
+      </article>
+    `;
+  }
+
+  const suggestions = [];
+  if (ready > 0) {
+    suggestions.push(["Review the ready candidate", "Open Trade Desk and check chart, risk, and paper preview.", "#trade-desk"]);
+  } else if (!dataFresh) {
+    suggestions.push(["Refresh market data", "Use Trade Desk action controls before trusting scanner output.", "#trade-desk"]);
+  } else {
+    suggestions.push(["Wait for an A/B candidate", "Filters are doing their job; monitor the next current-candle scan.", "#trade-desk"]);
+  }
+  suggestions.push(["Check validation progress", `${completed}/30 official paper samples logged.`, "#validation"]);
+  if (current > 0 && ready === 0) {
+    suggestions.push(["Inspect why candidates are blocked", "Use Research Lab or Systems depending on whether it is strategy behavior or pipeline health.", "#research-lab"]);
+  }
+  if (!systemHealthy) {
+    suggestions.push(["Open Systems", "Review data freshness, workflow, and guardrails.", "#systems"]);
+  }
+
+  setText("home-suggestion-count", `${suggestions.length}`);
+  const suggestionTarget = $("home-suggestions");
+  if (suggestionTarget) {
+    suggestionTarget.innerHTML = suggestions
+      .map(
+        ([title, detail, href]) => `
+          <a href="${escapeHtml(href)}" class="home-suggestion">
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(detail)}</span>
+          </a>
+        `,
+      )
+      .join("");
+  }
+}
+
+function setExecutive(prefix, answer, detail, action, href) {
+  setText(`${prefix}-executive-answer`, answer);
+  setText(`${prefix}-executive-detail`, detail);
+  setText(`${prefix}-executive-action`, action);
+  const link = $(`${prefix}-executive-link`);
+  if (link) {
+    link.href = href;
+    link.textContent = action;
+  }
+}
+
+function renderExecutiveSummaries(state) {
+  const candidateState = state.current_candidates || {};
+  const cards = candidateState.cards || [];
+  const ready = Number(candidateState.ready_for_review_count || 0);
+  const current = Number(candidateState.count || cards.length || 0);
+  const center = state.paper_trade_command_center || {};
+  const completed = Number(center.completed_official_paper_trades || state.paper_progress?.allowed_completed_trades || 0);
+  const remaining = Number(center.remaining_to_30 ?? state.paper_progress?.first_gate_remaining ?? 30);
+  const vaultRegime = state.strategy_vault?.regime || {};
+  const dataFresh = state.data_freshness?.data_status === "fresh_for_today";
+  const safetyOk =
+    state.safety?.live_trading_enabled === false &&
+    state.safety?.broker_order_execution_enabled === false &&
+    state.safety?.real_money_ready === false;
+  const systemHealthy = dataFresh && safetyOk;
+
+  if (ready > 0) {
+    setExecutive("home", "Trade review needed", `${ready} candidate${ready === 1 ? "" : "s"} ready for manual paper review.`, "Open Trade Desk", "#trade-desk");
+  } else if (!systemHealthy) {
+    setExecutive("home", "System check needed", "Data freshness or safety state needs attention before trusting candidates.", "Open Systems", "#systems");
+  } else {
+    setExecutive("home", "No immediate trade", "System is healthy; wait for a valid A/B candidate.", "Monitor Trade Desk", "#trade-desk");
+  }
+
+  const primary = cards.find((card) => card.ready_for_review) || cards[0];
+  if (!primary) {
+    setExecutive("trade", "No trade", "No current-candle A/B candidate is available.", "Wait for scan", "#candidates");
+  } else if (primary.ready_for_review) {
+    setExecutive(
+      "trade",
+      `${primary.symbol} ready`,
+      `${primary.setup} ${titleCase(primary.direction)} has entry ${primary.entry || "--"}, stop ${primary.stop || "--"}, target ${primary.target || "--"}.`,
+      "Review chart",
+      "#trading-workspace",
+    );
+  } else {
+    setExecutive("trade", "Candidate blocked", primary.router_action || primary.blockers?.join(" ") || "Candidate is not ready for paper review.", "Show candidates", "#candidates");
+  }
+
+  setExecutive(
+    "validation",
+    `${completed} / 30 official`,
+    completed ? `${remaining} left to first checkpoint. Win rate and average R become meaningful as samples build.` : "No completed official paper samples yet.",
+    completed ? "Open paper progress" : "Review throughput",
+    completed ? "#paper-visualization" : "#sample-queue",
+  );
+
+  setExecutive(
+    "research",
+    titleCase(vaultRegime.regime || center.market_regime || "Regime unknown"),
+    vaultRegime.description || "Use the research lanes to inspect strategy fit, backtests, and near misses.",
+    "Open Strategy Vault",
+    "#strategy-vault",
+  );
+
+  setExecutive(
+    "systems",
+    systemHealthy ? "Systems healthy" : dataFresh ? "Safety check needed" : "Data refresh needed",
+    `${titleCase(state.data_freshness?.data_status || "unknown")} data. Broker execution: ${state.safety?.broker_order_execution_enabled}.`,
+    systemHealthy ? "Open Data Flow" : "Open System State",
+    systemHealthy ? "#data-flow-sentinel" : "#system",
+  );
+}
+
 function renderBacktestPerformance(state) {
   const backtests = state.backtest_performance || {};
   const best = backtests.best_candidate || {};
@@ -673,7 +1175,7 @@ function renderBacktestPerformance(state) {
 
   $("backtest-message").textContent = rows.length
     ? "Latest historical backtest snapshot from the saved watchlist summary files. Use this for research context; paper-validation evidence remains separate."
-    : "No backtest summary rows with trades are available yet. Run the Webull data refresh/backtest workflow to populate this view.";
+    : "No backtest summary rows with trades are available yet. Run the market-data refresh/backtest workflow to populate this view.";
   setText("backtest-candidate-count", candidateCount);
   setText("backtest-total-trades", totalTrades);
   setText("backtest-positive-count", positive);
@@ -693,7 +1195,10 @@ function renderBacktestPerformance(state) {
             <tr>
               <td>${escapeHtml(row.setup_family)}</td>
               <td>${escapeHtml(row.symbol)}</td>
-              <td>${escapeHtml(row.candidate)}</td>
+              <td>
+                <strong>${escapeHtml(row.candidate)}</strong>
+                <span class="table-subtext">${escapeHtml(row.variant || "")}${row.exit_profile ? ` / ${escapeHtml(row.exit_profile)}` : ""}</span>
+              </td>
               <td>${escapeHtml(row.trades)}</td>
               <td>${escapeHtml(Number(row.win_rate_pct || 0).toFixed(1))}%</td>
               <td class="${expectancy >= 0 ? "positive" : "negative"}">${escapeHtml(rValue(expectancy))}</td>
@@ -729,7 +1234,7 @@ function renderResearchConfidence(state) {
     reportLink.href = "/logs/universe_expansion/research_confidence.md";
     reportLink.classList.remove("disabled-link");
   } else {
-    reportLink.href = "#research";
+    reportLink.href = "#research-lab";
     reportLink.classList.add("disabled-link");
   }
 
@@ -774,7 +1279,7 @@ function renderPromotionReview(state) {
     reportLink.href = "/logs/promotion_review.md";
     reportLink.classList.remove("disabled-link");
   } else {
-    reportLink.href = "#research";
+    reportLink.href = "#research-lab";
     reportLink.classList.add("disabled-link");
   }
 
@@ -838,8 +1343,51 @@ function formatDateLabel(value) {
 function parseDateValue(value) {
   if (!value) return new Date("");
   const raw = text(value, "").trim();
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    return new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]));
+  }
   const normalized = raw.replace(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})([+-]\d{2}:\d{2}|Z)?$/, "$1T$2$3");
   return new Date(normalized);
+}
+
+const candidateEntryLabels = {
+  current: "Baseline Entry",
+  market_confirmed: "Market Confirmed",
+  quality_entry: "Quality Entry",
+  quality_entry_market_confirmed: "Quality + Market Confirmed",
+  setup_b_short: "Setup B Short",
+  setup_b_quality_short: "Quality Short",
+};
+
+const candidateExitLabels = {
+  no_vwap_exit: "No VWAP Exit",
+  current: "VWAP Exit",
+  vwap_exit: "VWAP Exit",
+  ema9_exit: "9 EMA Exit",
+};
+
+function readableCandidateLabel(value) {
+  const raw = text(value, "").trim();
+  if (!raw) return "--";
+  const parts = raw.split("+").map((part) => part.trim()).filter(Boolean);
+  const entry = parts[0] || raw;
+  const exit = parts[1] || "";
+  const entryLabel = candidateEntryLabels[entry] || titleCase(entry.replace(/_/g, " "));
+  const exitLabel = candidateExitLabels[exit] || (exit ? titleCase(exit.replace(/_/g, " ")) : "");
+  return exitLabel ? `${entryLabel} / ${exitLabel}` : entryLabel;
+}
+
+function tradeSortTime(row = {}) {
+  const explicit = Number(row.entry_sort_ms || 0);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  return parseDateValue(row.entry_time || row.exit_time || "").getTime() || 0;
+}
+
+function tradeDateValue(row = {}) {
+  const timestamp = tradeSortTime(row);
+  if (timestamp > 0) return new Date(timestamp);
+  return parseDateValue(row.entry_time || row.exit_time || "");
 }
 
 function monthKeyFromValue(value) {
@@ -1596,7 +2144,8 @@ function renderStrategyVault(state) {
   const strategies = vault.strategies || [];
   const active = strategies.find((strategy) => strategy.decision === "active");
   const research = strategies.find((strategy) => strategy.decision === "research_priority");
-  const selected = active || research || strategies[0] || {};
+  const eligible = strategies.find((strategy) => strategy.paper_watch_decision === "paper_watch_eligible");
+  const selected = eligible || active || research || strategies[0] || {};
   const passRows = strategies.reduce((total, strategy) => total + Number(strategy.tightened_pass_rows || 0), 0);
 
   setText("strategy-vault-message", vault.next_action || "Run the strategy vault report to classify market regime and strategy routing.");
@@ -1655,6 +2204,7 @@ function renderStrategyVault(state) {
       ? `${titleCase(selected.walk_forward_status)} / ${selected.evidence_note || "Evidence appears after strategy-specific reports run."}`
       : selected.evidence_note || "Evidence appears after strategy-specific reports run.",
   );
+  renderEligibleStrategyReview(selected, strategies);
 
   $("strategy-vault-table").innerHTML = strategies.length
     ? strategies
@@ -1673,14 +2223,83 @@ function renderStrategyVault(state) {
     : '<tr><td colspan="5">No strategy vault rows available. Run python run_strategy_vault.py.</td></tr>';
 }
 
+function strategyReviewLinks(strategy = {}) {
+  const slug = String(strategy.strategy_id || "").trim();
+  if (!slug) return [];
+  return [
+    ["Activation rules", "paper_activation_rules.md"],
+    ["Strategy summary", `${slug}.md`],
+    ["Tightened review", `${slug}_tightened_review.md`],
+    ["Shadow samples", `${slug}_shadow_samples.md`],
+    ["Forward observations", `${slug}_forward_observations.md`],
+    ["Paper-watch gate", `${slug}_paper_watch_gate.md`],
+  ];
+}
+
+function renderEligibleStrategyReview(strategy = {}, strategies = []) {
+  const panel = $("eligible-strategy-review");
+  if (!panel) return;
+
+  const eligible =
+    strategy.paper_watch_decision === "paper_watch_eligible"
+      ? strategy
+      : strategies.find((row) => row.paper_watch_decision === "paper_watch_eligible");
+  const hasEligible = Boolean(eligible && eligible.strategy_id);
+
+  $("eligible-strategy-status").className = `status ${hasEligible ? "paper_watch_eligible" : "watch"}`;
+  $("eligible-strategy-status").textContent = hasEligible ? "Eligible" : "None Ready";
+  setText("eligible-strategy-title", hasEligible ? `Review ${eligible.name}` : "No paper-watch strategy is eligible yet");
+  setText(
+    "eligible-strategy-summary",
+    hasEligible
+      ? eligible.evidence_note || "This strategy passed the activation gate for manual paper-watch review only."
+      : "When a strategy passes activation rules, this panel will open the exact evidence bundle to review before routing it into paper watch.",
+  );
+
+  const metrics = hasEligible
+    ? [
+        ["Tightened", `${Number(eligible.tightened_pass_rows || 0)} pass`],
+        ["Walk-forward", titleCase(eligible.walk_forward_status || "missing")],
+        ["Shadow", `${Number(eligible.matured_shadow_samples || 0)} / ${Number(eligible.shadow_samples || 0)} - ${rValue(eligible.shadow_average_r)}`],
+        ["Forward", `${Number(eligible.matured_forward_observations || 0)} / ${Number(eligible.forward_observations || 0)} - ${rValue(eligible.forward_average_r)}`],
+      ]
+    : [];
+  $("eligible-strategy-metrics").innerHTML = metrics.length
+    ? metrics
+        .map(
+          ([label, value]) => `
+            <article>
+              <span>${escapeHtml(label)}</span>
+              <strong>${escapeHtml(value)}</strong>
+            </article>
+          `,
+        )
+        .join("")
+    : "";
+
+  $("eligible-strategy-links").innerHTML = hasEligible
+    ? strategyReviewLinks(eligible)
+        .map(
+          ([label, filename]) => `
+            <a href="/logs/${escapeHtml(filename)}" target="_blank" rel="noreferrer" class="secondary-link">${escapeHtml(label)}</a>
+          `,
+        )
+        .join("")
+    : '<span class="muted">No eligible evidence bundle available yet.</span>';
+}
+
 function renderAppHealth(state) {
   const files = state.app_health?.source_file_states || {};
   const rows = [
     ["Generated", state.app_health?.generated_at_et],
     ["System state JSON", files.system_state_json?.modified_et || "not written yet"],
     ["Refresh status JSON", files.refresh_status_json?.modified_et || "missing"],
+    ["Provider stability audit", files.provider_stability_audit_json?.modified_et || "missing"],
+    ["Paper entry packet", files.paper_entry_packet_json?.modified_et || "missing"],
     ["Morning watchdog", files.morning_watchdog_json?.modified_et || "missing"],
     ["Automation timeline", files.automation_timeline_json?.modified_et || "missing"],
+    ["After-close evidence maturity", files.after_close_evidence_maturity_json?.modified_et || "missing"],
+    ["Phase milestones", files.phase_milestones_json?.modified_et || "missing"],
     ["Post-scan digest", files.post_scan_digest_json?.modified_et || "missing"],
     ["Pre-market verification", files.premarket_verification_json?.modified_et || "missing"],
     ["Dashboard report", files.dashboard_md?.modified_et || "missing"],
@@ -1697,6 +2316,13 @@ function renderAppHealth(state) {
     ["Strategy vault", files.strategy_vault_json?.modified_et || "not run yet"],
     ["Strategy evidence accumulator", files.strategy_evidence_accumulator_json?.modified_et || "not run yet"],
     ["Paper activation rules", files.paper_activation_rules_json?.modified_et || "not run yet"],
+    ["Strategy walk-forward matrix", files.strategy_walk_forward_matrix_json?.modified_et || "not run yet"],
+    ["Validation deepening queue", files.validation_deepening_queue_json?.modified_et || "not run yet"],
+    ["Trend pullback tightened review", files.trend_pullback_continuation_tightened_review_json?.modified_et || "not run yet"],
+    ["Trend pullback shadow", files.trend_pullback_continuation_shadow_outcomes_csv?.modified_et || "not run yet"],
+    ["Trend pullback forward observations", files.trend_pullback_continuation_forward_observation_results_csv?.modified_et || "not run yet"],
+    ["Trend pullback paper-watch gate", files.trend_pullback_continuation_paper_watch_gate_json?.modified_et || "not run yet"],
+    ["Strategy backtest coverage", files.strategy_backtest_coverage_json?.modified_et || "not run yet"],
     ["VWAP mean reversion", files.vwap_mean_reversion_json?.modified_et || "not run yet"],
     ["VWAP mean reversion walk-forward", files.vwap_mean_reversion_walk_forward_json?.modified_et || "not run yet"],
     ["VWAP mean reversion shadow", files.vwap_mean_reversion_shadow_outcomes_csv?.modified_et || "not run yet"],
@@ -1706,6 +2332,7 @@ function renderAppHealth(state) {
     ["VWAP reclaim / reject", files.vwap_reclaim_reject_json?.modified_et || "not run yet"],
     ["VWAP reclaim / reject walk-forward", files.vwap_reclaim_reject_walk_forward_json?.modified_et || "not run yet"],
     ["VWAP reclaim / reject shadow", files.vwap_reclaim_reject_shadow_outcomes_csv?.modified_et || "not run yet"],
+    ["VWAP reclaim / reject evidence maturity", files.vwap_reclaim_reject_evidence_maturity_json?.modified_et || "not run yet"],
     ["Opening range breakout", files.opening_range_breakout_json?.modified_et || "not run yet"],
     ["Trend pullback continuation", files.trend_pullback_continuation_json?.modified_et || "not run yet"],
     ["Opening range failure", files.opening_range_failure_json?.modified_et || "not run yet"],
@@ -1717,6 +2344,261 @@ function renderAppHealth(state) {
   $("app-health-table").innerHTML = rows
     .map(([label, value]) => `<tr><td>${escapeHtml(label)}${helpBubble(helpKey(label))}</td><td>${escapeHtml(text(value))}</td></tr>`)
     .join("");
+}
+
+function renderPhaseMilestones(state) {
+  const milestones = state.phase_milestones || {};
+  const readiness = milestones.market_readiness || {};
+  const phases = Array.isArray(milestones.phases) ? milestones.phases : [];
+  setText(
+    "phase-milestone-title",
+    milestones.current_phase
+      ? `Phase ${milestones.current_phase_id}: ${milestones.current_phase}`
+      : "Phase roadmap not generated yet",
+  );
+  setText("phase-milestone-status", titleCase(milestones.status || "missing"));
+  setText("phase-milestone-progress", `${text(milestones.overall_percent, "0")}%`);
+  setText("phase-milestone-blocker", milestones.next_blocker || "Run the phase milestone report.");
+  setText("phase-milestone-action", milestones.next_action || "Run python run_phase_milestones.py --output-dir logs.");
+
+  const vwap = milestones.vwap_reclaim_reject || {};
+  setText(
+    "phase-milestone-vwap",
+    readiness.status
+      ? `Market readiness: ${titleCase(readiness.status)} / Review-first ${text(readiness.review_first_candidates, "0")} / Paper ${text(readiness.official_paper_trades, "0")}/${text(readiness.official_paper_goal, "30")} / Pipes ${readiness.pipes_synced ? "synced" : "blocked"}`
+      : `VWAP Reclaim/Reject: ${titleCase(vwap.decision || "missing")} / Shadow ${text(vwap.matured_shadow_samples, "0")}/${text(vwap.shadow_samples, "0")} matured / Forward ${text(vwap.matured_forward_observations, "0")}/${text(vwap.forward_observations, "0")} matured`,
+  );
+
+  $("phase-milestone-table-body").innerHTML = phases.length
+    ? phases
+        .map(
+          (phase) => `
+            <tr>
+              <td>${escapeHtml(text(phase.phase_id))}</td>
+              <td>${escapeHtml(phase.phase || "")}</td>
+              <td><span class="status ${safeClassName(phase.status || "future")}">${escapeHtml(titleCase(phase.status || ""))}</span></td>
+              <td>${escapeHtml(phase.progress || "")}</td>
+              <td>${escapeHtml(text(phase.percent, "0"))}%</td>
+              <td>${escapeHtml(phase.next_blocker || "")}</td>
+            </tr>
+          `,
+        )
+        .join("")
+    : '<tr><td colspan="6">No phase milestone report yet. Run python run_phase_milestones.py --output-dir logs.</td></tr>';
+}
+
+function renderDataFlowSentinel(state) {
+  const sentinel = state.data_flow_sentinel || {};
+  const contract = sentinel.contract || {};
+  const checks = Array.isArray(sentinel.checks) ? sentinel.checks : [];
+  const files = state.app_health?.source_file_states || {};
+  const sentinelFile = files.data_flow_sentinel_json || {};
+  const status = sentinel.status || "missing";
+  const failed = checks.filter((row) => row.status === "fail");
+  const warned = checks.filter((row) => row.status === "warn");
+  const failedText = failed.length
+    ? failed.map((row) => row.area).join(", ")
+    : warned.length
+      ? `Watch: ${warned.map((row) => row.area).join(", ")}`
+      : "none";
+
+  $("data-flow-status").innerHTML = `<span class="status ${safeClassName(status)}">${escapeHtml(titleCase(status))}</span>`;
+  setText(
+    "data-flow-updated",
+    sentinelFile.modified_et ? `Updated ${sentinelFile.modified_et}` : "Run Data Flow Sentinel to populate this panel.",
+  );
+  setText("data-flow-candles", titleCase(contract.candle_status || "unknown"));
+  setText("data-flow-provider", `Provider: ${titleCase(contract.provider_status || "unknown")}. Session: ${contract.scanner_session || "unknown"}.`);
+  setText(
+    "data-flow-rows",
+    `${text(contract.scanner_rows, "0")} / ${text(contract.sizing_rows, "0")} / ${text(contract.router_candidate_rows, "0")}`,
+  );
+  setText(
+    "data-flow-row-detail",
+    `Scanner / sizing / router rows. Pre-entry reviewed ${text(contract.pre_entry_candidate_count, "0")}.`,
+  );
+  setText("data-flow-repair", titleCase(contract.repair_status || "unknown"));
+  setText(
+    "data-flow-repair-detail",
+    Array.isArray(contract.repair_symbols) && contract.repair_symbols.length
+      ? `Repaired: ${contract.repair_symbols.join(", ")}`
+      : "No repair applied in the latest audit.",
+  );
+  setText("data-flow-stability", titleCase(contract.provider_stability_status || "unknown"));
+  setText(
+    "data-flow-stability-detail",
+    Array.isArray(contract.provider_mismatch_symbols) && contract.provider_mismatch_symbols.length
+      ? `${contract.provider_stability_detail || "Provider/session mismatch detected"} Symbols: ${contract.provider_mismatch_symbols.join(", ")}.`
+      : contract.provider_stability_detail || "Provider/session agreement has not been checked yet.",
+  );
+  const indicatorTarget = $("data-flow-indicators");
+  const visibleChecks = [
+    "Provider freshness",
+    "Candle freshness",
+    "Scanner session",
+    "Scanner to system state",
+    "Scanner to sizing",
+    "Scanner to router",
+    "Scanner to pre-entry",
+    "Current candidate panel",
+    "Dashboard preflight",
+    "Provider/session stability",
+    "Historical bucket sync",
+  ];
+  if (indicatorTarget) {
+    indicatorTarget.innerHTML = checks.length
+      ? visibleChecks
+          .map((area) => checks.find((row) => row.area === area))
+          .filter(Boolean)
+          .map((row) => {
+            const statusClass = safeClassName(row.status || "watch");
+            const statusLabel = row.status === "pass" ? "ok" : row.status || "check";
+            return `<span class="sync-indicator ${statusClass}" title="${escapeHtml(row.detail || "")}">${escapeHtml(text(row.area, "Check").replace(/^Scanner to /, ""))}: ${escapeHtml(titleCase(statusLabel))}</span>`;
+          })
+          .join("")
+      : '<span class="sync-indicator watch">No sync checks yet</span>';
+  }
+  setText("data-flow-action", sentinel.next_action || "Run python run_data_flow_sentinel.py --output-dir logs.");
+  setText("data-flow-failed-checks", failedText);
+}
+
+function renderStrategyContractStatus(state) {
+  const audit = state.feature_wiring_audit || {};
+  const files = state.app_health?.source_file_states || {};
+  const adapters = Array.isArray(audit.scanner_adapter_rows) ? audit.scanner_adapter_rows : [];
+  const contracts = Array.isArray(audit.strategy_contract_rows) ? audit.strategy_contract_rows : [];
+  const wiredAdapters = adapters.filter((row) => row.status === "pass").length;
+  const wiredContracts = contracts.filter((row) => row.status === "pass").length;
+  const missingAdapters = Array.isArray(audit.missing_scanner_adapters) ? audit.missing_scanner_adapters : [];
+  const missingContracts = Array.isArray(audit.missing_strategy_contracts) ? audit.missing_strategy_contracts : [];
+  const portfolio = audit.portfolio_simulator || {};
+  const auditStatus = audit.status || "missing";
+  const auditFile = files.feature_wiring_audit_json || {};
+
+  $("strategy-contract-audit").innerHTML = `<span class="status ${safeClassName(auditStatus)}">${escapeHtml(titleCase(auditStatus))}</span>`;
+  setText(
+    "strategy-contract-updated",
+    auditFile.modified_et ? `Updated ${auditFile.modified_et}` : "Run Feature Wiring Audit to populate this panel.",
+  );
+  setText("strategy-contract-adapters", `${wiredAdapters} / ${adapters.length || 0}`);
+  setText(
+    "strategy-contract-adapter-detail",
+    missingAdapters.length ? "One or more playbook rows lack adapter wiring." : "All approved/watch playbook rows have scanner adapters.",
+  );
+  setText("strategy-contract-registry", `${wiredContracts} wired`);
+  setText(
+    "strategy-contract-registry-detail",
+    missingContracts.length ? "One or more strategy contracts are missing required pipes." : "Registry, reports, chart markers, and trade logs are wired.",
+  );
+  setText("strategy-contract-simulator", titleCase(portfolio.status || "missing"));
+  setText(
+    "strategy-contract-simulator-detail",
+    `${text(portfolio.approved_playbook_rows_in_simulator, "0")} / ${text(portfolio.approved_playbook_rows_expected, "0")} approved historical rows in simulation.`,
+  );
+  setText("strategy-contract-missing-adapters", missingAdapters.length ? missingAdapters.join(", ") : "none");
+  setText("strategy-contract-missing-contracts", missingContracts.length ? missingContracts.join(", ") : "none");
+}
+
+function renderEvidenceMaturity(state) {
+  const progress = state.evidence_maturity_progress || {};
+  const leader = progress.nearest_strategy || {};
+  const rows = progress.rows || [];
+  const percent = Number(leader.maturity_percent || 0);
+  const passed = Number(leader.passed_checks || 0);
+  const total = Number(leader.total_checks || 8);
+
+  setText("evidence-maturity-message", progress.next_action || "Run strategy vault and activation rules to review evidence maturity.");
+  setText("evidence-maturity-leader", leader.strategy || "No strategy yet");
+  setText(
+    "evidence-maturity-leader-detail",
+    leader.next_blocker ? `Next blocker: ${titleCase(leader.next_blocker)}.` : "No blocker reported.",
+  );
+  setText("evidence-maturity-percent", `${percent.toFixed(1)}%`);
+  setText("evidence-maturity-checks", `${passed} / ${total} evidence checks`);
+  setText("evidence-maturity-shadow", `${Number(leader.shadow_samples || 0)} / 10`);
+  setText(
+    "evidence-maturity-shadow-detail",
+    `${Number(leader.matured_shadow_samples || 0)} matured / needs ${Number(leader.matured_shadow_needed || 0)} more matured`,
+  );
+  setText("evidence-maturity-forward", `${Number(leader.forward_observations || 0)} / 10`);
+  setText(
+    "evidence-maturity-forward-detail",
+    `${Number(leader.matured_forward_observations || 0)} matured / needs ${Number(leader.matured_forward_needed || 0)} more matured`,
+  );
+
+  $("evidence-maturity-body").innerHTML = rows.length
+    ? rows
+        .map(
+          (row) => `
+            <tr>
+              <td>${escapeHtml(row.strategy || "")}</td>
+              <td><span class="status ${safeClassName(row.paper_watch_decision || "missing")}">${escapeHtml(titleCase(row.paper_watch_decision || "missing"))}</span></td>
+              <td>${escapeHtml(Number(row.maturity_percent || 0).toFixed(1))}% (${escapeHtml(row.passed_checks || 0)}/${escapeHtml(row.total_checks || 8)})</td>
+              <td>${escapeHtml(row.shadow_samples || 0)}/10 logged, ${escapeHtml(row.matured_shadow_samples || 0)}/5 matured, ${escapeHtml(rValue(row.shadow_average_r))}</td>
+              <td>${escapeHtml(row.forward_observations || 0)}/10 logged, ${escapeHtml(row.matured_forward_observations || 0)}/5 matured, ${escapeHtml(rValue(row.forward_average_r))}</td>
+              <td>${escapeHtml(row.next_blocker || "None")}</td>
+            </tr>
+          `,
+        )
+        .join("")
+    : '<tr><td colspan="6">No evidence maturity rows available. Run python run_strategy_vault.py and python run_paper_activation_rules.py.</td></tr>';
+}
+
+function sampleProgress(current, target) {
+  const value = Number(current || 0);
+  const goal = Number(target || 10);
+  return `${value} / ${goal}`;
+}
+
+function renderStrategyEvidenceCollection(state) {
+  const queue = state.validation_deepening_queue || {};
+  const triage = state.strategy_triage || {};
+  const strategies = Array.isArray(queue.strategies) ? queue.strategies : [];
+  const collectionRows = strategies.filter((row) =>
+    ["shadow_collection", "forward_collection", "outcome_maturity"].includes(String(row.validation_lane || "")),
+  );
+  const shadowTarget = collectionRows.length * 10;
+  const forwardTarget = collectionRows.length * 10;
+  const shadowRows = collectionRows.reduce((total, row) => total + Number(row.shadow_rows || 0), 0);
+  const maturedShadow = collectionRows.reduce((total, row) => total + Number(row.matured_shadow || 0), 0);
+  const forwardRows = collectionRows.reduce((total, row) => total + Number(row.forward_rows || 0), 0);
+  const maturedForward = collectionRows.reduce((total, row) => total + Number(row.matured_forward || 0), 0);
+  const top = collectionRows[0] || strategies[0] || {};
+  const tierCounts = Array.isArray(triage.tier_counts) ? triage.tier_counts : [];
+  const deprioritized = tierCounts.find((row) => row.triage_tier === "deprioritized")?.strategies || 0;
+
+  setText(
+    "strategy-evidence-message",
+    queue.top_next_command || "Run the validation deepening queue to see which strategies need evidence collection.",
+  );
+  setText("strategy-evidence-lanes", collectionRows.length);
+  setText(
+    "strategy-evidence-lanes-detail",
+    `${Number(deprioritized || 0)} deprioritized / ${Number(strategies.length || 0)} total strategy rows.`,
+  );
+  setText("strategy-evidence-shadow", sampleProgress(shadowRows, shadowTarget));
+  setText("strategy-evidence-shadow-detail", `${maturedShadow} matured / target 5 matured per strategy.`);
+  setText("strategy-evidence-forward", sampleProgress(forwardRows, forwardTarget));
+  setText("strategy-evidence-forward-detail", `${maturedForward} matured / target 5 matured per strategy.`);
+  setText("strategy-evidence-top", top.strategy || "No strategy queued");
+  setText("strategy-evidence-top-detail", top.next_gap || "Run validation reports.");
+
+  $("strategy-evidence-body").innerHTML = collectionRows.length
+    ? collectionRows
+        .map(
+          (row) => `
+            <tr>
+              <td>${escapeHtml(row.strategy || "")}</td>
+              <td><span class="status ${safeClassName(row.validation_lane || "manual_review")}">${escapeHtml(titleCase(row.validation_lane || ""))}</span></td>
+              <td>${escapeHtml(sampleProgress(row.shadow_rows, 10))} / ${escapeHtml(row.matured_shadow || 0)} matured</td>
+              <td>${escapeHtml(sampleProgress(row.forward_rows, 10))} / ${escapeHtml(row.matured_forward || 0)} matured</td>
+              <td>${escapeHtml(titleCase(row.gate_decision || row.activation_decision || "not_ready"))}</td>
+              <td>${escapeHtml(row.next_gap || row.next_command || "")}</td>
+            </tr>
+          `,
+        )
+        .join("")
+    : '<tr><td colspan="6">No collection lanes available. Run python run_validation_deepening_queue.py --output-dir logs.</td></tr>';
 }
 
 function renderBadges(state) {
@@ -1897,7 +2779,7 @@ function tradingChartSvg(candles, signalMarkers = [], planLevels = []) {
     .join("");
 
   return `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Saved Webull candle chart with strategy indicators">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Saved market-data candle chart with strategy indicators">
       ${grid}
       ${rangeLines}
       ${levelLines}
@@ -1965,7 +2847,7 @@ function renderPreEntryChecklist(state, chart, chartFreshness) {
   const riskGuardKnown = Boolean(riskGuard.status);
 
   const checks = [
-    ["Data fresh", dataFresh, state.data_freshness?.action || "Refresh Webull data before review."],
+    ["Data fresh", dataFresh, state.data_freshness?.action || "Refresh market data before review."],
     ["30m entry chart selected", entryChart, "Use the 30m chart for entry structure before paper preview."],
     ["Candle age fresh", candleFresh, chartFreshness?.message || "Refresh saved candles before review."],
     ["Current-candle candidate", Boolean(card), "No current-candle candidate exists for this symbol."],
@@ -2171,7 +3053,7 @@ async function loadTradingWorkspace() {
     $("terminal-expand-chart").href = `/chart.html?symbol=${encodeURIComponent(chart.symbol)}&timeframe=${encodeURIComponent(chart.timeframe)}`;
     $("terminal-chart").innerHTML = tradingChartSvg(chart.candles, readiness.signal_markers);
     $("terminal-chart-time").textContent =
-      `${chart.timeframe_role || "Chart timeframe"}. Latest stored bar: ${chart.latest_bar_et} (${chart.data_lag_minutes ?? "--"} min behind now). Data updates when the Webull market-data workflow is run.`;
+      `${chart.timeframe_role || "Chart timeframe"}. ${chart.source || "Saved market-data candles"}. Latest stored bar: ${chart.latest_bar_et} (${chart.data_lag_minutes ?? "--"} min behind now).`;
     const chartFreshness = chartFreshnessState(chart, currentState || {});
     $("terminal-freshness-warning").className = `terminal-freshness-warning ${chartFreshness.tone}`;
     $("terminal-freshness-warning").textContent = chartFreshness.message;
@@ -2355,22 +3237,25 @@ function renderCandidates(state) {
   const cards = candidateState.cards || [];
   const list = $("candidate-list");
   const dataFresh = state.data_freshness.data_status === "fresh_for_today";
+  const router = state.market_regime_router || {};
+  const reviewFirst = Number(router.review_first_count || 0);
+  const cautionReview = Number(router.caution_review_count || 0);
   renderPaperWorkflowGuide(state);
 
   $("candidate-count").className = `status ${candidateState.ready_for_review_count > 0 ? "healthy" : "watch"}`;
-  $("candidate-count").textContent = `${candidateState.count} current / ${candidateState.ready_for_review_count} reviewable`;
+  $("candidate-count").textContent = `${candidateState.count} current / ${reviewFirst} review-first`;
 
   if (!cards.length) {
     $("candidate-message").textContent = dataFresh
       ? "No current-candle candidates exist in the latest scanner output."
-      : "No actionable current-candle candidates. Refresh Webull data during the next open market session before review.";
+      : "No actionable current-candle candidates. Refresh market data during the next open market session before review.";
     list.innerHTML = '<article class="candidate-empty">No candidate cards to display.</article>';
     return;
   }
 
   $("candidate-message").textContent = dataFresh
-    ? "Review-only display from the existing scanner and position sizing outputs. It cannot place trades."
-    : "Candidate rows exist, but data is stale or prep-only. Do not import or size a paper trade from this view.";
+    ? `${router.next_action || "Router-ranked display from scanner and position sizing outputs."} It cannot place trades.`
+    : `Candidate rows exist, but data is stale or prep-only. Router found ${cautionReview} caution row${cautionReview === 1 ? "" : "s"}. Do not import or size a paper trade from this view.`;
   list.innerHTML = cards
     .map(
       (card) => `
@@ -2378,72 +3263,105 @@ function renderCandidates(state) {
           <header>
             <div>
               <h4>${escapeHtml(card.symbol)} ${escapeHtml(card.setup)}</h4>
-              <p>${escapeHtml(titleCase(card.direction))} / Signal ${escapeHtml(card.signal_time_et)}</p>
+              <p>${escapeHtml(titleCase(card.direction))} / ${escapeHtml(candidateTier(card) || card.quality_grade || "Watch")}-tier / Signal ${escapeHtml(card.signal_time_et)}</p>
             </div>
             <span class="status ${card.ready_for_review ? "healthy" : "watch"}">
-              ${card.ready_for_review ? "Ready To Review" : "Not Ready"}
+              ${card.ready_for_review ? "Ready To Review" : escapeHtml(titleCase(card.router_route || "Not Ready"))}
             </span>
           </header>
+          <div class="candidate-quick-actions">
+            <a href="#trading-workspace" class="secondary-link">Review chart</a>
+            <a href="#paper-visualization" class="secondary-link">Paper progress</a>
+          </div>
           <div class="candidate-prices">
             <div><span>Entry${helpBubble("entry")}</span><strong>${escapeHtml(card.entry)}</strong></div>
             <div><span>Stop${helpBubble("stop")}</span><strong>${escapeHtml(card.stop)}</strong></div>
             <div><span>Target${helpBubble("target")}</span><strong>${escapeHtml(card.target)}</strong></div>
             <div><span>Shares${helpBubble("shares")}</span><strong>${escapeHtml(card.suggested_shares || "Not sized")}</strong></div>
           </div>
-          <p class="candidate-meta">
-            Scanner: ${escapeHtml(titleCase(card.scanner_status))} /
-            Sizing: ${escapeHtml(titleCase(card.sizing_status))} /
-            Risk per share${helpBubble("risk-share")}: ${escapeHtml(card.risk_per_share)} /
-            Est. paper risk${helpBubble("est-risk")}: ${escapeHtml(card.estimated_risk_dollars || "Not sized")} /
-            Quality${helpBubble("quality")}: ${escapeHtml(card.quality_grade)} ${escapeHtml(card.quality_score)} /
-            Rel Vol${helpBubble("rel-vol")}: ${escapeHtml(metricValue(card.relative_volume, "x"))} /
-            Room${helpBubble("room-r")}: ${escapeHtml(metricValue(card.room_to_target_r, "R"))}
-          </p>
-          <div class="scale-guidance ${safeClassName(card.scale_tier || "no_scale")}">
+          <div class="candidate-decision-strip">
             <div>
-              <span>Scale Guidance${helpBubble("scale-tier")}</span>
-              <strong>${escapeHtml(card.scale_label || "No Scale")}</strong>
+              <span>Quality${helpBubble("quality")}</span>
+              <strong>${escapeHtml(card.quality_grade || "--")} ${escapeHtml(card.quality_score || "")}</strong>
             </div>
             <div>
-              <span>Paper Risk</span>
-              <strong>${escapeHtml(Number(card.suggested_risk_pct || 0).toFixed(2))}%</strong>
+              <span>Room${helpBubble("room-r")}</span>
+              <strong>${escapeHtml(metricValue(card.room_to_target_r, "R"))}</strong>
             </div>
             <div>
-              <span>Option Premium Cap${helpBubble("premium-cap")}</span>
+              <span>Contract Cap${helpBubble("premium-cap")}</span>
               <strong>${escapeHtml(Number(card.option_premium_cap_pct || 0).toFixed(2))}%</strong>
             </div>
-            <p>${escapeHtml(card.scale_reason || "No scale guidance is available.")}</p>
+            <div>
+              <span>Risk</span>
+              <strong>${escapeHtml(card.estimated_risk_dollars || "Not sized")}</strong>
+            </div>
           </div>
-          <div class="evidence-priority ${safeClassName(card.evidence_priority || "standard_watch")}">
-            <div>
-              <span>Evidence Priority${helpBubble("evidence-priority")}</span>
-              <strong>${escapeHtml(titleCase(card.evidence_priority || "standard watch"))}</strong>
-            </div>
-            <div>
-              <span>Historical</span>
-              <strong>${escapeHtml(Number(card.historical_trades || 0))} trades / ${escapeHtml(metricValue(card.historical_expectancy_r, "R"))}</strong>
-            </div>
-            <div>
-              <span>Setup Health</span>
-              <strong>${escapeHtml(titleCase(card.setup_health_status || "unknown"))}</strong>
-            </div>
-            <p>${escapeHtml(card.priority_reason || "Use standard paper-review caution.")}</p>
-          </div>
-          <ul class="candidate-checks">
-            ${(card.checklist_flags || [])
-              .map(
-                (flag) =>
-                  `<li class="${flag.passed ? "pass" : "hold"}">${flag.passed ? "Pass" : "Hold"}: ${escapeHtml(flag.label)}</li>`,
-              )
-              .join("")}
-          </ul>
           ${
             card.blockers?.length
               ? `<p class="candidate-blockers">${card.blockers.map((blocker) => escapeHtml(blocker)).join(" ")}</p>`
               : ""
           }
-          ${candidateWorkflowHtml(card, state)}
-          <p class="candidate-notes">${escapeHtml(card.notes)}</p>
+          <details class="operator-drilldown">
+            <summary>Why this candidate is ranked this way</summary>
+            <div class="evidence-priority ${safeClassName(card.router_route || "unrouted")}">
+              <div>
+                <span>Market Router${helpBubble("candidate-review")}</span>
+                <strong>${escapeHtml(titleCase(card.router_route || "Unrouted"))}</strong>
+              </div>
+              <div>
+                <span>Strategy</span>
+                <strong>${escapeHtml(card.router_strategy_id || "Unmapped")}</strong>
+              </div>
+              <div>
+                <span>Time Bucket</span>
+                <strong>${escapeHtml(titleCase(card.router_time_bucket || "Unknown"))}</strong>
+              </div>
+              <p>${escapeHtml(card.router_action || "Router guidance unavailable.")}</p>
+            </div>
+            <p class="candidate-meta">
+              Scanner: ${escapeHtml(titleCase(card.scanner_status))} /
+              Sizing: ${escapeHtml(titleCase(card.sizing_status))} /
+              Risk per share${helpBubble("risk-share")}: ${escapeHtml(card.risk_per_share)} /
+              Rel Vol${helpBubble("rel-vol")}: ${escapeHtml(metricValue(card.relative_volume, "x"))}
+            </p>
+            <div class="scale-guidance ${safeClassName(card.scale_tier || "no_scale")}">
+              <div>
+                <span>Scale Guidance${helpBubble("scale-tier")}</span>
+                <strong>${escapeHtml(card.scale_label || "No Scale")}</strong>
+              </div>
+              <div>
+                <span>Paper Risk</span>
+                <strong>${escapeHtml(Number(card.suggested_risk_pct || 0).toFixed(2))}%</strong>
+              </div>
+              <div>
+                <span>Evidence Priority${helpBubble("evidence-priority")}</span>
+                <strong>${escapeHtml(titleCase(card.evidence_priority || "standard watch"))}</strong>
+              </div>
+              <p>${escapeHtml(card.scale_reason || "No scale guidance is available.")}</p>
+            </div>
+            <div class="evidence-priority ${safeClassName(card.evidence_priority || "standard_watch")}">
+              <div>
+                <span>Historical</span>
+                <strong>${escapeHtml(Number(card.historical_trades || 0))} trades / ${escapeHtml(metricValue(card.historical_expectancy_r, "R"))}</strong>
+              </div>
+              <div>
+                <span>Setup Health</span>
+                <strong>${escapeHtml(titleCase(card.setup_health_status || "unknown"))}</strong>
+              </div>
+              <p>${escapeHtml(card.priority_reason || "Use standard paper-review caution.")}</p>
+            </div>
+            <ul class="candidate-checks">
+              ${(card.checklist_flags || [])
+                .map(
+                  (flag) =>
+                    `<li class="${flag.passed ? "pass" : "hold"}">${flag.passed ? "Pass" : "Hold"}: ${escapeHtml(flag.label)}</li>`,
+                )
+                .join("")}
+            </ul>
+            ${candidateWorkflowHtml(card, state)}
+            <p class="candidate-notes">${escapeHtml(card.notes)}</p>
+          </details>
         </article>
       `,
     )
@@ -2879,11 +3797,15 @@ function portfolioAccountParams() {
 }
 
 function renderPortfolioContext(rows = [], account = {}) {
+  const bucketCounts = account.source_bucket_counts || {};
+  const approvedRows = Number(bucketCounts["Approved Playbook"] || 0);
+  const promotionRows = Number(bucketCounts["Promotion Review"] || 0);
+  const vaultRows = Number(bucketCounts["Strategy Vault Research"] || 0);
   if (!rows.length) {
     $("portfolio-context-grid").innerHTML = `
       <article><span>Win Rate</span><strong>--</strong><p>Promoted historical trades.</p></article>
       <article><span>Average R</span><strong>--</strong><p>Research simulation.</p></article>
-      <article><span>Source Files</span><strong>${escapeHtml(account.source_files || 0)}</strong><p>Promoted candidates.</p></article>
+      <article><span>Source Files</span><strong>${escapeHtml(account.source_files || 0)}</strong><p>Approved / promoted / Vault.</p></article>
       <article><span>Collapsed Duplicates</span><strong>${escapeHtml(account.duplicates_collapsed || 0)}</strong><p>Overlap control.</p></article>
     `;
     $("portfolio-risk-tier-summary").innerHTML = `
@@ -2928,7 +3850,7 @@ function renderPortfolioContext(rows = [], account = {}) {
     <article>
       <span>Source Files</span>
       <strong>${escapeHtml(account.source_files || 0)}</strong>
-      <p>${escapeHtml(account.source_candidates || 0)} promoted candidates</p>
+      <p>${escapeHtml(account.approved_playbook_source_files || 0)} approved / ${escapeHtml(account.promotion_source_files || 0)} promotion / ${escapeHtml(account.strategy_vault_source_files || 0)} Vault</p>
     </article>
     <article>
       <span>Collapsed Duplicates</span>
@@ -2945,8 +3867,8 @@ function renderPortfolioContext(rows = [], account = {}) {
   `;
   $("portfolio-risk-tier-summary").innerHTML = `
     <div>
-      <strong>Risk tiers</strong>
-      <span>${escapeHtml(tierText || "Fixed risk")} / Avg risk ${escapeHtml(averageRiskPct.toFixed(2))}% / Max risk ${escapeHtml(maxRiskPct.toFixed(2))}%</span>
+      <strong>Simulation lanes</strong>
+      <span>Approved: ${escapeHtml(approvedRows)} / Promoted: ${escapeHtml(promotionRows)} / Vault research: ${escapeHtml(vaultRows)} / Avg risk ${escapeHtml(averageRiskPct.toFixed(2))}% / Max risk ${escapeHtml(maxRiskPct.toFixed(2))}%</span>
     </div>
     <strong>${escapeHtml(titleCase(account.risk_model || "fixed"))}</strong>
   `;
@@ -2956,15 +3878,64 @@ function renderPortfolioContext(rows = [], account = {}) {
 
 function dateOnly(value) {
   if (!value) return "";
+  const raw = text(value, "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   const date = parseDateValue(value);
   if (Number.isNaN(date.getTime())) return text(value, "").slice(0, 10);
   return date.toISOString().slice(0, 10);
 }
 
+const portfolioSourceOrder = ["Approved Playbook", "Promotion Review", "Strategy Vault Research"];
+
+function sourceFreshnessStatus(lastEntry, scannerSession) {
+  const sourceDate = dateOnly(lastEntry);
+  if (!sourceDate) return { status: "unknown", label: "Unknown" };
+  if (!scannerSession || scannerSession === "unknown") return { status: "unknown", label: "Loaded" };
+  if (sourceDate < scannerSession) return { status: "stale", label: "Behind" };
+  return { status: "current", label: "Current" };
+}
+
+function renderPortfolioSourceFreshness(account = {}, scannerSession = "") {
+  const timelines = account.source_bucket_timelines || {};
+  const ordered = [
+    ...portfolioSourceOrder.filter((source) => timelines[source]),
+    ...Object.keys(timelines).filter((source) => !portfolioSourceOrder.includes(source)).sort(),
+  ];
+  if (!ordered.length) {
+    return '<div class="portfolio-source-freshness empty">Source freshness will appear after historical simulator rows load.</div>';
+  }
+  return `
+    <div class="portfolio-source-freshness" aria-label="Historical simulator source freshness">
+      ${ordered
+        .map((source) => {
+          const lane = timelines[source] || {};
+          const freshness = sourceFreshnessStatus(lane.last_entry, scannerSession);
+          const latestParts = [lane.latest_symbol, readableCandidateLabel(lane.latest_candidate || ""), lane.latest_trade_log]
+            .map((value) => text(value, "").trim())
+            .filter(Boolean);
+          return `
+            <article class="${escapeHtml(freshness.status)}">
+              <header>
+                <strong>${escapeHtml(source)}</strong>
+                <em>${escapeHtml(freshness.label)}</em>
+              </header>
+              <div>
+                <span>Through ${escapeHtml(formatDateLabel(lane.last_entry || ""))}</span>
+                <span>${escapeHtml(lane.row_count || 0)} rows</span>
+              </div>
+              <p title="${escapeHtml(latestParts.join(" / "))}">${escapeHtml(latestParts.slice(0, 2).join(" / ") || "No latest row detail")}</p>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
 function portfolioTimelineFromRows(rows = [], account = {}) {
   const fallback = account.timeline || {};
   const dates = rows
-    .map((row) => parseDateValue(row.entry_time || row.exit_time || ""))
+    .map((row) => tradeDateValue(row))
     .filter((date) => !Number.isNaN(date.getTime()));
   if (!dates.length) return fallback;
 
@@ -2999,16 +3970,130 @@ function renderPortfolioFreshness(account = {}, rows = latestPortfolioRows) {
   card.innerHTML = `
     <strong>${behind ? "Historical simulator behind current scanner" : aligned ? "Historical simulator date aligned" : "Historical freshness unknown"}</strong>
     <span>${escapeHtml(detail)}</span>
+    ${renderPortfolioSourceFreshness(account, scannerSession)}
   `;
+  renderPaperProgressSync(currentState);
+}
+
+function paperHistorySyncState() {
+  const timeline = portfolioTimelineFromRows(latestPortfolioRows, latestPortfolioAccount);
+  const historicalThrough = dateOnly(timeline.last_entry);
+  const scannerSession = currentState?.data_freshness?.latest_scanner_session || "";
+  const hasBothDates = historicalThrough && scannerSession && scannerSession !== "unknown";
+  if (!hasBothDates) {
+    return {
+      status: "unknown",
+      label: "Unknown",
+      detail: "Historical simulator date range is unavailable until rows load.",
+    };
+  }
+  if (historicalThrough < scannerSession) {
+    return {
+      status: "watch",
+      label: "Behind",
+      detail: `Historical through ${formatDateLabel(historicalThrough)}; scanner session ${formatDateLabel(scannerSession)}.`,
+    };
+  }
+  return {
+    status: "healthy",
+    label: "Aligned",
+    detail: `Historical through ${formatDateLabel(historicalThrough)}; scanner session ${formatDateLabel(scannerSession)}.`,
+  };
+}
+
+function renderPaperProgressSync(state = currentState) {
+  if (!state || !$("paper-sync-status")) return;
+  const sentinel = state.data_flow_sentinel || {};
+  const historicalSync = state.historical_bucket_sync || {};
+  const contract = sentinel.contract || {};
+  const providerAudit = state.provider_stability_audit || {};
+  const checks = Array.isArray(sentinel.checks) ? sentinel.checks : [];
+  const providerStatus = providerAudit.status || contract.provider_stability_status || "unknown";
+  const flowStatus = sentinel.status || "missing";
+  const history = paperHistorySyncState();
+  const historicalSyncStatus = historicalSync.status || contract.historical_bucket_status || "";
+  const historicalWatch = ["watch", "blocked", "loaded", "missing"].includes(historicalSyncStatus);
+  const blocked = providerStatus === "blocked" || flowStatus === "blocked";
+  const watch = !blocked && (providerStatus === "watch" || flowStatus === "watch" || history.status === "watch" || historicalWatch);
+  const overall = blocked ? "blocked" : watch ? "watch" : providerStatus === "stable" && flowStatus === "synced" ? "synced" : "watch";
+  const overallClass = overall === "synced" ? "review_only" : overall === "blocked" ? "caution" : "watch";
+  const rowText = `${text(contract.scanner_rows, "0")} / ${text(contract.sizing_rows, "0")} / ${text(contract.router_candidate_rows, "0")}`;
+  const rowAligned =
+    Number(contract.scanner_rows || 0) === Number(contract.sizing_rows || 0)
+    && Number(contract.scanner_rows || 0) === Number(contract.router_candidate_rows || 0);
+  const visibleChecks = [
+    "Provider freshness",
+    "Candle freshness",
+    "Scanner to system state",
+    "Scanner to sizing",
+    "Scanner to router",
+    "Current candidate panel",
+    "Provider/session stability",
+  ];
+
+  $("paper-sync-status").className = `status ${overallClass}`;
+  $("paper-sync-status").textContent = titleCase(overall);
+  $("paper-sync-message").textContent = blocked
+    ? "Paper Progress has a blocked data-flow or provider-stability check. Do not use this page for current paper decisions yet."
+    : watch
+      ? "Paper Progress is usable with a watch note. Review the sync badges before trusting current decisions."
+      : "Paper Progress is reading the same synchronized data contract as Home.";
+  setText("paper-sync-provider", titleCase(providerStatus));
+  setText(
+    "paper-sync-provider-detail",
+    providerAudit.next_action || contract.provider_stability_detail || "Provider stability audit has not run yet.",
+  );
+  setText("paper-sync-flow", titleCase(flowStatus));
+  setText("paper-sync-flow-detail", sentinel.next_action || "Run Data Flow Sentinel to populate this check.");
+  setText("paper-sync-rows", rowText);
+  setText(
+    "paper-sync-row-detail",
+    rowAligned ? "Scanner, sizing, and router row counts agree." : "Row counts disagree; rebuild workflow outputs.",
+  );
+  setText("paper-sync-history", historicalSyncStatus ? titleCase(historicalSyncStatus) : history.label);
+  setText("paper-sync-history-detail", history.detail);
+  if (historicalSync.next_action) {
+    setText(
+      "paper-sync-history-detail",
+      `${history.detail} Buckets: ${historicalSync.next_action}`,
+    );
+  }
+
+  const indicatorTarget = $("paper-sync-indicators");
+  if (indicatorTarget) {
+    const checkBadges = visibleChecks
+      .map((area) => checks.find((row) => row.area === area))
+      .filter(Boolean)
+      .map((row) => {
+        const statusClass = safeClassName(row.status || "watch");
+        const statusLabel = row.status === "pass" ? "ok" : row.status || "check";
+        return `<span class="sync-indicator ${statusClass}" title="${escapeHtml(row.detail || "")}">${escapeHtml(text(row.area, "Check").replace(/^Scanner to /, ""))}: ${escapeHtml(titleCase(statusLabel))}</span>`;
+      });
+    checkBadges.push(
+      `<span class="sync-indicator ${history.status}" title="${escapeHtml(history.detail)}">Historical Lane: ${escapeHtml(history.label)}</span>`,
+    );
+    if (historicalSyncStatus) {
+      const syncClass = historicalSyncStatus === "synced" ? "pass" : "warn";
+      const syncDetail = [
+        `Target ${historicalSync.target_scanner_session || "unknown"}`,
+        historicalSync.behind_buckets?.length ? `behind ${historicalSync.behind_buckets.join(", ")}` : "",
+        historicalSync.missing_buckets?.length ? `missing ${historicalSync.missing_buckets.join(", ")}` : "",
+      ].filter(Boolean).join("; ");
+      checkBadges.push(
+        `<span class="sync-indicator ${syncClass}" title="${escapeHtml(syncDetail)}">Buckets: ${escapeHtml(titleCase(historicalSyncStatus))}</span>`,
+      );
+    }
+    indicatorTarget.innerHTML = checkBadges.join("");
+  }
 }
 
 function tradeYearFromRow(row) {
-  const date = parseDateValue(row.entry_time || row.exit_time || "");
+  const date = tradeDateValue(row);
   return Number.isNaN(date.getTime()) ? "" : String(date.getFullYear());
 }
 
 function tradeMonthFromRow(row) {
-  const date = parseDateValue(row.entry_time || row.exit_time || "");
+  const date = tradeDateValue(row);
   return Number.isNaN(date.getTime()) ? "" : String(date.getMonth() + 1).padStart(2, "0");
 }
 
@@ -3082,6 +4167,7 @@ function filteredPortfolioHistoryRows(rows = []) {
       row.symbol,
       row.source_setup,
       row.source_candidate,
+      row.source_bucket,
       row.quality_grade,
       row.exit_reason,
       row.source_trade_log,
@@ -3092,8 +4178,8 @@ function filteredPortfolioHistoryRows(rows = []) {
     return haystack.includes(search);
   });
   return filtered.sort((left, right) => {
-    const leftDate = parseDateValue(left.entry_time || left.exit_time || "").getTime() || 0;
-    const rightDate = parseDateValue(right.entry_time || right.exit_time || "").getTime() || 0;
+    const leftDate = tradeSortTime(left);
+    const rightDate = tradeSortTime(right);
     if (sort === "oldest") return leftDate - rightDate;
     if (sort === "best") return Number(right.r_result || 0) - Number(left.r_result || 0);
     if (sort === "worst") return Number(left.r_result || 0) - Number(right.r_result || 0);
@@ -3131,7 +4217,7 @@ function renderPortfolioTradeHistory(rows = latestPortfolioRows, account = lates
     count.className = "status watch";
     count.textContent = "No rows";
     message.textContent =
-      "No promoted historical trades are available for the current simulator settings.";
+      "No historical strategy trades are available for the current simulator settings.";
     body.innerHTML = '<tr><td colspan="11">No historical simulated trades are loaded.</td></tr>';
     return;
   }
@@ -3151,7 +4237,7 @@ function renderPortfolioTradeHistory(rows = latestPortfolioRows, account = lates
   const sliceLabel = sort === "newest" ? "latest" : "first";
   const capText = filteredRows.length > visibleRows.length ? ` Showing the ${sliceLabel} ${visibleRows.length}; narrow the filters to drill in.` : "";
   message.textContent =
-    `${filteredRows.length} historical simulator row${filteredRows.length === 1 ? "" : "s"} matched${filteredText}.${capText} These rows drive the historical account curve, not the forward paper-progress gate.`;
+    `${filteredRows.length} historical simulator row${filteredRows.length === 1 ? "" : "s"} matched${filteredText}.${capText} This curve separates Approved Historical, Promoted Research, and Strategy Vault Research rows; official paper trades remain separate.`;
   body.innerHTML = visibleRows
     .map((trade) => {
       const result = Number(trade.r_result || 0);
@@ -3160,12 +4246,17 @@ function renderPortfolioTradeHistory(rows = latestPortfolioRows, account = lates
       const riskLabel = `${dollarValue(trade.risk_dollars)} / ${riskPct.toFixed(2)}%`;
       const fullSource = text(trade.source_trade_log, "--");
       const sourceLabel = compactTradeSourceName(fullSource);
+      const rawCandidate = text(trade.source_candidate, "--");
+      const candidateLabel = readableCandidateLabel(rawCandidate);
+      const setupLabel = text(trade.source_setup, "--");
+      const bucketLabel = text(trade.source_display_label || trade.source_bucket, "");
+      const bucketTitle = text(trade.source_disclaimer || trade.source_bucket, "");
       return `
         <tr>
           <td>${escapeHtml(text(trade.entry_time, "--"))}</td>
           <td>${escapeHtml(text(trade.symbol, "--"))}</td>
-          <td class="compact-cell" title="${escapeHtml(text(trade.source_setup, "--"))}">${escapeHtml(text(trade.source_setup, "--"))}</td>
-          <td class="compact-cell wide" title="${escapeHtml(text(trade.source_candidate, "--"))}">${escapeHtml(text(trade.source_candidate, "--"))}</td>
+          <td class="compact-cell" title="${escapeHtml([setupLabel, bucketTitle].filter(Boolean).join(" / "))}">${escapeHtml(setupLabel)}${bucketLabel ? `<span class="table-subtext">${escapeHtml(bucketLabel)}</span>` : ""}</td>
+          <td class="compact-cell wide" title="${escapeHtml(rawCandidate)}"><strong>${escapeHtml(candidateLabel)}</strong><span class="table-subtext">${escapeHtml(rawCandidate)}</span></td>
           <td>${escapeHtml(text(trade.quality_grade, "--"))} ${escapeHtml(text(trade.quality_score, ""))}</td>
           <td class="${result >= 0 ? "positive" : "negative"}">${escapeHtml(rValue(result))}</td>
           <td>${escapeHtml(riskLabel)}</td>
@@ -3209,7 +4300,7 @@ async function loadBacktestPortfolioSimulation() {
     badge.className = "status review_only";
     badge.textContent = `${payload.row_count || 0} simulated`;
     message.textContent =
-      `Promoted historical backtests applied to a ${dollarValue(account.starting_equity)} research account with ${titleCase(account.risk_model || params.riskModel)} risk. Base risk is ${(Number(account.risk_per_trade_pct || 0) * 100).toFixed(2)}%; average applied risk is ${(Number(account.average_risk_per_trade_pct || 0) * 100).toFixed(2)}%. ${account.duplicates_collapsed || 0} overlapping duplicate trades were collapsed.`;
+      `Historical simulation applied to a ${dollarValue(account.starting_equity)} research account with ${titleCase(account.risk_model || params.riskModel)} risk. It includes approved, promoted, and Strategy Vault research lanes; official paper trades remain separate. Base risk is ${(Number(account.risk_per_trade_pct || 0) * 100).toFixed(2)}%; average applied risk is ${(Number(account.average_risk_per_trade_pct || 0) * 100).toFixed(2)}%. ${account.duplicates_collapsed || 0} overlapping duplicate trades were collapsed.`;
     $("portfolio-equity-chart").innerHTML = backtestDollarEquityChart(rows, Number(account.starting_equity || 5000));
   } catch (error) {
     badge.className = "status caution";
@@ -3263,6 +4354,44 @@ function renderEvidenceBridge(state) {
   setText("bridge-aging-detail", caution ? `Late-day caution ${rValue(lateAverage)}` : `Late-day avg ${rValue(lateAverage)}`);
 }
 
+function renderPaperEntryPacket(state) {
+  const packet = state.paper_entry_packet || {};
+  const packets = Array.isArray(packet.packets) ? packet.packets : [];
+  const ready = Number(packet.ready_packet_count || packets.length || 0);
+  const blocked = Number(packet.blocked_candidate_count || 0);
+  const list = $("paper-entry-packet-list");
+  if (!$("paper-entry-packet-status") || !list) return;
+
+  $("paper-entry-packet-status").className = `status ${ready ? "healthy" : blocked ? "watch" : "review_only"}`;
+  $("paper-entry-packet-status").textContent = ready ? `${ready} ready` : blocked ? `${blocked} blocked` : "No packet";
+  $("paper-entry-packet-message").textContent =
+    packet.next_action || "No paper-entry packet has been generated yet. Run the paper session preview or daily workflow.";
+
+  if (!packets.length) {
+    list.innerHTML = '<p class="paper-empty">No candidate has passed the pre-entry gate yet.</p>';
+    return;
+  }
+
+  list.innerHTML = packets
+    .map(
+      (row) => `
+        <article class="packet-item">
+          <header>
+            <div>
+              <strong>${escapeHtml(row.symbol || "--")} ${escapeHtml(row.setup || "--")}</strong>
+              <p>${escapeHtml(titleCase(row.direction || ""))} / Signal ${escapeHtml(row.signal_time_et || "--")} / Shares ${escapeHtml(row.suggested_shares || "--")}</p>
+            </div>
+            <span class="status watch">${escapeHtml(titleCase(row.manual_review_status || "manual review"))}</span>
+          </header>
+          <p>${escapeHtml(row.notes || "Preview first, then confirm local paper only after manual review.")}</p>
+          <code>${escapeHtml(row.paper_preview_command || "python run_paper_session_cycle.py")}</code>
+          <code>${escapeHtml(row.paper_confirm_command || "python run_paper_session_cycle.py --confirm-local-paper")}</code>
+        </article>
+      `,
+    )
+    .join("");
+}
+
 function candidateIsLateDay(card) {
   const timeText = text(card.signal_time_et, "");
   const match = timeText.match(/(\d{1,2}):(\d{2})/);
@@ -3274,6 +4403,7 @@ function candidateIsLateDay(card) {
 
 function candidateWorkflowHtml(card, state) {
   const lateCaution = candidateIsLateDay(card) && state.forward_evidence_bridge?.aging_status === "late_day_caution";
+  const routerRoute = text(card.router_route, "unrouted");
   const steps = [
     ["Confirm chart context", "Open Trading Workspace and verify 1H thesis, 30m entry, 5m management."],
     ["Review risk", "Check entry, stop, target, size, and max paper risk before logging anything."],
@@ -3289,6 +4419,11 @@ function candidateWorkflowHtml(card, state) {
       ${
         lateCaution
           ? `<p class="candidate-late-warning">Late-day caution: recent late-day candidate evidence is negative. Treat this as caution-only unless every rule is unusually clean.</p>`
+          : ""
+      }
+      ${
+        routerRoute && routerRoute !== "review_first" && routerRoute !== "unrouted"
+          ? `<p class="candidate-late-warning">Router gate: ${escapeHtml(titleCase(routerRoute))}. ${escapeHtml(card.router_action || "Do not route this candidate to official paper review yet.")}</p>`
           : ""
       }
     </div>
@@ -3312,14 +4447,17 @@ function renderPaperWorkflowGuide(state) {
         </div>
         <span class="status ${ready ? "healthy" : "watch"}">${escapeHtml(ready)} ready</span>
       </header>
-      <ol>
-        <li><span>1</span> Fresh current-candle candidate appears and scanner marks it allowed.</li>
-        <li><span>2</span> Position sizing is size_ok and the chart/checklist are manually reviewed.</li>
-        <li><span>3</span> You log the local paper entry; no broker order is placed by this app.</li>
-        <li><span>4</span> After exit, Trade Logger records the outcome and it counts toward the 30-trade gate.</li>
-      </ol>
       <p>${escapeHtml(gate)} official allowed paper trade${gate === 1 ? "" : "s"} logged; ${escapeHtml(remaining)} left to the first checkpoint.</p>
       ${lateCaution ? `<p class="candidate-late-warning">Timing warning: late-day candidate evidence is currently negative, so late signals should be treated with extra caution.</p>` : ""}
+      <details class="operator-drilldown">
+        <summary>Show the four-step paper workflow</summary>
+        <ol>
+          <li><span>1</span> Fresh current-candle candidate appears and scanner marks it allowed.</li>
+          <li><span>2</span> Position sizing is size_ok and the chart/checklist are manually reviewed.</li>
+          <li><span>3</span> You log the local paper entry; no broker order is placed by this app.</li>
+          <li><span>4</span> After exit, Trade Logger records the outcome and it counts toward the 30-trade gate.</li>
+        </ol>
+      </details>
     </article>
   `;
 }
@@ -3471,6 +4609,8 @@ function renderFiles(state) {
     ["Shadow samples", "shadow_samples.md", "Markdown"],
     ["Open paper monitor", "open_paper_trade_monitor.md", "Markdown"],
     ["Refresh status", "refresh_status.md", "Markdown"],
+    ["After-close evidence maturity", "after_close_evidence_maturity.md", "Markdown"],
+    ["Phase milestones", "phase_milestones.md", "Markdown"],
     ["Pre-market verification", "premarket_verification.md", "Markdown"],
     ["Setup replay", "setup_replay.md", "Markdown"],
     ["Strategy vault", "strategy_vault.md", "Markdown"],
@@ -3480,14 +4620,38 @@ function renderFiles(state) {
     ["VWAP mean reversion forward observations", "vwap_mean_reversion_forward_observations.md", "Markdown"],
     ["VWAP mean reversion paper-watch gate", "vwap_mean_reversion_paper_watch_gate.md", "Markdown"],
     ["Gap fill / gap fade", "gap_fill_fade.md", "Markdown"],
+    ["Gap fill / gap fade tightened review", "gap_fill_fade_tightened_review.md", "Markdown"],
+    ["Gap fill / gap fade shadow samples", "gap_fill_fade_shadow_samples.md", "Markdown"],
+    ["Gap fill / gap fade forward observations", "gap_fill_fade_forward_observations.md", "Markdown"],
+    ["Gap fill / gap fade paper-watch gate", "gap_fill_fade_paper_watch_gate.md", "Markdown"],
     ["VWAP reclaim / reject", "vwap_reclaim_reject.md", "Markdown"],
     ["VWAP reclaim / reject walk-forward", "vwap_reclaim_reject_walk_forward.md", "Markdown"],
     ["VWAP reclaim / reject shadow samples", "vwap_reclaim_reject_shadow_samples.md", "Markdown"],
+    ["VWAP reclaim / reject evidence maturity", "vwap_reclaim_reject_evidence_maturity.md", "Markdown"],
     ["Opening range breakout", "opening_range_breakout.md", "Markdown"],
+    ["Opening range breakout tightened review", "opening_range_breakout_tightened_review.md", "Markdown"],
+    ["Opening range breakout walk-forward deepening", "opening_range_breakout_walk_forward_deepening.md", "Markdown"],
+    ["Opening range breakout shadow samples", "opening_range_breakout_shadow_samples.md", "Markdown"],
+    ["Opening range breakout forward observations", "opening_range_breakout_forward_observations.md", "Markdown"],
+    ["Opening range breakout paper-watch gate", "opening_range_breakout_paper_watch_gate.md", "Markdown"],
     ["Trend pullback continuation", "trend_pullback_continuation.md", "Markdown"],
+    ["Trend pullback tightened review", "trend_pullback_continuation_tightened_review.md", "Markdown"],
+    ["Trend pullback shadow samples", "trend_pullback_continuation_shadow_samples.md", "Markdown"],
+    ["Trend pullback forward observations", "trend_pullback_continuation_forward_observations.md", "Markdown"],
+    ["Trend pullback paper-watch gate", "trend_pullback_continuation_paper_watch_gate.md", "Markdown"],
     ["Opening range failure", "opening_range_failure.md", "Markdown"],
+    ["Opening range failure tightened review", "opening_range_failure_tightened_review.md", "Markdown"],
+    ["Opening range failure walk-forward deepening", "opening_range_failure_walk_forward_deepening.md", "Markdown"],
+    ["Opening range failure shadow samples", "opening_range_failure_shadow_samples.md", "Markdown"],
+    ["Opening range failure forward observations", "opening_range_failure_forward_observations.md", "Markdown"],
+    ["Opening range failure paper-watch gate", "opening_range_failure_paper_watch_gate.md", "Markdown"],
     ["Strategy evidence accumulator", "strategy_evidence_accumulator.md", "Markdown"],
     ["Paper activation rules", "paper_activation_rules.md", "Markdown"],
+    ["Strategy walk-forward matrix", "strategy_walk_forward_matrix.md", "Markdown"],
+    ["Research strategy tightened review", "research_strategy_tightened_review.md", "Markdown"],
+    ["Strategy backtest coverage", "strategy_backtest_coverage.md", "Markdown"],
+    ["Validation deepening queue", "validation_deepening_queue.md", "Markdown"],
+    ["Strategy triage", "strategy_triage.md", "Markdown"],
     ["Research confidence", "universe_expansion/research_confidence.md", "Markdown"],
     ["Promotion review", "promotion_review.md", "Markdown"],
     ["Controlled variants", "controlled_variant_review.md", "Markdown"],
@@ -3678,9 +4842,7 @@ function updateAppRoute() {
     "#app-health": "#system",
     "#workflow": "#system",
     "#app-scaffold": "#system",
-    "#research-confidence": "#research",
-    "#promotion-review": "#research",
-    "#forward-evidence": "#research",
+    "#research": "#research-lab",
   };
   if (routeAliases[activeHash]) {
     window.location.hash = routeAliases[activeHash];
@@ -3689,21 +4851,53 @@ function updateAppRoute() {
   const routePages = {
     "#home": {
       bodyClass: "home-route",
-      sections: ["command-center", "backtest-performance", "session-readiness"],
+      sections: ["home-executive", "home-dashboard"],
     },
-    "#trading-workspace": { bodyClass: "trading-workspace-route", sections: ["trading-workspace"] },
-    "#near-miss-analytics": { bodyClass: "near-miss-analytics-route", sections: ["near-miss-analytics"] },
-    "#investment-narrative": { bodyClass: "investment-narrative-route", sections: ["investment-narrative"] },
-    "#research": { bodyClass: "research-route", sections: ["research-confidence", "promotion-review", "forward-evidence"] },
-    "#strategy-vault": { bodyClass: "strategy-vault-route", sections: ["strategy-vault"] },
-    "#system": { bodyClass: "system-route", sections: ["state", "state-metrics", "app-health", "workflow", "app-scaffold"] },
-    "#sample-queue": { bodyClass: "sample-queue-route", sections: ["sample-queue"] },
-    "#candidates": { bodyClass: "candidates-route", sections: ["candidates"] },
-    "#trade-logger": { bodyClass: "trade-logger-route", sections: ["trade-logger"] },
-    "#paper-visualization": { bodyClass: "paper-visualization-route", sections: ["paper-visualization"] },
-    "#health": { bodyClass: "setup-health-route", sections: ["health"] },
-    "#practice-replay": { bodyClass: "practice-replay-route", sections: ["practice-replay"] },
-    "#reports": { bodyClass: "reports-route", sections: ["reports"] },
+    "#trade-desk": {
+      bodyClass: "trade-desk-route",
+      sections: [
+        "trade-desk-executive",
+        "trade-desk-summary",
+        "candidates",
+      ],
+    },
+    "#trading-workspace": { bodyClass: "trading-workspace-route", sections: ["trade-desk-executive", "trading-workspace"] },
+    "#near-miss-analytics": { bodyClass: "near-miss-analytics-route", sections: ["research-executive", "near-miss-analytics"] },
+    "#investment-narrative": { bodyClass: "investment-narrative-route", sections: ["research-executive", "investment-narrative"] },
+    "#validation": {
+      bodyClass: "validation-route",
+      sections: [
+        "validation-executive",
+        "paper-trade-command-center",
+        "trade-logger",
+      ],
+    },
+    "#research-lab": {
+      bodyClass: "research-lab-route",
+      sections: [
+        "research-executive",
+        "research-lab-overview",
+      ],
+    },
+    "#research-confidence": { bodyClass: "research-lab-route", sections: ["research-executive", "research-confidence", "promotion-review", "forward-evidence"] },
+    "#promotion-review": { bodyClass: "research-lab-route", sections: ["research-executive", "promotion-review"] },
+    "#backtest-performance": { bodyClass: "research-lab-route", sections: ["research-executive", "backtest-performance"] },
+    "#evidence-maturity": { bodyClass: "research-lab-route", sections: ["research-executive", "evidence-maturity"] },
+    "#strategy-evidence-collection": { bodyClass: "research-lab-route", sections: ["research-executive", "strategy-evidence-collection"] },
+    "#forward-evidence": { bodyClass: "validation-route", sections: ["validation-executive", "forward-evidence"] },
+    "#strategy-vault": { bodyClass: "strategy-vault-route", sections: ["research-executive", "strategy-vault"] },
+    "#systems": { bodyClass: "systems-route", sections: ["systems-executive", "systems-overview"] },
+    "#data-flow-sentinel": { bodyClass: "systems-route", sections: ["systems-executive", "data-flow-sentinel"] },
+    "#strategy-contract-status": { bodyClass: "systems-route", sections: ["systems-executive", "strategy-contract-status"] },
+    "#phase-milestones": { bodyClass: "systems-route", sections: ["systems-executive", "phase-milestones"] },
+    "#system": { bodyClass: "systems-route", sections: ["systems-executive", "state", "state-metrics", "app-health", "workflow", "app-scaffold"] },
+    "#sample-queue": { bodyClass: "sample-queue-route", sections: ["validation-executive", "sample-queue"] },
+    "#candidates": { bodyClass: "candidates-route", sections: ["trade-desk-executive", "candidates"] },
+    "#trade-logger": { bodyClass: "trade-logger-route", sections: ["validation-executive", "trade-logger"] },
+    "#paper-visualization": { bodyClass: "paper-visualization-route", sections: ["validation-executive", "paper-visualization"] },
+    "#health": { bodyClass: "setup-health-route", sections: ["research-executive", "health"] },
+    "#practice-replay": { bodyClass: "practice-replay-route", sections: ["research-executive", "practice-replay"] },
+    "#reports": { bodyClass: "reports-route", sections: ["research-executive", "reports"] },
   };
   const selectedPage = routePages[activeHash] || routePages["#home"];
   const selectedSections = new Set(selectedPage.sections);
@@ -3728,8 +4922,37 @@ function updateAppRoute() {
     return;
   }
 
+  const navParents = {
+    "#home": "#home",
+    "#trade-desk": "#trade-desk",
+    "#trading-workspace": "#trade-desk",
+    "#candidates": "#trade-desk",
+    "#validation": "#validation",
+    "#sample-queue": "#validation",
+    "#trade-logger": "#validation",
+    "#paper-visualization": "#validation",
+    "#forward-evidence": "#validation",
+    "#research-lab": "#research-lab",
+    "#strategy-vault": "#research-lab",
+    "#backtest-performance": "#research-lab",
+    "#evidence-maturity": "#research-lab",
+    "#strategy-evidence-collection": "#research-lab",
+    "#near-miss-analytics": "#research-lab",
+    "#investment-narrative": "#research-lab",
+    "#research-confidence": "#research-lab",
+    "#promotion-review": "#research-lab",
+    "#health": "#research-lab",
+    "#practice-replay": "#research-lab",
+    "#reports": "#research-lab",
+    "#systems": "#systems",
+    "#data-flow-sentinel": "#systems",
+    "#strategy-contract-status": "#systems",
+    "#phase-milestones": "#systems",
+    "#system": "#systems",
+  };
+  const activeParent = navParents[activeHash] || "#home";
   for (const link of document.querySelectorAll(".sidebar nav a")) {
-    link.classList.toggle("active", link.getAttribute("href") === activeHash);
+    link.classList.toggle("active", link.getAttribute("href") === activeParent);
   }
 
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -3782,8 +5005,17 @@ function renderState(state) {
   setText("data-reliability-status", titleCase(state.data_reliability?.status || "unknown"));
   setText("data-reliability-detail", state.data_reliability?.headline || "Checking automation and refresh health.");
 
+  safeRender("Executive summaries", () => renderExecutiveSummaries(state));
+  safeRender("Home dashboard", () => renderHomeDashboard(state));
   safeRender("Command center", () => renderCommandCenter(state));
+  safeRender("Trade desk summary", () => renderTradeDeskSummary(state));
+  safeRender("Paper trade command center", () => renderPaperTradeCommandCenter(state));
+  safeRender("Data flow sentinel", () => renderDataFlowSentinel(state));
   safeRender("Backtest performance", () => renderBacktestPerformance(state));
+  safeRender("Phase milestones", () => renderPhaseMilestones(state));
+  safeRender("Strategy contract status", () => renderStrategyContractStatus(state));
+  safeRender("Evidence maturity", () => renderEvidenceMaturity(state));
+  safeRender("Strategy evidence collection", () => renderStrategyEvidenceCollection(state));
   safeRender("Research confidence", () => renderResearchConfidence(state));
   safeRender("Promotion review", () => renderPromotionReview(state));
   safeRender("Session readiness", () => renderSessionReadiness(state));
@@ -3805,7 +5037,12 @@ function renderState(state) {
   safeRender("Open paper trades", () => loadOpenPaperTrades());
   safeRender("Forward evidence", () => renderForwardEvidence(state));
   safeRender("Near misses", () => loadNearMissAnalytics());
+  safeRender("Paper progress sync", () => renderPaperProgressSync(state));
   safeRender("Paper visualization", () => renderPaperVisualization(state));
+  if (latestPortfolioRows.length || Object.keys(latestPortfolioAccount.source_bucket_timelines || {}).length) {
+    safeRender("Portfolio freshness sync", () => renderPortfolioFreshness(latestPortfolioAccount, latestPortfolioRows));
+  }
+  safeRender("Paper entry packet", () => renderPaperEntryPacket(state));
   safeRender("Setup health", () => renderHealth(state));
   safeRender("Replay", () => renderReplay(state));
   safeRender("Files", () => renderFiles(state));
@@ -3847,7 +5084,7 @@ async function runRefreshStatusAction() {
   }
 }
 
-async function runWebullRefreshAction() {
+async function runMarketDataRefreshAction() {
   const button = $("run-webull-refresh");
   const message = $("webull-refresh-message");
   button.disabled = true;
@@ -3858,7 +5095,8 @@ async function runWebullRefreshAction() {
     const response = await fetch(refreshWebullDataActionUrl, { method: "POST", cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) {
-      throw new Error(payload.error || `Webull refresh failed: ${response.status}`);
+      const detail = payload.detail ? ` ${payload.detail}` : "";
+      throw new Error(`${payload.error || `Market-data refresh failed: ${response.status}`}${detail}`);
     }
 
     renderState(payload.state);
@@ -3933,6 +5171,65 @@ async function runPaperSessionAction(url, runningText) {
   }
 }
 
+async function runPaperCommandAction(url, payload, runningText) {
+  const buttons = [
+    $("paper-command-refresh"),
+    $("paper-command-approve-chart"),
+    $("paper-command-reject-chart"),
+    $("paper-command-auto-select-contract"),
+    $("paper-command-run-contract"),
+    $("paper-command-confirm-entry"),
+    $("paper-command-confirm-exit"),
+  ];
+  const message = $("paper-command-action-message");
+  for (const button of buttons) {
+    if (button) button.disabled = true;
+  }
+  message.className = "action-message running";
+  message.textContent = runningText;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `Command center action failed: ${response.status}`);
+    if (result.state) {
+      renderState(result.state);
+    }
+    if (result.command_center) {
+      renderPaperCommandCenterPayload(result.command_center);
+    } else {
+      await loadPaperCommandCenter();
+    }
+    message.className = "action-message success";
+    message.textContent = result.message || "Command center action completed.";
+  } catch (error) {
+    message.className = "action-message failure";
+    message.textContent = error.message;
+    await loadPaperCommandCenter();
+  } finally {
+    for (const button of buttons) {
+      if (button) button.disabled = false;
+    }
+    renderPaperCommandCenterPayload(paperCommandCenter);
+  }
+}
+
+function paperCommandContractPayload() {
+  const form = $("paper-command-contract-form");
+  const data = new FormData(form);
+  const payload = { sample_key: selectedPaperCommandKey };
+  for (const [key, value] of data.entries()) {
+    payload[key] = value;
+  }
+  payload.earnings_within_window = $("paper-earnings").checked ? "yes" : "no";
+  return payload;
+}
+
 async function refresh() {
   if (stateRefreshInFlight) return;
   stateRefreshInFlight = true;
@@ -3941,8 +5238,9 @@ async function refresh() {
   try {
     const state = await loadState();
     renderState(state);
+    const checkedAt = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     updateAutoRefreshStatus(
-      `Last checked ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}. App state generated ${state.app_health?.generated_at_et || state.generated_at_et || "unknown"}.`,
+      `Checked ${checkedAt} ${compactTimezoneLabel()}. State ${appStateAgeLabel(state)}. ${appStateGeneratedLabel(state)}.`,
     );
   } catch (error) {
     setText("verdict", error.message);
@@ -3955,6 +5253,9 @@ async function refresh() {
 }
 
 $("refresh-button").addEventListener("click", refresh);
+$("feed-rail-toggle").addEventListener("click", () => {
+  setFeedRailCollapsed(!document.body.classList.contains("feed-rail-collapsed"));
+});
 $("enable-alerts").addEventListener("click", async () => {
   alertsEnabled = true;
   for (const kind of ["entry", "exit"]) {
@@ -3972,7 +5273,7 @@ $("enable-alerts").addEventListener("click", async () => {
 $("command-primary-action").addEventListener("click", () => {
   const button = $("command-primary-action");
   if (button.dataset.action === "refresh-webull") {
-    runWebullRefreshAction();
+    runMarketDataRefreshAction();
     return;
   }
   if (button.dataset.action === "premarket") {
@@ -3984,7 +5285,7 @@ $("command-primary-action").addEventListener("click", () => {
   }
 });
 $("run-refresh-status").addEventListener("click", runRefreshStatusAction);
-$("run-webull-refresh").addEventListener("click", runWebullRefreshAction);
+$("run-webull-refresh").addEventListener("click", runMarketDataRefreshAction);
 $("run-premarket-check").addEventListener("click", runPremarketCheckAction);
 $("run-paper-session-preview").addEventListener("click", () =>
   runPaperSessionAction(paperSessionPreviewActionUrl, "Running local paper preview cycle..."),
@@ -3997,6 +5298,50 @@ $("confirm-paper-entry").addEventListener("click", () =>
 );
 $("confirm-paper-exits").addEventListener("click", () =>
   runPaperSessionAction(paperSessionConfirmExitsActionUrl, "Confirming completed local paper exits..."),
+);
+$("paper-command-refresh").addEventListener("click", loadPaperCommandCenter);
+$("paper-command-candidate-select").addEventListener("change", (event) => {
+  selectedPaperCommandKey = event.target.value;
+  renderPaperCommandCenterPayload(paperCommandCenter);
+});
+$("paper-command-approve-chart").addEventListener("click", () =>
+  runPaperCommandAction(
+    paperCommandChartApprovalUrl,
+    { sample_key: selectedPaperCommandKey, decision: "approved" },
+    "Recording chart approval...",
+  ),
+);
+$("paper-command-reject-chart").addEventListener("click", () =>
+  runPaperCommandAction(
+    paperCommandChartApprovalUrl,
+    { sample_key: selectedPaperCommandKey, decision: "rejected" },
+    "Recording chart rejection...",
+  ),
+);
+$("paper-command-contract-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  runPaperCommandAction(
+    paperCommandContractApprovalUrl,
+    paperCommandContractPayload(),
+    "Saving contract review and running Contract Gate...",
+  );
+});
+$("paper-command-auto-select-contract").addEventListener("click", () =>
+  runPaperCommandAction(
+    paperCommandAutoSelectContractUrl,
+    { sample_key: selectedPaperCommandKey },
+    "Selecting the best A-tier contract from local option-chain data...",
+  ),
+);
+$("paper-command-confirm-entry").addEventListener("click", () =>
+  runPaperCommandAction(
+    paperCommandConfirmEntryUrl,
+    { sample_key: selectedPaperCommandKey },
+    "Confirming official local paper trade...",
+  ),
+);
+$("paper-command-confirm-exit").addEventListener("click", () =>
+  runPaperCommandAction(paperCommandConfirmExitUrl, {}, "Confirming paper exits..."),
 );
 $("replay-prev").addEventListener("click", () => {
   moveWithinReplaySession(-1);
@@ -4163,6 +5508,7 @@ for (const id of ["paper-account-starting-equity", "paper-account-risk-pct"]) {
 renderReportTabs();
 hydrateHelpBubbles();
 showReport("dashboard");
+hydrateFeedRailPreference();
 updateAppRoute();
 window.addEventListener("hashchange", updateAppRoute);
 refresh();

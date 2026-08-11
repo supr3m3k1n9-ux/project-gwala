@@ -12,3 +12,11 @@ logs/
 conf/token.txt
 *.log
 data/*.csv
+
+# Runtime / operational evidence
+data/incidents/
+
+# Generated options-chain market data
+data/options_chains/*.csv
+data/options_chains/active/
+data/options_chains/archive/

@@ -151,6 +151,8 @@ def build_activation_payload(output_dir: Path) -> tuple[dict[str, Any], pd.DataF
     for strategy in research_strategies:
         strategy_rows = pd.DataFrame(rule_row(strategy, rule) for rule in ACTIVATION_RULES)
         decision, blocked_count, next_blocker = activation_decision(strategy_rows)
+        if next_blocker == "Strategy-specific gate exists" and strategy.get("paper_watch_decision") == "not_ready":
+            next_blocker = str(strategy.get("paper_watch_blocker", next_blocker) or next_blocker)
         checklist_rows.extend(strategy_rows.to_dict("records"))
         summary_rows.append(
             {
@@ -161,6 +163,7 @@ def build_activation_payload(output_dir: Path) -> tuple[dict[str, Any], pd.DataF
                 "blocked_count": blocked_count,
                 "next_blocker": next_blocker,
                 "paper_watch_decision": strategy.get("paper_watch_decision", ""),
+                "paper_watch_blocker": strategy.get("paper_watch_blocker", ""),
                 "tightened_pass_rows": strategy.get("tightened_pass_rows", 0),
                 "walk_forward_holding_rows": strategy.get("walk_forward_holding_rows", 0),
                 "shadow_samples": strategy.get("shadow_samples", 0),

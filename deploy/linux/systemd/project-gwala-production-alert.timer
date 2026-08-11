@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Project Gwala production alert checks in shadow mode
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 06:47,52,57:00
+OnCalendar=Mon..Fri *-*-* 07..12:02,07,12,17,22,27,32,37,42,47,52,57:00
+OnCalendar=Mon..Fri *-*-* 13:02,07:00
+Unit=project-gwala-production-alert.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

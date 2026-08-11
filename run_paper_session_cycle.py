@@ -58,11 +58,23 @@ def build_commands(
 ) -> list[tuple[str, list[str]]]:
     """Build the ordered safe local paper-cycle commands."""
 
+    local_paper_command = [python, "run_paper_execution_simulator.py", "--output-dir", str(output_dir)]
+    if confirm_local_paper:
+        local_paper_command.append("--confirm-local-paper")
+    open_monitor_command = [python, "run_open_paper_monitor.py", "--output-dir", str(output_dir)]
+    if confirm_exits:
+        open_monitor_command.append("--confirm-updates")
     commands = [
         ("Candidate alerts", [python, "run_candidate_alerts.py", "--output-dir", str(output_dir)]),
         ("Pre-entry review", [python, "run_pre_entry_review.py", "--output-dir", str(output_dir)]),
-        ("Local paper execution", [python, "run_paper_execution_simulator.py", "--output-dir", str(output_dir)]),
-        ("Open paper monitor", [python, "run_open_paper_monitor.py", "--output-dir", str(output_dir)]),
+        ("Paper entry packet", [python, "run_paper_entry_packet.py", "--output-dir", str(output_dir)]),
+        ("Paper Gate v2", [python, "run_paper_gate_v2.py", "--output-dir", str(output_dir)]),
+        ("Options Contract Gate", [python, "run_options_contract_gate.py", "--output-dir", str(output_dir)]),
+        ("Validation sample import preview", [python, "run_paper_validation_sample_import.py", "--output-dir", str(output_dir)]),
+        ("Daily ship report", [python, "run_daily_ship_report.py", "--output-dir", str(output_dir)]),
+        ("Filter rejection report", [python, "run_filter_rejection_report.py", "--output-dir", str(output_dir)]),
+        ("Local paper execution", local_paper_command),
+        ("Open paper monitor", open_monitor_command),
         ("Exit audit", [python, "run_exit_audit.py", "--output-dir", str(output_dir)]),
         ("Paper review", [python, "run_paper_review.py", "--output-dir", str(output_dir)]),
         ("Forward sample queue", [python, "run_forward_sample_queue.py", "--output-dir", str(output_dir)]),
@@ -71,12 +83,10 @@ def build_commands(
         ("Candidate aging", [python, "run_candidate_aging.py", "--output-dir", str(output_dir)]),
         ("Forward evidence", [python, "run_forward_evidence.py", "--output-dir", str(output_dir)]),
         ("Refresh status", [python, "run_refresh_status.py", "--output-dir", str(output_dir)]),
+        ("Dashboard data preflight", [python, "run_dashboard_data_preflight.py", "--output-dir", str(output_dir)]),
+        ("Data flow sentinel", [python, "run_data_flow_sentinel.py", "--output-dir", str(output_dir)]),
         ("System state", [python, "run_system_state.py", "--output-dir", str(output_dir)]),
     ]
-    if confirm_local_paper:
-        commands[2][1].append("--confirm-local-paper")
-    if confirm_exits:
-        commands[3][1].append("--confirm-updates")
     return commands
 
 
@@ -145,12 +155,19 @@ Confirmed local paper exits: {confirm_exits}
 
 ```text
 logs/paper_candidate_alerts.md
+logs/paper_gate_v2.md
+logs/options_contract_gate.md
+logs/paper_validation_sample_import.md
+logs/DAILY_SHIP_REPORT.md
+logs/filter_rejection_report.md
 logs/local_paper_execution_simulator.md
 logs/open_paper_trade_monitor.md
 logs/paper_exit_audit.md
 logs/forward_sample_queue.md
 logs/observation_paper_reconciliation.md
 logs/refresh_status.md
+logs/dashboard_data_preflight.md
+logs/data_flow_sentinel.md
 logs/system_state.md
 ```
 """,

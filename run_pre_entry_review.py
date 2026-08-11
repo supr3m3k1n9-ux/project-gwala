@@ -22,6 +22,8 @@ from reports.system_state import data_freshness_state, market_state, paper_state
 from run_paper_import import paper_import_is_allowed
 from run_playbook import markdown_table
 
+PAPER_VALIDATION_FRESHNESS = {"current_candle", "grace_candle"}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build pre-entry paper review gate.")
@@ -79,6 +81,24 @@ def matching_size(row: pd.Series, sizing: pd.DataFrame) -> pd.Series:
     return matches.iloc[0] if not matches.empty else pd.Series(dtype=object)
 
 
+def matching_router_row(row: pd.Series, router: dict[str, Any]) -> dict[str, Any]:
+    """Return the matching market-regime router row for a scanner row."""
+
+    rows = router.get("candidates", []) if isinstance(router.get("candidates", []), list) else []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        if (
+            text_value(item.get("symbol")).upper() == text_value(row.get("symbol")).upper()
+            and text_value(item.get("setup")) == text_value(row.get("setup"))
+            and text_value(item.get("direction")) == text_value(row.get("direction"))
+            and text_value(item.get("variant")) == text_value(row.get("variant"))
+            and text_value(item.get("exit_profile")) == text_value(row.get("exit_profile"))
+        ):
+            return item
+    return {}
+
+
 def review_row(
     row: pd.Series,
     sizing: pd.DataFrame,
@@ -88,12 +108,16 @@ def review_row(
     import_reason: str,
     selector: dict[str, Any],
     risk_guard: dict[str, Any],
+    router_row: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build one pre-entry checklist row."""
 
     size = matching_size(row, sizing)
     scanner_allowed = text_value(row.get("scanner_status")) == "allowed"
-    current_candle = text_value(row.get("signal_freshness")) == "current_candle"
+    signal_freshness = text_value(row.get("signal_freshness"))
+    current_candle = signal_freshness == "current_candle"
+    grace_candle = signal_freshness == "grace_candle"
+    paper_validation_fresh = signal_freshness in PAPER_VALIDATION_FRESHNESS
     sizing_ok = text_value(size.get("sizing_status")) == "size_ok"
     plan_complete = all(text_value(row.get(column)) for column in ["planned_entry", "planned_stop", "planned_target"])
     shares = pd.to_numeric(size.get("suggested_shares", 0), errors="coerce")
@@ -101,17 +125,26 @@ def review_row(
     strategy_mode = text_value(selector.get("mode"))
     strategy_ok = strategy_mode in {"paper_watch_allowed", "selective_watch", "stand_aside"}
     risk_ok = text_value(risk_guard.get("status")) not in {"daily_stop_hit", "monthly_stop_hit"}
+    router_row = router_row or {}
+    router_route = text_value(router_row.get("candidate_route")) or "unrouted"
+    router_ok = (
+        router_route in {"review_first", "unrouted"}
+        if current_candle
+        else router_route in {"review_first", "caution_review", "unrouted"}
+        if grace_candle
+        else False
+    )
 
     blockers = []
     if not scanner_allowed:
         blockers.append("Scanner did not mark this candidate allowed.")
-    if not current_candle:
-        blockers.append("Signal is not current_candle.")
+    if not paper_validation_fresh:
+        blockers.append("Signal is not current_candle or one-M30 grace_candle.")
     if not data_fresh:
         blockers.append("Scanner data is not fresh for today.")
     if not sizing_ok:
         blockers.append(text_value(size.get("sizing_reason")) or "Position sizing is not size_ok.")
-    if not import_allowed:
+    if current_candle and not import_allowed:
         blockers.append(import_reason)
     if not plan_complete:
         blockers.append("Entry, stop, or target is missing.")
@@ -121,17 +154,27 @@ def review_row(
         blockers.append("Strategy selector has no paper-watch lane available.")
     if not risk_ok:
         blockers.append(text_value(risk_guard.get("message")) or "Risk guard blocks new entries.")
+    if not router_ok:
+        blockers.append(
+            f"Market regime router says {router_route}: "
+            f"{text_value(router_row.get('action')) or 'Do not route to paper review yet.'}"
+        )
 
     return {
         "symbol": text_value(row.get("symbol")),
         "setup": text_value(row.get("setup")),
         "direction": text_value(row.get("direction")),
         "signal_time_et": text_value(row.get("latest_signal_et")),
+        "source_signal_et": text_value(row.get("source_signal_et", row.get("latest_signal_et"))),
+        "candidate_entry_et": text_value(row.get("candidate_entry_et", row.get("latest_signal_et"))),
+        "validation_lane": text_value(row.get("validation_lane")) or ("B" if grace_candle else "A" if current_candle else "study"),
         "scanner_status": text_value(row.get("scanner_status")),
-        "signal_freshness": text_value(row.get("signal_freshness")),
+        "signal_freshness": signal_freshness,
         "sizing_status": text_value(size.get("sizing_status")) or "missing",
         "suggested_shares": int(float(shares)) if not pd.isna(shares) else 0,
         "strategy_selector_mode": strategy_mode or "missing",
+        "router_route": router_route,
+        "router_action": text_value(router_row.get("action")),
         "risk_guard_status": text_value(risk_guard.get("status")) or "missing",
         "review_status": "ready_for_manual_review" if not blockers else "blocked",
         "blocker_count": len(blockers),
@@ -148,6 +191,7 @@ def build_review(output_dir: Path, paper_csv: Path, refresh_audit_csv: Path) -> 
     paper_log = read_csv_or_empty(paper_csv)
     paper_review = read_csv_or_empty(output_dir / "paper_review_clean_trades.csv")
     strategy_vault = read_json_or_empty(output_dir / "strategy_vault.json")
+    market_regime_router = read_json_or_empty(output_dir / "market_regime_router.json")
     market = market_refresh_state()
     dashboard_market = market_state()
     freshness = data_freshness_state(scanner, dashboard_market)
@@ -160,7 +204,7 @@ def build_review(output_dir: Path, paper_csv: Path, refresh_audit_csv: Path) -> 
     else:
         candidates = scanner[
             scanner["scanner_status"].isin(["allowed", "blocked_watch_only"])
-            & (scanner["signal_freshness"].isin(["current_candle", "earlier_today"]))
+            & (scanner["signal_freshness"].isin(["current_candle", "grace_candle", "earlier_today"]))
         ].copy()
         import_allowed, import_reason = paper_import_is_allowed(
             scanner,
@@ -179,6 +223,7 @@ def build_review(output_dir: Path, paper_csv: Path, refresh_audit_csv: Path) -> 
                     import_reason=import_reason,
                     selector=selector,
                     risk_guard=risk_guard,
+                    router_row=matching_router_row(row, market_regime_router),
                 )
                 for _, row in candidates.iterrows()
             ]

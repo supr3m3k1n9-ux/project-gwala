@@ -94,6 +94,9 @@ def load_paper_trades(path: Path) -> pd.DataFrame:
         raise ValueError(f"Missing required columns in {path}: {', '.join(missing)}")
 
     trades = trades.copy()
+    if "invalid_for_validation" in trades.columns:
+        invalid = trades["invalid_for_validation"].astype(str).str.lower().isin(["1", "true", "yes", "y"])
+        trades = trades[~invalid].copy()
     trades["symbol"] = trades["symbol"].apply(clean_text).str.upper()
     trades["setup"] = trades["setup"].apply(clean_text)
     trades["direction"] = trades["direction"].apply(clean_text).str.lower()

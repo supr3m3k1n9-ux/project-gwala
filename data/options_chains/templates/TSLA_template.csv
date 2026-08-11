@@ -1,0 +1,3 @@
+contract_symbol,option_type,expiration,dte,strike,delta,bid,ask,mid,spread_pct,volume,open_interest,implied_volatility,premium,earnings_within_window
+TSLA260624P00382500,PUT,2026-06-24,0,382.5,-0.48,4.40,4.50,4.45,0.0225,0,590,0.5309,4.45,no
+TSLA260624C00382500,CALL,2026-06-24,0,382.5,0.52,4.80,4.85,4.825,0.0104,0,370,0.5309,4.825,no

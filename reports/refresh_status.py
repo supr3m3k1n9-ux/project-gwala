@@ -17,13 +17,17 @@ import pandas as pd
 from config.market_calendar import MARKET_TZ, market_session_for_date, next_market_session
 from config.settings import STRATEGY
 from config.symbol_playbook import playbook_symbols
+from data.candle_cache import preferred_candle_path
+from data.market_data_sources import read_sources
 from reports.system_state import file_state, latest_scan_date, read_csv_or_empty, regular_market_times
 
 
-REFRESH_COMMAND = "python run_daily_workflow.py --refresh-data"
+REFRESH_COMMAND = "python run_daily_workflow.py --refresh-data --data-provider webull"
 VALID_REFRESH_EVIDENCE = {"files_present_and_complete", "current_session_in_progress"}
-M5_STALE_MINUTES = 10
-M30_STALE_MINUTES = 40
+# Webull refreshes the watchlist sequentially and may omit still-forming bars.
+# These thresholds are for dashboard freshness warnings, not signal approval.
+M5_STALE_MINUTES = 25
+M30_STALE_MINUTES = 75
 
 
 def approved_symbols() -> list[str]:
@@ -77,10 +81,12 @@ def webull_csv_states(output_dir: Path) -> list[dict[str, Any]]:
     rows = []
     now = datetime.now(MARKET_TZ)
     for symbol in approved_symbols():
-        entry = file_state(output_dir / f"webull_{symbol}_M30_candles.csv")
-        exit_ = file_state(output_dir / f"webull_{symbol}_M5_candles.csv")
-        entry_candle = latest_candle_state(output_dir / f"webull_{symbol}_M30_candles.csv", now)
-        exit_candle = latest_candle_state(output_dir / f"webull_{symbol}_M5_candles.csv", now)
+        entry_path = preferred_candle_path(output_dir, symbol, "M30")
+        exit_path = preferred_candle_path(output_dir, symbol, "M5")
+        entry = file_state(entry_path)
+        exit_ = file_state(exit_path)
+        entry_candle = latest_candle_state(entry_path, now)
+        exit_candle = latest_candle_state(exit_path, now)
         rows.append(
             {
                 "symbol": symbol,
@@ -167,6 +173,94 @@ def candle_freshness_summary(csv_states: list[dict[str, Any]], market: dict[str,
     }
 
 
+def latest_provider_refresh_summary(source_csv: Path, market: dict[str, Any]) -> dict[str, Any]:
+    """Summarize whether the latest provider refresh produced current-session bars.
+
+    A data provider can refresh successfully while still returning only the
+    previous session's aggregate bars. That is useful historical data, but it
+    is not enough for current-candle paper validation during market hours.
+    """
+
+    sources = read_sources(source_csv)
+    if sources.empty:
+        return {
+            "status": "not_recorded",
+            "provider": "unknown",
+            "latest_refreshed_at_et": "",
+            "ok_rows": 0,
+            "required_rows": 0,
+            "current_session_rows": 0,
+            "previous_session_rows": 0,
+            "message": "No provider refresh metadata has been recorded yet.",
+        }
+
+    today = str(market["today"])
+    required_symbols = approved_symbols()
+    required_timeframes = {"M5", "M30"}
+    latest_rows: list[pd.Series] = []
+    for symbol in required_symbols:
+        for timeframe in required_timeframes:
+            matches = sources[
+                sources["symbol"].astype(str).str.upper().eq(symbol.upper())
+                & sources["timeframe"].astype(str).str.upper().eq(timeframe)
+            ]
+            if matches.empty:
+                continue
+            latest_rows.append(matches.iloc[-1])
+
+    required_count = len(required_symbols) * len(required_timeframes)
+    if not latest_rows:
+        return {
+            "status": "not_recorded",
+            "provider": "unknown",
+            "latest_refreshed_at_et": "",
+            "ok_rows": 0,
+            "required_rows": required_count,
+            "current_session_rows": 0,
+            "previous_session_rows": 0,
+            "message": "No matching provider refresh rows were found for M5/M30 candles.",
+        }
+
+    latest = pd.DataFrame(latest_rows)
+    ok = latest[latest["status"].astype(str) == "ok"].copy()
+    provider = str(latest["provider"].dropna().iloc[-1]) if "provider" in latest.columns else "unknown"
+    latest_refreshed = str(latest["refreshed_at_et"].dropna().iloc[-1]) if "refreshed_at_et" in latest.columns else ""
+    current_rows = 0
+    previous_rows = 0
+    if not ok.empty and "latest_candle_utc" in ok.columns:
+        candle_times = pd.to_datetime(ok["latest_candle_utc"], utc=True, errors="coerce")
+        candle_dates = candle_times.dt.tz_convert(MARKET_TZ).dt.date.astype(str)
+        current_rows = int((candle_dates == today).sum())
+        previous_rows = int((candle_dates < today).sum())
+
+    if len(ok) < required_count:
+        status = "partial_refresh"
+        message = "The latest provider refresh is missing one or more required M5/M30 rows."
+    elif current_rows == len(ok):
+        status = "current_session_bars"
+        message = "The latest provider refresh includes current-session M5/M30 bars."
+    elif market.get("market_is_open", False) and previous_rows == len(ok):
+        status = "provider_previous_session_bars"
+        message = (
+            "The provider refreshed successfully, but the latest saved M5/M30 bars "
+            "are still from the previous session."
+        )
+    else:
+        status = "mixed_or_stale"
+        message = "The latest provider refresh has mixed or stale M5/M30 bar dates."
+
+    return {
+        "status": status,
+        "provider": provider,
+        "latest_refreshed_at_et": latest_refreshed,
+        "ok_rows": int(len(ok)),
+        "required_rows": required_count,
+        "current_session_rows": current_rows,
+        "previous_session_rows": previous_rows,
+        "message": message,
+    }
+
+
 def scanner_refresh_state(output_dir: Path) -> dict[str, Any]:
     """Return scanner freshness and current candidate counts."""
 
@@ -194,6 +288,7 @@ def scanner_refresh_state(output_dir: Path) -> dict[str, Any]:
 def build_refresh_status(
     output_dir: Path = Path("logs"),
     audit_csv: Path = Path("data/market_refresh_audit.csv"),
+    source_csv: Path | None = None,
 ) -> dict[str, Any]:
     """Build refresh and paper-import readiness state."""
 
@@ -201,6 +296,7 @@ def build_refresh_status(
     scanner = scanner_refresh_state(output_dir)
     csv_states = webull_csv_states(output_dir)
     candle_freshness = candle_freshness_summary(csv_states, market)
+    provider_refresh = latest_provider_refresh_summary(source_csv or output_dir / "market_data_sources.csv", market)
     missing = [
         row["symbol"]
         for row in csv_states
@@ -223,6 +319,16 @@ def build_refresh_status(
     elif not market["market_is_open"]:
         status = "prep_only"
         reason = f"Market is not open: {market['market_status_reason']}"
+    elif (
+        candle_freshness.get("status") == "stale"
+        and provider_refresh.get("status") == "provider_previous_session_bars"
+    ):
+        status = "blocked_provider_previous_session_bars"
+        provider = str(provider_refresh.get("provider") or "The provider").strip()
+        reason = (
+            f"{provider} refresh metadata exists, but the latest saved intraday bars "
+            "are still from the previous session."
+        )
     else:
         status = "ready_to_refresh"
         reason = "Market is open and required local CSV paths are present."
@@ -239,7 +345,12 @@ def build_refresh_status(
     else:
         paper_import_reason = "Current-session current-candle candidates exist; review checklist before importing."
 
-    if status == "ready_to_refresh":
+    if status == "blocked_provider_previous_session_bars":
+        next_action = (
+            "Keep paper import blocked. Try the refresh again later or use a data provider "
+            "that returns current-session intraday bars."
+        )
+    elif status == "ready_to_refresh":
         next_action = f"Run {REFRESH_COMMAND}, then review app/dashboard outputs."
     else:
         next_action = f"On {market['next_market_session']} during market hours, run {REFRESH_COMMAND}."
@@ -255,5 +366,6 @@ def build_refresh_status(
         "market": market,
         "scanner": scanner,
         "candle_freshness": candle_freshness,
+        "provider_refresh": provider_refresh,
         "webull_csvs": csv_states,
     }

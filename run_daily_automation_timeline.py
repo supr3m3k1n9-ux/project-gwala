@@ -91,6 +91,23 @@ def recent_failures(out_lines: list[str], err_lines: list[str], count: int = 10)
     return rows[-count:]
 
 
+def log_modified_on_timeline_date(path: Path, current_time: datetime) -> bool:
+    """Return whether a raw log was modified on this timeline date."""
+
+    if not path.exists():
+        return False
+    modified = datetime.fromtimestamp(path.stat().st_mtime, tz=MARKET_TZ)
+    return modified.date() == current_time.astimezone(MARKET_TZ).date()
+
+
+def log_is_newer_than(path: Path, reference: Path) -> bool:
+    """Return whether a log has newer content than a successful reference file."""
+
+    if not path.exists() or not reference.exists():
+        return True
+    return path.stat().st_mtime > reference.stat().st_mtime
+
+
 def status_rows(payload: dict[str, Any]) -> list[dict[str, str]]:
     """Build high-signal status rows from structured reports."""
 
@@ -146,6 +163,7 @@ def build_timeline(output_dir: Path, *, moment: datetime | None = None, tail_lin
     autonomous_json = output_dir / "autonomous_paper_workflow_status.json"
     out_log = output_dir / "autonomous_paper_workflow.launchd.out.log"
     err_log = output_dir / "autonomous_paper_workflow.launchd.err.log"
+    workflow_summary = output_dir / "daily_workflow_summary.md"
     payload = {
         "generated_at_et": current_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
         "timeline_date": str(current_time.date()),
@@ -159,11 +177,15 @@ def build_timeline(output_dir: Path, *, moment: datetime | None = None, tail_lin
             "launchd_stderr": file_state(err_log),
             "morning_watchdog_json": file_state(output_dir / "morning_run_watchdog.json"),
             "post_scan_digest_json": file_state(output_dir / "post_scan_digest.json"),
-            "daily_workflow_summary": file_state(output_dir / "daily_workflow_summary.md"),
+            "daily_workflow_summary": file_state(workflow_summary),
         },
     }
-    out_lines = read_tail(out_log, tail_lines)
-    err_lines = read_tail(err_log, tail_lines)
+    out_lines = read_tail(out_log, tail_lines) if log_modified_on_timeline_date(out_log, current_time) else []
+    err_lines = (
+        read_tail(err_log, tail_lines)
+        if log_modified_on_timeline_date(err_log, current_time) and log_is_newer_than(err_log, workflow_summary)
+        else []
+    )
     failures = recent_failures(out_lines, err_lines)
     status, headline = timeline_verdict(payload, failures)
     payload.update(

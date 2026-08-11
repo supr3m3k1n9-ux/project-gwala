@@ -14,12 +14,14 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.filter_policy import PAPER_GATE_THRESHOLDS
 from config.market_calendar import MARKET_TZ
 from config.settings import ACCOUNT
 from reports.refresh_status import market_refresh_state
 from run_playbook import markdown_table
 
 VALID_REFRESH_EVIDENCE = {"files_present_and_complete", "current_session_in_progress"}
+PAPER_VALIDATION_FRESHNESS = {"current_candle", "grace_candle"}
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Size Project Gwala paper-trade candidates.")
@@ -65,8 +67,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--monthly-realized-r", type=float, default=None, help="Optional override for this month's realized paper R.")
     parser.add_argument(
         "--freshness",
-        choices=["current_candle", "earlier_today", "all"],
-        default="current_candle",
+        choices=["paper_validation", "current_candle", "grace_candle", "earlier_today", "all"],
+        default="paper_validation",
         help="Which scanner candidates are eligible for sizing.",
     )
     parser.add_argument(
@@ -106,6 +108,9 @@ def realized_r_from_paper_log(path: Path, now: datetime | None = None) -> tuple[
     now = now or datetime.now(MARKET_TZ)
     local = now.astimezone(MARKET_TZ)
     completed = trades[trades["signal_status"] == "allowed"].copy()
+    if "invalid_for_validation" in completed.columns:
+        invalid = completed["invalid_for_validation"].astype(str).str.lower().isin(["1", "true", "yes", "y"])
+        completed = completed[~invalid].copy()
     completed["outcome_r"] = pd.to_numeric(completed["outcome_r"], errors="coerce")
     completed = completed.dropna(subset=["outcome_r"])
     completed["trade_date"] = completed["trade_date"].astype(str)
@@ -135,8 +140,12 @@ def risk_status(row: pd.Series, args: argparse.Namespace) -> tuple[str, str]:
     elif row["scanner_status"] != "allowed":
         return "not_allowed", "Scanner did not mark this setup as allowed."
 
-    if args.freshness != "all" and row.get("signal_freshness", "") != args.freshness:
-        return "not_current", f"Signal freshness is {row.get('signal_freshness', '')}, not {args.freshness}."
+    freshness = str(row.get("signal_freshness", ""))
+    if args.freshness == "paper_validation":
+        if freshness not in PAPER_VALIDATION_FRESHNESS:
+            return "not_current", f"Signal freshness is {freshness}, not current_candle or grace_candle."
+    elif args.freshness != "all" and freshness != args.freshness:
+        return "not_current", f"Signal freshness is {freshness}, not {args.freshness}."
 
     if args.daily_realized_r <= args.max_daily_loss_r:
         return "daily_stop_hit", "Daily loss limit has been reached."
@@ -155,14 +164,25 @@ def risk_status(row: pd.Series, args: argparse.Namespace) -> tuple[str, str]:
 
     if watch_only_study:
         return "watch_only_study", "Study size only; blocked/watch-only signals are not paper-trade candidates."
+    if freshness == "grace_candle":
+        return "size_ok", "Eligible for reduced B-tier grace paper sizing."
     return "size_ok", "Eligible for paper sizing."
+
+
+def risk_pct_for_row(row: pd.Series, args: argparse.Namespace) -> float:
+    """Return the paper-validation risk percentage for a scanner row."""
+
+    if str(row.get("signal_freshness", "")) == "grace_candle":
+        return min(float(args.risk_per_trade_pct), float(PAPER_GATE_THRESHOLDS["b_risk_pct"]))
+    return float(args.risk_per_trade_pct)
 
 
 def size_row(row: pd.Series, args: argparse.Namespace) -> dict:
     """Create one position-sizing row."""
 
     status, reason = risk_status(row, args)
-    risk_budget = args.account_size * args.risk_per_trade_pct
+    applied_risk_pct = risk_pct_for_row(row, args)
+    risk_budget = args.account_size * applied_risk_pct
     entry = numeric(row.get("planned_entry"))
     risk_per_share = numeric(row.get("risk_per_share"))
 
@@ -182,15 +202,17 @@ def size_row(row: pd.Series, args: argparse.Namespace) -> dict:
         "symbol": row.get("symbol", ""),
         "setup": row.get("setup", ""),
         "direction": row.get("direction", ""),
+        "validation_lane": row.get("validation_lane", ""),
         "scanner_status": row.get("scanner_status", ""),
         "signal_freshness": row.get("signal_freshness", ""),
         "latest_signal_et": row.get("latest_signal_et", ""),
+        "candidate_entry_et": row.get("candidate_entry_et", row.get("latest_signal_et", "")),
         "planned_entry": row.get("planned_entry", ""),
         "planned_stop": row.get("planned_stop", ""),
         "planned_target": row.get("planned_target", ""),
         "risk_per_share": row.get("risk_per_share", ""),
         "account_size": round(args.account_size, 2),
-        "risk_per_trade_pct": round(args.risk_per_trade_pct, 4),
+        "risk_per_trade_pct": round(applied_risk_pct, 4),
         "risk_budget_dollars": round(risk_budget, 2),
         "suggested_shares": shares,
         "estimated_risk_dollars": round(estimated_risk, 2),
@@ -219,9 +241,9 @@ def apply_session_gate(
         return sizing
     result = sizing.copy()
     actionable = result["sizing_status"] == "size_ok"
-    earlier_rows = actionable & (result["signal_freshness"] != "current_candle")
+    earlier_rows = actionable & ~result["signal_freshness"].astype(str).isin(PAPER_VALIDATION_FRESHNESS)
     result.loc[earlier_rows, "sizing_status"] = "not_current"
-    result.loc[earlier_rows, "sizing_reason"] = "Earlier-today signals are review-only, not actionable paper sizes."
+    result.loc[earlier_rows, "sizing_reason"] = "Signals outside current_candle or one-M30 grace are study-only."
     result.loc[earlier_rows, "suggested_shares"] = 0
     result.loc[earlier_rows, "estimated_risk_dollars"] = 0.0
     result.loc[earlier_rows, "estimated_notional"] = 0.0

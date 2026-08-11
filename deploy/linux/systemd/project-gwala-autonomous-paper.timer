@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Project Gwala autonomous paper workflow in shadow mode
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 06:15:00
+OnCalendar=Mon..Fri *-*-* 06:30,35,40,45,50,55:00
+OnCalendar=Mon..Fri *-*-* 07..12:00,05,10,15,20,25,30,35,40,45,50,55:00
+OnCalendar=Mon..Fri *-*-* 13:00,05:00
+Unit=project-gwala-autonomous-paper.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -36,6 +36,12 @@ PAPER_COLUMNS = [
     "followed_plan",
     "exit_reason",
     "notes",
+    "invalid_for_validation",
+    "invalid_reason",
+    "invalidated_at_et",
+    "original_creation_timestamp",
+    "incident_id",
+    "source_contract_gate_identity",
 ]
 VALID_REFRESH_EVIDENCE = {"files_present_and_complete", "current_session_in_progress"}
 

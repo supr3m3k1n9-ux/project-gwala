@@ -17,19 +17,10 @@
       </div>
       <nav aria-label="Dashboard sections">
         <a href="#home">Home</a>
-        <a href="#trading-workspace">Trading Workspace</a>
-        <a href="#near-miss-analytics">Near-Miss Analytics</a>
-        <a href="#investment-narrative">Investment Narrative</a>
-        <a href="#research">Research</a>
-        <a href="#strategy-vault">Strategy Vault</a>
-        <a href="#system">System</a>
-        <a href="#sample-queue">Sample Queue</a>
-        <a href="#candidates">Candidates</a>
-        <a href="#trade-logger">Trade Logger</a>
-        <a href="#paper-visualization">Paper Progress</a>
-        <a href="#health">Setup Health</a>
-        <a href="#practice-replay">Practice Replay</a>
-        <a href="#reports">Reports</a>
+        <a href="#trade-desk">Trade Desk</a>
+        <a href="#validation">Validation</a>
+        <a href="#research-lab">Research Lab</a>
+        <a href="#systems">Systems</a>
       </nav>
     </aside>
 
@@ -37,16 +28,161 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">Local app shell</p>
-          <h2>Mission Control</h2>
+          <h2>Home Dashboard</h2>
           <p id="auto-refresh-status" class="auto-refresh-status">Auto-refresh checks every 60 seconds.</p>
         </div>
         <div class="topbar-actions">
-          <a href="#system" class="secondary-link">System health</a>
+          <a href="#trade-desk" class="secondary-link">Trade Desk</a>
           <button id="refresh-button" type="button">Refresh</button>
         </div>
       </header>
       <audio id="entry-alert-audio" src="/assets/entry-alert.wav" preload="auto"></audio>
       <audio id="exit-alert-audio" src="/assets/exit-alert.wav" preload="auto"></audio>
+
+      <section id="home-executive" class="page-executive" aria-label="Home executive summary">
+        <article>
+          <span>Question</span>
+          <strong>What should I pay attention to?</strong>
+          <p>Landing summary for trade, system, validation, and regime state.</p>
+        </article>
+        <article>
+          <span>Answer</span>
+          <strong id="home-executive-answer">Checking Gwala...</strong>
+          <p id="home-executive-detail">Loading current operating state.</p>
+        </article>
+        <article>
+          <span>Action</span>
+          <strong id="home-executive-action">Wait</strong>
+          <p><a id="home-executive-link" href="#trade-desk">Open next page</a></p>
+        </article>
+      </section>
+
+      <section id="home-dashboard" class="home-dashboard" aria-label="Home dashboard">
+        <div class="home-hero">
+          <div>
+            <p class="eyebrow">Daily dashboard</p>
+            <h3 id="home-answer">Loading Gwala...</h3>
+            <p id="home-detail">Checking trade status, system health, validation progress, and research context.</p>
+          </div>
+          <div class="home-actions">
+            <a href="#trade-desk" class="secondary-link">Open Trade Desk</a>
+            <a href="#validation" class="secondary-link">Open Validation</a>
+            <a href="#backtest-performance" class="secondary-link">Historical Simulator</a>
+          </div>
+        </div>
+        <div class="home-summary-grid">
+          <article>
+            <span>Trade</span>
+            <strong id="home-trade-status">Checking</strong>
+            <p id="home-trade-detail">Reading candidates.</p>
+          </article>
+          <article>
+            <span>System</span>
+            <strong id="home-system-status">Checking</strong>
+            <p id="home-system-detail">Reading health state.</p>
+          </article>
+          <article>
+            <span>Validation</span>
+            <strong id="home-validation-status">0 / 30</strong>
+            <p id="home-validation-detail">Reading paper progress.</p>
+          </article>
+          <article>
+            <span>Regime</span>
+            <strong id="home-regime-status">Checking</strong>
+            <p id="home-regime-detail">Reading strategy vault.</p>
+          </article>
+          <article class="home-simulator-summary">
+            <span>Simulator</span>
+            <strong><a href="#backtest-performance">Historical</a></strong>
+            <p>Trade logs, equity curves, and account modeling.</p>
+          </article>
+        </div>
+        <div class="home-content-grid">
+          <article class="home-suggestions-panel home-simulator-panel">
+            <header>
+              <div>
+                <p class="eyebrow">Research shortcut</p>
+                <h4>Historical Trade Simulator</h4>
+              </div>
+              <a href="#backtest-performance" class="secondary-link">Open</a>
+            </header>
+            <p>
+              Review historical expectancy, simulated trade logs, account assumptions,
+              and equity curves without mixing them into today’s paper-trade workflow.
+            </p>
+          </article>
+          <article class="home-suggestions-panel">
+            <header>
+              <div>
+                <p class="eyebrow">Suggestions</p>
+                <h4>What should I look at next?</h4>
+              </div>
+              <span id="home-suggestion-count" class="status watch">Loading</span>
+            </header>
+            <div id="home-suggestions" class="home-suggestion-list">
+              <p>Loading suggestions.</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="trade-desk-executive" class="page-executive" aria-label="Trade desk executive summary">
+        <article>
+          <span>Question</span>
+          <strong>Is there a trade?</strong>
+          <p>A/B candidates, market regime, and review readiness.</p>
+        </article>
+        <article>
+          <span>Answer</span>
+          <strong id="trade-executive-answer">Checking candidates...</strong>
+          <p id="trade-executive-detail">Loading candidate state.</p>
+        </article>
+        <article>
+          <span>Action</span>
+          <strong id="trade-executive-action">Wait</strong>
+          <p><a id="trade-executive-link" href="#candidates">Open candidates</a></p>
+        </article>
+      </section>
+
+      <section id="trade-desk-summary" class="operator-summary" aria-label="Trade desk summary">
+        <div class="operator-answer">
+          <p class="eyebrow">Market Status</p>
+          <h3 id="trade-desk-answer">Should I care right now?</h3>
+          <p id="trade-desk-detail">Reading market regime, A/B candidates, paper gate, and system health.</p>
+        </div>
+        <div class="operator-grid">
+          <article>
+            <span>Market Regime</span>
+            <strong id="trade-desk-regime">...</strong>
+            <p id="trade-desk-regime-detail">Checking router.</p>
+          </article>
+          <article>
+            <span>A-Tier Candidates</span>
+            <strong id="trade-desk-a-tier">0</strong>
+            <p>Highest-quality paper review candidates.</p>
+          </article>
+          <article>
+            <span>B-Tier Candidates</span>
+            <strong id="trade-desk-b-tier">0</strong>
+            <p>Valid grace/review candidates.</p>
+          </article>
+          <article>
+            <span>Trade Status</span>
+            <strong id="trade-desk-status">Waiting</strong>
+            <p id="trade-desk-status-detail">No trade decision yet.</p>
+          </article>
+          <article>
+            <span>Contract Recommendation</span>
+            <strong id="trade-desk-contract">Review gate</strong>
+            <p id="trade-desk-contract-detail">Run or inspect the paper contract gate before logging options.</p>
+          </article>
+          <article>
+            <span>System Health</span>
+            <strong id="trade-desk-health">Checking</strong>
+            <p id="trade-desk-health-detail">Checking data freshness and safety mode.</p>
+          </article>
+        </div>
+      </section>
 
       <section id="command-center" class="command-center" aria-label="Today's command center">
         <article id="notification-panel" class="notification-panel muted">
@@ -69,43 +205,246 @@
         </article>
         <div class="command-primary">
           <div>
-            <p class="eyebrow">Today&apos;s Command Center <span class="help-bubble" data-help="The plain-English operating panel. Start here to see the next safest action before reading the rest of the dashboard.">?</span></p>
+            <p class="eyebrow">Action Required <span class="help-bubble" data-help="The plain-English operating panel. Start here to see the next safest action before reading the rest of the dashboard.">?</span></p>
             <h3 id="command-title">Checking what matters now...</h3>
             <p id="command-detail">Reading automation, data freshness, candidate readiness, and safety state.</p>
           </div>
           <button id="command-primary-action" type="button">Loading</button>
         </div>
-        <div class="command-grid">
-          <article id="command-automation-card">
-            <span>Automation <span class="help-bubble" data-help="Shows whether the local scheduled workflow appears to be updating its status files.">?</span></span>
-            <strong id="command-automation-status">...</strong>
-            <p id="command-automation-detail">Checking scheduler output.</p>
+        <details class="operator-drilldown command-drilldown">
+          <summary>Show status details</summary>
+          <div class="command-grid">
+            <article id="command-automation-card">
+              <span>Automation <span class="help-bubble" data-help="Shows whether the local scheduled workflow appears to be updating its status files.">?</span></span>
+              <strong id="command-automation-status">...</strong>
+              <p id="command-automation-detail">Checking scheduler output.</p>
+            </article>
+            <article id="command-data-card">
+              <span>Data Freshness <span class="help-bubble" data-help="Shows whether the scanner is using today&apos;s saved market data.">?</span></span>
+              <strong id="command-data-status">...</strong>
+              <p id="command-data-detail">Checking latest scanner session.</p>
+            </article>
+            <article id="command-candle-card">
+              <span>Candle Age <span class="help-bubble" data-help="Checks whether saved 5m exit candles and 30m entry candles are fresh enough during market hours.">?</span></span>
+              <strong id="command-candle-status">...</strong>
+              <p id="command-candle-detail">Checking saved candle timestamps.</p>
+            </article>
+            <article id="command-candidate-card">
+              <span>Candidates <span class="help-bubble" data-help="Current-candle setups ready for manual paper review. These are not automatic trades.">?</span></span>
+              <strong id="command-candidate-status">...</strong>
+              <p id="command-candidate-detail">Checking reviewable cards.</p>
+            </article>
+            <article id="command-safety-card">
+              <span>Safety <span class="help-bubble" data-help="Confirms the app is still research and paper-validation only.">?</span></span>
+              <strong id="command-safety-status">...</strong>
+              <p id="command-safety-detail">Checking execution flags.</p>
+            </article>
+            <article id="command-backtest-card">
+              <span>Backtests <span class="help-bubble" data-help="Latest historical watchlist tests. These show research stats only, not live-trading approval.">?</span></span>
+              <strong id="command-backtest-status">...</strong>
+              <p id="command-backtest-detail">Checking historical performance.</p>
+            </article>
+          </div>
+        </details>
+      </section>
+
+      <section id="validation-executive" class="page-executive" aria-label="Validation executive summary">
+        <article>
+          <span>Question</span>
+          <strong>Is the edge proving itself?</strong>
+          <p>Paper progress, outcomes, and validation bottleneck.</p>
+        </article>
+        <article>
+          <span>Answer</span>
+          <strong id="validation-executive-answer">Checking validation...</strong>
+          <p id="validation-executive-detail">Loading paper progress.</p>
+        </article>
+        <article>
+          <span>Action</span>
+          <strong id="validation-executive-action">Wait</strong>
+          <p><a id="validation-executive-link" href="#paper-visualization">Open validation detail</a></p>
+        </article>
+      </section>
+
+      <section id="paper-trade-command-center" class="paper-trade-command-center" aria-label="Paper trade command center">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Paper Trade Command Center</p>
+            <h3>Can this valid opportunity become an official paper trade? <span class="help-bubble" data-help="Four decisions only: approve chart, approve contract through the existing Contract Gate, confirm official paper entry, and confirm exit.">?</span></h3>
+          </div>
+          <button id="paper-command-refresh" type="button" class="secondary-button">Refresh center</button>
+        </div>
+        <article id="paper-command-verdict" class="paper-command-verdict watch command-flow-verdict">
+          <div>
+            <span>Workflow status</span>
+            <strong id="paper-command-status">Checking</strong>
+            <p id="paper-command-summary">Reading Paper Gate survivors and open paper rows.</p>
+          </div>
+          <p id="paper-command-guardrail">Same gates. Same safety. Fewer handoffs.</p>
+        </article>
+        <div class="paper-command-flow" aria-label="Four decision workflow">
+          <article>
+            <span>1</span>
+            <strong>Chart Approval</strong>
+            <p id="paper-command-chart-step">Waiting for a Paper Gate survivor.</p>
           </article>
-          <article id="command-data-card">
-            <span>Data Freshness <span class="help-bubble" data-help="Shows whether the scanner is using today&apos;s saved market data.">?</span></span>
-            <strong id="command-data-status">...</strong>
-            <p id="command-data-detail">Checking latest scanner session.</p>
+          <article>
+            <span>2</span>
+            <strong>Contract Approval</strong>
+            <p id="paper-command-contract-step">Contract Gate remains required.</p>
           </article>
-          <article id="command-candle-card">
-            <span>Candle Age <span class="help-bubble" data-help="Checks whether saved 5m exit candles and 30m entry candles are fresh enough during market hours.">?</span></span>
-            <strong id="command-candle-status">...</strong>
-            <p id="command-candle-detail">Checking saved candle timestamps.</p>
+          <article>
+            <span>3</span>
+            <strong>Paper Entry</strong>
+            <p id="paper-command-entry-step">One confirmation writes official local paper files.</p>
           </article>
-          <article id="command-candidate-card">
-            <span>Candidates <span class="help-bubble" data-help="Current-candle setups ready for manual paper review. These are not automatic trades.">?</span></span>
-            <strong id="command-candidate-status">...</strong>
-            <p id="command-candidate-detail">Checking reviewable cards.</p>
+          <article>
+            <span>4</span>
+            <strong>Exit Confirmation</strong>
+            <p id="paper-command-exit-step">Confirm exits from the existing monitor.</p>
           </article>
-          <article id="command-safety-card">
-            <span>Safety <span class="help-bubble" data-help="Confirms the app is still research and paper-validation only.">?</span></span>
-            <strong id="command-safety-status">...</strong>
-            <p id="command-safety-detail">Checking execution flags.</p>
+        </div>
+
+        <div class="paper-command-layout">
+          <section class="paper-command-panel">
+            <header>
+              <div>
+                <p class="eyebrow">Candidate Review</p>
+                <h4 id="paper-command-candidate-title">No candidate selected</h4>
+              </div>
+              <span id="paper-command-candidate-status" class="status watch">Loading</span>
+            </header>
+            <label class="paper-command-picker">
+              <span>Paper Gate survivor</span>
+              <select id="paper-command-candidate-select"></select>
+            </label>
+            <div id="paper-command-candidate-card" class="paper-command-detail-card"></div>
+            <div class="button-row">
+              <button id="paper-command-approve-chart" type="button">Approve Chart</button>
+              <button id="paper-command-reject-chart" type="button" class="secondary-button">Reject Candidate</button>
+              <a id="paper-command-open-chart" href="#trading-workspace" class="secondary-link">Open chart</a>
+            </div>
+          </section>
+
+          <section class="paper-command-panel">
+            <header>
+              <div>
+                <p class="eyebrow">Contract Review</p>
+                <h4>Run existing Contract Gate</h4>
+              </div>
+              <span id="paper-command-contract-status" class="status watch">Waiting</span>
+            </header>
+            <form id="paper-command-contract-form" class="paper-command-contract-form">
+              <div class="contract-form-grid">
+                <label><span>Contract symbol</span><input id="paper-contract-symbol" name="contract_symbol" required></label>
+                <label><span>Type</span><select id="paper-option-type" name="option_type"><option>CALL</option><option>PUT</option></select></label>
+                <label><span>Expiration</span><input id="paper-expiration" name="expiration" placeholder="YYYY-MM-DD" required></label>
+                <label><span>DTE</span><input id="paper-dte" name="dte" type="number" step="1" required></label>
+                <label><span>Strike</span><input id="paper-strike" name="strike" type="number" step="0.01" required></label>
+                <label><span>Delta</span><input id="paper-delta" name="delta" type="number" step="0.01" required></label>
+                <label><span>Bid</span><input id="paper-bid" name="bid" type="number" step="0.01" required></label>
+                <label><span>Ask</span><input id="paper-ask" name="ask" type="number" step="0.01" required></label>
+                <label><span>Mid</span><input id="paper-mid" name="mid" type="number" step="0.01"></label>
+                <label><span>Spread %</span><input id="paper-spread-pct" name="spread_pct" type="number" step="0.01"></label>
+                <label><span>Volume</span><input id="paper-volume" name="volume" type="number" step="1" required></label>
+                <label><span>Open interest</span><input id="paper-open-interest" name="open_interest" type="number" step="1" required></label>
+                <label><span>Premium</span><input id="paper-premium" name="premium" type="number" step="0.01" required></label>
+                <label><span>IV</span><input id="paper-iv" name="implied_volatility" type="number" step="0.01"></label>
+                <label class="checkbox-label"><input id="paper-earnings" name="earnings_within_window" type="checkbox"> Earnings window</label>
+              </div>
+              <label><span>Notes</span><input id="paper-contract-notes" name="notes" placeholder="Optional review note"></label>
+              <div class="button-row">
+                <button id="paper-command-auto-select-contract" type="button">Auto-select A-tier Contract</button>
+                <button id="paper-command-run-contract" type="submit" class="secondary-button">Approve Manual Contract</button>
+              </div>
+            </form>
+            <p id="paper-command-contract-reason" class="candidate-message">Contract details are checked by the existing Contract Gate.</p>
+          </section>
+
+          <section class="paper-command-panel">
+            <header>
+              <div>
+                <p class="eyebrow">Official Paper Entry</p>
+                <h4>One confirmation</h4>
+              </div>
+              <span id="paper-command-entry-status" class="status watch">Waiting</span>
+            </header>
+            <p id="paper-command-entry-detail">Chart approval and Contract Gate pass are required before entry confirmation.</p>
+            <button id="paper-command-confirm-entry" type="button">Confirm Official Paper Trade</button>
+          </section>
+
+          <section class="paper-command-panel">
+            <header>
+              <div>
+                <p class="eyebrow">Exit Confirmation</p>
+                <h4>Complete open paper rows</h4>
+              </div>
+              <span id="paper-command-exit-status" class="status watch">Checking</span>
+            </header>
+            <div id="paper-command-open-trades" class="paper-command-open-trades"></div>
+            <button id="paper-command-confirm-exit" type="button">Confirm Exit</button>
+          </section>
+        </div>
+
+        <p id="paper-command-action-message" class="action-message" aria-live="polite">
+          Waiting for Paper Gate survivors.
+        </p>
+        <details class="operator-drilldown validation-drilldown">
+          <summary>Show files this command center writes</summary>
+          <div class="paper-command-funnel">
+            <div>
+              <span>Retained rules</span>
+              <p>Paper Gate, chart approval, Contract Gate, official paper confirmation, duplicate prevention, and exit confirmation.</p>
+            </div>
+            <div>
+              <span>Files</span>
+              <p>data/options_contract_audit.csv, data/paper_validation_samples.csv, data/paper_orders.csv, data/paper_trades.csv</p>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section id="data-flow-sentinel" class="data-flow-sentinel" aria-label="Data flow sentinel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Data pipeline guardrail</p>
+            <h3>Data Flow Sentinel <span class="help-bubble" data-help="Checks whether provider data, candles, scanner, sizing, router, pre-entry review, and dashboard state are synchronized before the app trusts candidates.">?</span></h3>
+          </div>
+          <a href="/logs/data_flow_sentinel.md" target="_blank" rel="noreferrer" class="secondary-link">Open sentinel</a>
+        </div>
+        <div class="phase-milestone-summary data-flow-summary">
+          <article>
+            <span>Status</span>
+            <strong id="data-flow-status">Loading...</strong>
+            <p id="data-flow-updated">Checking data-flow report.</p>
           </article>
-          <article id="command-backtest-card">
-            <span>Backtests <span class="help-bubble" data-help="Latest historical watchlist tests. These show research stats only, not live-trading approval.">?</span></span>
-            <strong id="command-backtest-status">...</strong>
-            <p id="command-backtest-detail">Checking historical performance.</p>
+          <article>
+            <span>Candles</span>
+            <strong id="data-flow-candles">Checking</strong>
+            <p id="data-flow-provider">Checking provider status.</p>
           </article>
+          <article>
+            <span>Pipeline Rows</span>
+            <strong id="data-flow-rows">0 / 0 / 0</strong>
+            <p id="data-flow-row-detail">Checking scanner, sizing, and router.</p>
+          </article>
+          <article>
+            <span>Repair Guardrail</span>
+            <strong id="data-flow-repair">Checking</strong>
+            <p id="data-flow-repair-detail">Checking repair audit.</p>
+          </article>
+          <article>
+            <span>Provider Stability</span>
+            <strong id="data-flow-stability">Checking</strong>
+            <p id="data-flow-stability-detail">Checking provider/session agreement.</p>
+          </article>
+        </div>
+        <div id="data-flow-indicators" class="data-flow-indicators" aria-label="Data sync indicators">
+          <span class="sync-indicator watch">Checking sync lanes</span>
+        </div>
+        <div class="phase-milestone-next">
+          <p><strong>Next action:</strong> <span id="data-flow-action">Checking next action.</span></p>
+          <p><strong>Failed checks:</strong> <span id="data-flow-failed-checks">Checking.</span></p>
         </div>
       </section>
 
@@ -146,7 +485,7 @@
               <tr>
                 <th>Setup</th>
                 <th>Symbol</th>
-                <th>Candidate</th>
+                <th>Entry / Exit</th>
                 <th>Trades</th>
                 <th>Win Rate</th>
                 <th>Exp R</th>
@@ -218,6 +557,185 @@
             </table>
           </div>
         </article>
+      </section>
+
+      <section id="phase-milestones" class="phase-milestones" aria-label="Phase milestone roadmap">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Go-to-market roadmap</p>
+            <h3>Phase Milestones <span class="help-bubble" data-help="Shows the current project phase, measurable blockers, and next action. Status-only; it does not approve trades or enable broker execution.">?</span></h3>
+          </div>
+          <a href="/logs/phase_milestones.md" target="_blank" rel="noreferrer" class="secondary-link">Open report</a>
+        </div>
+        <div class="phase-milestone-summary">
+          <article>
+            <span>Current Phase</span>
+            <strong id="phase-milestone-title">Loading...</strong>
+            <p id="phase-milestone-status">Checking roadmap status.</p>
+          </article>
+          <article>
+            <span>Overall Progress</span>
+            <strong id="phase-milestone-progress">0%</strong>
+            <p id="phase-milestone-vwap">Checking evidence gates.</p>
+          </article>
+        </div>
+        <div class="phase-milestone-next">
+          <p><strong>Blocker:</strong> <span id="phase-milestone-blocker">Checking blocker.</span></p>
+          <p><strong>Next action:</strong> <span id="phase-milestone-action">Checking next action.</span></p>
+        </div>
+        <div class="table-wrap">
+          <table class="backtest-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Phase</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>%</th>
+                <th>Blocker</th>
+              </tr>
+            </thead>
+            <tbody id="phase-milestone-table-body">
+              <tr><td colspan="6">Loading phase milestones...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="strategy-contract-status" class="strategy-contract-status" aria-label="Strategy contract status">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">End-to-end wiring</p>
+            <h3>Strategy Contract Status <span class="help-bubble" data-help="Shows whether strategies are wired through registry, scanner adapters, reports, historical simulation, and chart markers. Status-only; it does not approve trades.">?</span></h3>
+          </div>
+          <a href="/logs/feature_wiring_audit.md" target="_blank" rel="noreferrer" class="secondary-link">Open audit</a>
+        </div>
+        <div class="phase-milestone-summary strategy-contract-summary">
+          <article>
+            <span>Audit Status</span>
+            <strong id="strategy-contract-audit">Loading...</strong>
+            <p id="strategy-contract-updated">Checking wiring audit.</p>
+          </article>
+          <article>
+            <span>Scanner Adapters</span>
+            <strong id="strategy-contract-adapters">0 / 0</strong>
+            <p id="strategy-contract-adapter-detail">Checking scanner adapter coverage.</p>
+          </article>
+          <article>
+            <span>Strategy Contracts</span>
+            <strong id="strategy-contract-registry">0 wired</strong>
+            <p id="strategy-contract-registry-detail">Checking registry/report/simulation pipes.</p>
+          </article>
+          <article>
+            <span>Historical Simulator</span>
+            <strong id="strategy-contract-simulator">Loading...</strong>
+            <p id="strategy-contract-simulator-detail">Checking simulated-trade pipe.</p>
+          </article>
+        </div>
+        <div class="phase-milestone-next">
+          <p><strong>Missing adapters:</strong> <span id="strategy-contract-missing-adapters">Checking.</span></p>
+          <p><strong>Missing contracts:</strong> <span id="strategy-contract-missing-contracts">Checking.</span></p>
+        </div>
+      </section>
+
+      <section id="evidence-maturity" class="evidence-maturity" aria-label="Evidence maturity progress">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Paper-watch evidence gate</p>
+            <h3>Evidence Maturity Progress <span class="help-bubble" data-help="Shows which research strategy is closest to paper-watch review by sample counts, matured outcomes, and average R. It is status-only and does not approve trades.">?</span></h3>
+          </div>
+          <a href="/logs/paper_activation_rules.md" target="_blank" rel="noreferrer" class="secondary-link">Open activation rules</a>
+        </div>
+        <p id="evidence-maturity-message" class="backtest-message">Loading evidence maturity...</p>
+        <div class="backtest-summary-grid evidence-maturity-grid">
+          <article>
+            <span>Closest Strategy</span>
+            <strong id="evidence-maturity-leader">Loading...</strong>
+            <p id="evidence-maturity-leader-detail">Checking blockers.</p>
+          </article>
+          <article>
+            <span>Maturity</span>
+            <strong id="evidence-maturity-percent">0%</strong>
+            <p id="evidence-maturity-checks">0 / 8 checks</p>
+          </article>
+          <article>
+            <span>Shadow Evidence</span>
+            <strong id="evidence-maturity-shadow">0 / 10</strong>
+            <p id="evidence-maturity-shadow-detail">0 matured / 5 needed</p>
+          </article>
+          <article>
+            <span>Forward Evidence</span>
+            <strong id="evidence-maturity-forward">0 / 10</strong>
+            <p id="evidence-maturity-forward-detail">0 matured / 5 needed</p>
+          </article>
+        </div>
+        <div class="table-wrap">
+          <table class="backtest-table">
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th>Gate</th>
+                <th>Maturity</th>
+                <th>Shadow</th>
+                <th>Forward</th>
+                <th>Next Blocker</th>
+              </tr>
+            </thead>
+            <tbody id="evidence-maturity-body">
+              <tr><td colspan="6">Loading evidence maturity rows...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="strategy-evidence-collection" class="strategy-evidence-collection" aria-label="Strategy evidence collection progress">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Strategy evidence collection</p>
+            <h3>Shadow Sample Progress <span class="help-bubble" data-help="Shows which strategy-specific evidence lanes need live market scans next. These are research samples only, not paper trades or broker orders.">?</span></h3>
+          </div>
+          <a href="/logs/validation_deepening_queue.md" target="_blank" rel="noreferrer" class="secondary-link">Open queue</a>
+        </div>
+        <p id="strategy-evidence-message" class="backtest-message">Loading strategy evidence queue...</p>
+        <div class="backtest-summary-grid strategy-evidence-grid">
+          <article>
+            <span>Collection Lanes</span>
+            <strong id="strategy-evidence-lanes">0</strong>
+            <p id="strategy-evidence-lanes-detail">Checking active sample lanes.</p>
+          </article>
+          <article>
+            <span>Shadow Samples</span>
+            <strong id="strategy-evidence-shadow">0 / 0</strong>
+            <p id="strategy-evidence-shadow-detail">0 matured so far.</p>
+          </article>
+          <article>
+            <span>Forward Observations</span>
+            <strong id="strategy-evidence-forward">0 / 0</strong>
+            <p id="strategy-evidence-forward-detail">0 matured so far.</p>
+          </article>
+          <article>
+            <span>Top Gap</span>
+            <strong id="strategy-evidence-top">Loading...</strong>
+            <p id="strategy-evidence-top-detail">Checking next action.</p>
+          </article>
+        </div>
+        <div class="table-wrap">
+          <table class="backtest-table">
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th>Lane</th>
+                <th>Shadow</th>
+                <th>Forward</th>
+                <th>Gate</th>
+                <th>Next Action</th>
+              </tr>
+            </thead>
+            <tbody id="strategy-evidence-body">
+              <tr><td colspan="6">Loading strategy evidence lanes...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section id="research-confidence" class="research-confidence" aria-label="Research confidence">
@@ -372,8 +890,8 @@
       <section id="session-readiness" class="session-readiness" aria-label="Session readiness">
         <div class="section-heading readiness-summary-heading">
           <div>
-            <p class="eyebrow">Today&apos;s operating state</p>
-          <h3>Session Readiness <span class="help-bubble" data-help="A quick summary of whether the app has fresh data, the market clock is valid, and paper-review safeguards are still blocking unsafe actions.">?</span></h3>
+            <p class="eyebrow">System Health</p>
+          <h3>Is the system healthy? <span class="help-bubble" data-help="A quick summary of whether the app has fresh data, the market clock is valid, and paper-review safeguards are still blocking unsafe actions.">?</span></h3>
           </div>
           <span id="readiness-summary-status" class="status watch">Loading</span>
         </div>
@@ -382,7 +900,7 @@
         </p>
         <div id="readiness-summary-cards" class="readiness-summary-cards">
           <article>
-            <span>Data Pipe <span class="help-bubble" data-help="The path that brings Webull candle data into local CSV files and reports. If it is stale, the scanner may be working from old candles.">?</span></span>
+            <span>Data Pipe <span class="help-bubble" data-help="The path that brings Polygon or another market-data provider into local CSV files and reports. If it is stale, the scanner may be working from old candles.">?</span></span>
             <strong>...</strong>
             <p>Checking Webull access.</p>
           </article>
@@ -402,10 +920,150 @@
           <code id="readiness-next-action">Loading...</code>
         </div>
         <div class="readiness-actions">
-          <button id="run-webull-refresh" type="button">Refresh Webull Data</button>
+          <button id="run-webull-refresh" type="button">Refresh Market Data</button>
           <p id="webull-refresh-message" class="action-message" aria-live="polite">
             Runs the research-only data refresh and rebuilds reports. It cannot place orders or import paper trades.
           </p>
+        </div>
+      </section>
+
+      <section id="validation-overview" class="screen-overview" aria-label="Validation overview">
+        <div>
+          <p class="eyebrow">Validation Map</p>
+          <h3>Is the edge real?</h3>
+          <p>
+            Track whether Gwala is collecting clean paper evidence: progress to the first checkpoint,
+            open and completed trades, validation funnel, and candidate throughput.
+          </p>
+        </div>
+        <div class="screen-link-grid">
+          <a href="#paper-visualization">
+            <span>Paper Progress</span>
+            <strong>0/30, win rate, average R</strong>
+            <p>Official paper count, completed trades, account curve, and validation checkpoints.</p>
+          </a>
+          <a href="#sample-queue">
+            <span>Candidate Throughput</span>
+            <strong>Ready, blocked, almost ready</strong>
+            <p>Forward sample queue and validation funnel without scanner internals.</p>
+          </a>
+          <a href="#trade-logger">
+            <span>Trade Logger</span>
+            <strong>Open trade outcomes</strong>
+            <p>Record completed local paper rows after a manual exit.</p>
+          </a>
+          <a href="#forward-evidence">
+            <span>Forward Evidence</span>
+            <strong>Observed edge behavior</strong>
+            <p>Preserved real-time observations that explain validation progress.</p>
+          </a>
+        </div>
+      </section>
+
+      <section id="research-executive" class="page-executive" aria-label="Research lab executive summary">
+        <article>
+          <span>Question</span>
+          <strong>Why is the system behaving this way?</strong>
+          <p>Strategy behavior, backtests, near misses, and research evidence.</p>
+        </article>
+        <article>
+          <span>Answer</span>
+          <strong id="research-executive-answer">Checking research state...</strong>
+          <p id="research-executive-detail">Loading strategy vault and evidence state.</p>
+        </article>
+        <article>
+          <span>Action</span>
+          <strong id="research-executive-action">Open a research lane</strong>
+          <p><a id="research-executive-link" href="#strategy-vault">Open Strategy Vault</a></p>
+        </article>
+      </section>
+
+      <section id="research-lab-overview" class="screen-overview" aria-label="Research lab overview">
+        <div>
+          <p class="eyebrow">Research</p>
+          <h3>Why is the system behaving this way?</h3>
+          <p>
+            Advanced evidence, strategy routing, simulations, and research reports live here so
+            the daily Trade Desk stays quiet.
+          </p>
+        </div>
+        <div class="screen-link-grid research-links">
+          <a href="#backtest-performance">
+            <span>Historical Trade Simulator</span>
+            <strong>Backtests, trade logs, and equity curves</strong>
+            <p>Historical expectancy, account assumptions, simulated trade detail, and P/L modeling.</p>
+          </a>
+          <a href="#strategy-vault">
+            <span>Strategy Vault</span>
+            <strong>Regime and family routing</strong>
+            <p>Selector rules, paper-watch promotion, and blocked strategy families.</p>
+          </a>
+          <a href="#near-miss-analytics">
+            <span>Near Misses</span>
+            <strong>Blocked setup learning</strong>
+            <p>Which conditions are preventing signals and what later happened.</p>
+          </a>
+          <a href="#practice-replay">
+            <span>Practice Replay</span>
+            <strong>Training mode</strong>
+            <p>Historical setup decisions and management practice.</p>
+          </a>
+          <a href="#reports">
+            <span>Advanced Reports</span>
+            <strong>Generated details</strong>
+            <p>Read-only reports for scanner output, router behavior, evidence, and audits.</p>
+          </a>
+        </div>
+      </section>
+
+      <section id="systems-executive" class="page-executive" aria-label="Systems executive summary">
+        <article>
+          <span>Question</span>
+          <strong>Is the app wired and healthy?</strong>
+          <p>Data sync, workflow health, guardrails, and local files.</p>
+        </article>
+        <article>
+          <span>Answer</span>
+          <strong id="systems-executive-answer">Checking systems...</strong>
+          <p id="systems-executive-detail">Loading data-flow and app health state.</p>
+        </article>
+        <article>
+          <span>Action</span>
+          <strong id="systems-executive-action">Review systems</strong>
+          <p><a id="systems-executive-link" href="#system">Open System State</a></p>
+        </article>
+      </section>
+
+      <section id="systems-overview" class="screen-overview" aria-label="Systems and settings overview">
+        <div>
+          <p class="eyebrow">Systems</p>
+          <h3>Is the app wired and healthy?</h3>
+          <p>
+            Operational diagnostics, data sync, local workflow controls, guardrails, and source-file links live here.
+            These are settings and troubleshooting tools, not strategy research.
+          </p>
+        </div>
+        <div class="screen-link-grid research-links">
+          <a href="#data-flow-sentinel">
+            <span>Data Flow</span>
+            <strong>Are files synchronized?</strong>
+            <p>Provider, candle, scanner, sizing, router, and dashboard sync checks.</p>
+          </a>
+          <a href="#system">
+            <span>System State</span>
+            <strong>Is the app healthy?</strong>
+            <p>State metrics, app health, workflow actions, guardrails, and source files.</p>
+          </a>
+          <a href="#strategy-contract-status">
+            <span>Wiring Audit</span>
+            <strong>Are strategy pipes connected?</strong>
+            <p>Registry, scanner adapters, reports, simulator, and chart marker wiring.</p>
+          </a>
+          <a href="#phase-milestones">
+            <span>Roadmap</span>
+            <strong>What phase are we in?</strong>
+            <p>Project milestones, blockers, and next implementation actions.</p>
+          </a>
         </div>
       </section>
 
@@ -493,6 +1151,18 @@
             <p id="strategy-promotion-forward-detail">...</p>
           </article>
         </div>
+        <div id="eligible-strategy-review" class="strategy-review-panel">
+          <header>
+            <div>
+              <p class="eyebrow">Eligible strategy review</p>
+              <h4 id="eligible-strategy-title">Checking paper-watch eligibility...</h4>
+            </div>
+            <span id="eligible-strategy-status" class="status watch">Checking</span>
+          </header>
+          <p id="eligible-strategy-summary">Review links will appear when a strategy passes the paper-watch activation gate.</p>
+          <div id="eligible-strategy-metrics" class="strategy-review-metrics" aria-label="Eligible strategy evidence metrics"></div>
+          <div id="eligible-strategy-links" class="strategy-review-links" aria-label="Eligible strategy review links"></div>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -514,13 +1184,13 @@
       <section id="trading-workspace">
         <div class="section-heading trading-heading">
           <div>
-            <p class="eyebrow">Webull market data / read-only paper review</p>
-            <h3>Trading Workspace <span class="help-bubble" data-help="A read-only chart and paper-review area. It uses saved Webull candles and cannot place broker orders.">?</span></h3>
+            <p class="eyebrow">Trade Review</p>
+            <h3>How would I evaluate it? <span class="help-bubble" data-help="A read-only chart and paper-review area. It uses saved market-data candles and cannot place broker orders.">?</span></h3>
           </div>
           <span class="status watch">No Order Execution</span>
         </div>
         <p class="trading-disclosure">
-          Chart candles and indicators come from the same saved Webull data used by the scanner.
+          Chart candles and indicators come from the same saved market-data files used by the scanner.
           This workspace supports paper review only and cannot submit broker orders.
         </p>
         <p id="terminal-focus-note" class="terminal-focus-note" hidden></p>
@@ -537,7 +1207,7 @@
           <article class="terminal-chart-panel">
             <header class="terminal-chart-header">
               <div>
-                <p class="eyebrow" id="terminal-source">Saved Webull candles</p>
+                <p class="eyebrow" id="terminal-source">Saved market-data candles</p>
                 <h4><span id="terminal-chart-symbol">SPY</span> <span id="terminal-price">...</span></h4>
                 <p id="terminal-change" class="terminal-change">Loading chart...</p>
               </div>
@@ -787,8 +1457,8 @@
       <section id="sample-queue">
         <div class="section-heading candidate-heading">
           <div>
-            <p class="eyebrow">Forward paper validation</p>
-            <h3>Sample Queue <span class="help-bubble" data-help="Ranks ready, blocked, and almost-ready scanner rows so the first 30 forward paper samples are collected cleanly. It is read-only.">?</span></h3>
+            <p class="eyebrow">Candidate Throughput</p>
+            <h3>Where are signals getting stuck? <span class="help-bubble" data-help="Ranks ready, blocked, and almost-ready scanner rows so the first 30 forward paper samples are collected cleanly. It is read-only.">?</span></h3>
           </div>
           <span id="sample-queue-status" class="status watch">Loading</span>
         </div>
@@ -818,8 +1488,8 @@
       <section id="candidates">
         <div class="section-heading candidate-heading">
           <div>
-            <p class="eyebrow">Read-only paper review</p>
-            <h3>Current-Candle Candidates <span class="help-bubble" data-help="Setups found on the latest relevant candle. These are review candidates only, not automatic trades.">?</span></h3>
+            <p class="eyebrow">Trade Opportunities</p>
+            <h3>Is there a trade? <span class="help-bubble" data-help="Setups found on the latest relevant candle. These are review candidates only, not automatic trades.">?</span></h3>
           </div>
           <span id="candidate-count" class="status watch">Loading</span>
         </div>
@@ -833,8 +1503,8 @@
       <section id="trade-logger">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Local paper outcome entry</p>
-            <h3>Open Trade Logger <span class="help-bubble" data-help="Updates local paper rows after you manually close a paper/options-style trade. It never places or closes broker orders.">?</span></h3>
+            <p class="eyebrow">Open Trades</p>
+            <h3>What needs updating? <span class="help-bubble" data-help="Updates local paper rows after you manually close a paper/options-style trade. It never places or closes broker orders.">?</span></h3>
           </div>
           <span id="trade-logger-count" class="status watch">Loading</span>
         </div>
@@ -936,6 +1606,41 @@
           <h3>Paper Progress Visualization <span class="help-bubble" data-help="Progress view for completed local paper trades and validation checkpoints. It is not a live brokerage account.">?</span></h3>
         </div>
         <p id="paper-viz-message" class="paper-viz-message">Loading completed paper-trade progress.</p>
+        <article class="paper-sync-card">
+          <header>
+            <div>
+              <p class="eyebrow">Paper progress data sync</p>
+              <h4>Page Trust Check <span class="help-bubble" data-help="Confirms Paper Progress is reading the same synced scanner, sizing, router, provider, and dashboard state as Home.">?</span></h4>
+            </div>
+            <span id="paper-sync-status" class="status watch">Checking</span>
+          </header>
+          <p id="paper-sync-message" class="paper-viz-message">Checking provider stability and data-flow contract.</p>
+          <div class="paper-sync-grid">
+            <article>
+              <span>Provider Stability</span>
+              <strong id="paper-sync-provider">Checking</strong>
+              <p id="paper-sync-provider-detail">Checking Webull evidence.</p>
+            </article>
+            <article>
+              <span>Data Flow</span>
+              <strong id="paper-sync-flow">Checking</strong>
+              <p id="paper-sync-flow-detail">Checking sentinel status.</p>
+            </article>
+            <article>
+              <span>Rows</span>
+              <strong id="paper-sync-rows">0 / 0 / 0</strong>
+              <p id="paper-sync-row-detail">Scanner / sizing / router.</p>
+            </article>
+            <article>
+              <span>Historical Lane</span>
+              <strong id="paper-sync-history">Checking</strong>
+              <p id="paper-sync-history-detail">Checking simulator alignment.</p>
+            </article>
+          </div>
+          <div id="paper-sync-indicators" class="data-flow-indicators" aria-label="Paper progress sync indicators">
+            <span class="sync-indicator watch">Checking Paper Progress sync</span>
+          </div>
+        </article>
         <article class="evidence-bridge-card">
           <header>
             <div>
@@ -950,6 +1655,19 @@
             <article><span>Forward Observations</span><strong id="bridge-observations">0</strong><p id="bridge-observation-detail">Research context</p></article>
             <article><span>Shadow Samples</span><strong id="bridge-shadow">0</strong><p id="bridge-shadow-detail">Does not count</p></article>
             <article><span>Timing Evidence</span><strong id="bridge-aging">0</strong><p id="bridge-aging-detail">Candidate aging</p></article>
+          </div>
+        </article>
+        <article class="paper-entry-packet-card">
+          <header>
+            <div>
+              <p class="eyebrow">Official paper entry packet</p>
+              <h4>Candidate-To-Log Readiness <span class="help-bubble" data-help="Shows whether any current candidate passed the pre-entry gate and has a manual local-paper packet ready.">?</span></h4>
+            </div>
+            <span id="paper-entry-packet-status" class="status watch">Checking</span>
+          </header>
+          <p id="paper-entry-packet-message" class="paper-viz-message">Checking packet-ready candidates.</p>
+          <div id="paper-entry-packet-list" class="packet-list">
+            <p class="paper-empty">No packet-ready candidate loaded yet.</p>
           </div>
         </article>
         <article class="paper-account-card">
@@ -1163,7 +1881,7 @@
             <p class="eyebrow">Approved playbook</p>
             <h3>Setup Health Attention <span class="help-bubble" data-help="Flags approved setups whose recent paper/backtest stats need review before trusting them.">?</span></h3>
           </div>
-          <a href="#home" class="secondary-link">Back to dashboard</a>
+          <a href="#research-lab" class="secondary-link">Back to Research Lab</a>
         </div>
         <div id="health-list" class="health-list"></div>
       </section>
@@ -1174,7 +1892,7 @@
             <p class="eyebrow">Practice mode</p>
             <h3>Setup Replay <span class="help-bubble" data-help="Practice mode using historical setup cards. Future candles stay hidden until you make a take, skip, or watch decision.">?</span></h3>
           </div>
-          <a href="#home" class="secondary-link">Back to dashboard</a>
+          <a href="#systems" class="secondary-link">Back to Systems</a>
         </div>
         <article class="replay-filter-panel">
           <header>
@@ -1339,7 +2057,7 @@
             <p class="eyebrow">Read-only</p>
             <h3>Report Detail <span class="help-bubble" data-help="Read-only generated reports from the local workflow. These explain scanner output, refresh status, setup health, and validation evidence.">?</span></h3>
           </div>
-          <a href="#home" class="secondary-link">Back to dashboard</a>
+          <a href="#research-lab" class="secondary-link">Back to Research Lab</a>
         </div>
         <div id="report-tabs" class="report-picker"></div>
         <article class="report-view">
@@ -1359,12 +2077,37 @@
             <p class="eyebrow">App scaffold</p>
             <h3>Source Files <span class="help-bubble" data-help="Quick links to local project files used by the app and workflow.">?</span></h3>
           </div>
-          <a href="#home" class="secondary-link">Back to dashboard</a>
+          <a href="#research-lab" class="secondary-link">Back to Research Lab</a>
         </div>
         <div id="file-links" class="file-grid"></div>
       </section>
     </main>
 
-    <script src="/app.js?v=20260603-vwap-rr-shadow"></script>
+    <aside id="social-feed-rail" class="social-feed-rail" aria-label="Twitter / X feed rail">
+      <button id="feed-rail-toggle" class="feed-rail-toggle" type="button" aria-expanded="true" aria-controls="social-feed-rail">
+        Feed
+      </button>
+      <div class="feed-rail-content">
+        <header class="feed-rail-header">
+          <div>
+            <p class="eyebrow">Twitter / X Feed</p>
+            <h3>Market Conversation</h3>
+          </div>
+          <span id="feed-rail-status" class="status watch">Not Connected</span>
+        </header>
+        <div id="feed-rail-list" class="feed-rail-list">
+          <article class="feed-post empty">
+            <strong>X/Twitter source not connected</strong>
+            <p>When an approved source is connected, this rail can stay open across pages and show your feed in a familiar timeline layout.</p>
+          </article>
+        </div>
+        <footer class="feed-rail-footer">
+          <p>Social context stays separate from entries, exits, sizing, and paper eligibility.</p>
+          <a href="#investment-narrative" class="secondary-link">Narrative context</a>
+        </footer>
+      </div>
+    </aside>
+
+    <script src="/app.js?v=20260605-unified-strategy-portfolio"></script>
   </body>
 </html>

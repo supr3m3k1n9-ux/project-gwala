@@ -76,6 +76,9 @@ def open_paper_rows(trades: pd.DataFrame) -> pd.DataFrame:
     missing_exit = trades["actual_exit"].isna() | (trades["actual_exit"].astype(str).str.strip() == "")
     missing_r = trades["outcome_r"].isna() | (trades["outcome_r"].astype(str).str.strip() == "")
     rows = trades[missing_exit | missing_r].copy()
+    if "invalid_for_validation" in rows.columns:
+        invalid = rows["invalid_for_validation"].astype(str).str.lower().isin(["1", "true", "yes", "y"])
+        rows = rows[~invalid].copy()
     rows.insert(0, "row", rows.index + 1)
     return rows
 

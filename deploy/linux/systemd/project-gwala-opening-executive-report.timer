@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Project Gwala Opening Executive Report in shadow mode
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 06:20:00
+Unit=project-gwala-opening-executive-report.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -20,12 +21,26 @@ from run_playbook import markdown_table
 
 
 RECOMMENDATION_CHECKLIST = [
-    "Refresh Webull data during the next open market session before acting on scanner rows.",
+    "Refresh Webull market data during the next open market session before acting on scanner rows.",
     "Collect only valid current-candle paper trades until the 30-trade checkpoint.",
     "Review setup health before trusting any approved setup.",
     "Keep AAPL Setup B Short under caution until its math improves.",
     "Preserve app-ready JSON/CSV outputs as the source for any future UI.",
 ]
+
+
+def json_safe(value: Any) -> Any:
+    """Return a strict-JSON-safe copy of nested report data."""
+
+    if isinstance(value, dict):
+        return {str(key): json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [json_safe(item) for item in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    return value
 
 
 def parse_args() -> argparse.Namespace:
@@ -96,6 +111,27 @@ execution, and real-money readiness are disabled.
     "status": state.get("refresh_status", {}).get("status", "missing"),
     "next_action": state.get("refresh_status", {}).get("next_action", "Run python run_refresh_status.py."),
     "paper_import_blocked": state.get("refresh_status", {}).get("paper_import_blocked", True),
+})}
+
+## Data Flow Sentinel
+
+{small_table({
+    "status": state.get("data_flow_sentinel", {}).get("status", "missing"),
+    "fail_count": state.get("data_flow_sentinel", {}).get("fail_count", 0),
+    "warn_count": state.get("data_flow_sentinel", {}).get("warn_count", 0),
+    "next_action": state.get("data_flow_sentinel", {}).get("next_action", "Run python run_data_flow_sentinel.py --output-dir logs."),
+})}
+
+## Historical Bucket Sync
+
+{small_table({
+    "status": state.get("historical_bucket_sync", {}).get("status", "missing"),
+    "target_scanner_session": state.get("historical_bucket_sync", {}).get("target_scanner_session", "unknown"),
+    "unified_last_entry": state.get("historical_bucket_sync", {}).get("unified_last_entry", ""),
+    "current_buckets": state.get("historical_bucket_sync", {}).get("current_buckets", []),
+    "behind_buckets": state.get("historical_bucket_sync", {}).get("behind_buckets", []),
+    "missing_buckets": state.get("historical_bucket_sync", {}).get("missing_buckets", []),
+    "next_action": state.get("historical_bucket_sync", {}).get("next_action", "Run python run_historical_bucket_sync.py --output-dir logs."),
 })}
 
 ## Pre-Market Verification
@@ -234,11 +270,11 @@ def main() -> None:
     json_path = args.output_dir / "system_state.json"
     md_path = args.output_dir / "system_state.md"
 
-    json_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    json_path.write_text(json.dumps(json_safe(state), indent=2, allow_nan=False), encoding="utf-8")
     write_markdown(md_path, state)
     state["app_health"]["source_file_states"]["system_state_json"] = file_state(json_path)
     state["app_health"]["source_file_states"]["system_state_md"] = file_state(md_path)
-    json_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    json_path.write_text(json.dumps(json_safe(state), indent=2, allow_nan=False), encoding="utf-8")
     write_markdown(md_path, state)
 
     print(f"Saved system state JSON: {json_path}")

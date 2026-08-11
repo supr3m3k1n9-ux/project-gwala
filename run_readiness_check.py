@@ -17,6 +17,7 @@ import pandas as pd
 from config.market_calendar import MARKET_TZ, market_session_for_date, next_market_session
 from config.settings import STRATEGY
 from config.symbol_playbook import playbook_symbols
+from data.candle_cache import preferred_candle_path
 from reports.system_state import build_system_state
 from run_dashboard import paper_progress, read_csv_or_empty
 from run_paper_import import PAPER_COLUMNS, read_existing
@@ -128,12 +129,12 @@ def approved_symbols() -> list[str]:
 
 
 def webull_file_check(output_dir: Path) -> tuple[CheckResult, pd.DataFrame]:
-    """Check local Webull CSV presence for approved and watch symbols."""
+    """Check local market-data CSV presence for approved and watch symbols."""
 
     rows = []
     for symbol in approved_symbols():
-        entry_path = output_dir / f"webull_{symbol}_M30_candles.csv"
-        exit_path = output_dir / f"webull_{symbol}_M5_candles.csv"
+        entry_path = preferred_candle_path(output_dir, symbol, "M30")
+        exit_path = preferred_candle_path(output_dir, symbol, "M5")
         rows.append(
             {
                 "symbol": symbol,

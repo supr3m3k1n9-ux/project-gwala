@@ -182,8 +182,8 @@ def build_watchdog(output_dir: Path, *, moment: datetime | None = None, data_dir
         next_action = "Keep the laptop awake for the first 6:30 AM PT scheduled run."
     elif market_scan_ran_today and not refresh_today:
         status = "warn"
-        headline = "Workflow ran, but today's Webull refresh is not confirmed."
-        next_action = "Run Refresh Webull Data from the dashboard or run the daily workflow with --refresh-data."
+        headline = "Workflow ran, but today's market-data refresh is not confirmed."
+        next_action = "Run Refresh Market Data from the dashboard or run the daily workflow with --refresh-data."
     elif market_scan_ran_today and not scanner_today:
         status = "warn"
         headline = "Workflow ran, but scanner output is not from today's session."
@@ -245,7 +245,7 @@ def write_report(payload: dict[str, Any], output_dir: Path) -> tuple[Path, Path]
             {"check": "Latest autonomous action", "value": payload["autonomous_status"]["latest_action"]},
             {"check": "Market scan due", "value": payload["market_scan"]["due"]},
             {"check": "Market scan ran today", "value": payload["market_scan"]["ran_today"]},
-            {"check": "Webull refresh confirmed today", "value": payload["data_refresh"]["confirmed_today"]},
+            {"check": "Market-data refresh confirmed today", "value": payload["data_refresh"]["confirmed_today"]},
             {"check": "Refreshed symbols", "value": payload["data_refresh"]["refreshed_symbol_count"]},
             {"check": "Scanner session is today", "value": payload["scanner"]["session_is_today"]},
             {"check": "Current candidates", "value": payload["scanner"]["current_candidate_count"]},

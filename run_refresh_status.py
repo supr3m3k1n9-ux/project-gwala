@@ -53,6 +53,7 @@ def write_markdown(path: Path, status: dict) -> None:
     market = pd.DataFrame([status["market"]])
     scanner = pd.DataFrame([status["scanner"]])
     candles = pd.DataFrame([status.get("candle_freshness", {})])
+    provider = pd.DataFrame([status.get("provider_refresh", {})])
 
     path.write_text(
         f"""# Refresh Status
@@ -84,6 +85,10 @@ orders, create alerts, or connect to broker execution.
 ## Candle Freshness
 
 {markdown_table(candles)}
+
+## Provider Refresh
+
+{markdown_table(provider)}
 
 ## Approved Symbol CSV State
 

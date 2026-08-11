@@ -1,0 +1,17 @@
+[Unit]
+Description=Project Gwala dashboard shadow service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/project-gwala/gwala.env
+WorkingDirectory=/opt/project-gwala
+ExecStart=/bin/bash -lc 'cd "$GWALA_PROJECT_ROOT" && exec "$GWALA_PYTHON" run_app.py --host "$GWALA_DASHBOARD_HOST" --port "$GWALA_DASHBOARD_PORT"'
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

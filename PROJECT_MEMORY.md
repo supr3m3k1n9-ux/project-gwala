@@ -5005,3 +5005,54 @@ Result:
 93 workflow safety tests passed.
 Timeline is status-only. It does not fetch data, place orders, create broker alerts, import paper trades, or change scanner rules.
 ```
+
+## 2026-06-17 Gwala Paper Collection Mode
+
+Effective immediately, the project is in Paper Collection Mode for the next 10
+market sessions.
+
+Primary KPI:
+
+```text
+Completed Official Paper Trades
+```
+
+Allowed work:
+
+```text
+Candidate capture
+Candidate review
+Contract review
+Paper trade logging
+Exit management
+Safety-critical bug fixes
+```
+
+Disallowed work:
+
+```text
+New strategies
+New indicators
+New dashboard features
+New research systems
+New routing logic
+New filters
+New data providers
+New architecture projects
+```
+
+Exception:
+
+```text
+Only allow a disallowed-category change if it directly increases completed
+official paper trades or fixes a blocker preventing official paper trades.
+```
+
+Next safest action:
+
+```text
+Run the current paper workflow during each market session, review valid A/B
+candidates, complete contract review, log official paper trades, and manage
+exits. Do not expand the system unless a direct official-paper-trade blocker is
+found.
+```

@@ -1,8 +1,9 @@
-"""Run Project Gwala's paper workflow on a market-hours loop.
+"""Run Project Gwala's current-candle capture workflow on a market-hours loop.
 
 This is research and paper workflow only. The loop refreshes data, runs the
-scanner, position sizer, paper review, and dashboard on a schedule. It does not
-place orders, create broker alerts, or connect to trade execution.
+scanner, sizing, pre-entry, paper gate, contract gate, and validation preview on
+a schedule. It does not place orders, create broker alerts, confirm new paper
+entries, or connect to trade execution.
 """
 
 from __future__ import annotations
@@ -18,7 +19,11 @@ import pandas as pd
 
 from config.settings import STRATEGY
 from config.market_calendar import MARKET_TZ, market_session_for_date
+from config.symbol_playbook import playbook_symbols
 from run_playbook import markdown_table
+
+
+DEFAULT_SYMBOLS = sorted(playbook_symbols("approved_plus_watch"))
 
 
 def parse_clock(value: str) -> clock_time:
@@ -31,13 +36,13 @@ def parse_clock(value: str) -> clock_time:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the Project Gwala intraday paper loop.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--interval-minutes", type=int, default=30, help="Minutes between scans.")
+    parser.add_argument("--interval-minutes", type=int, default=5, help="Minutes between production scans.")
     parser.add_argument("--once", action="store_true", help="Run at most one scan/check and exit.")
     parser.add_argument("--force", action="store_true", help="Run even outside regular market hours.")
     parser.add_argument(
         "--append-current-signals",
         action="store_true",
-        help="Deprecated safety stop: paper imports must happen after manual candidate review.",
+        help="Deprecated safety stop: ignored. Paper imports must happen after manual candidate review.",
     )
     parser.add_argument("--account-size", type=float, default=10_000.0, help="Paper account size for sizing.")
     parser.add_argument("--risk-per-trade-pct", type=float, default=0.005, help="Paper risk per trade.")
@@ -124,14 +129,15 @@ def run_step(command: list[str]) -> None:
 
 
 def workflow_command(args: argparse.Namespace) -> list[str]:
-    """Build the daily workflow command used by each scan."""
+    """Build the current-candle capture command used by each scan."""
 
     command = [
         sys.executable,
-        "run_daily_workflow.py",
-        "--refresh-data",
+        "run_current_candle_capture.py",
         "--output-dir",
         str(args.output_dir),
+        "--symbols",
+        *DEFAULT_SYMBOLS,
         "--pause",
         str(args.pause),
         "--account-size",
@@ -139,8 +145,6 @@ def workflow_command(args: argparse.Namespace) -> list[str]:
         "--risk-per-trade-pct",
         str(args.risk_per_trade_pct),
     ]
-    if args.append_current_signals:
-        command.append("--append-current-signals")
     if getattr(args, "auto_confirm_paper_exits", False):
         command.append("--auto-confirm-paper-exits")
     return command

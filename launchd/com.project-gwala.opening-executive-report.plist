@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.project-gwala.opening-executive-report</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/roy/Documents/New project/.venv-webull/bin/python</string>
+		<string>/Users/roy/Documents/New project/run_executive_report.py</string>
+		<string>--report-type</string>
+		<string>opening</string>
+		<string>--output-dir</string>
+		<string>logs</string>
+		<string>--data-dir</string>
+		<string>data</string>
+		<string>--reports-dir</string>
+		<string>logs/executive_reports</string>
+		<string>--deliver</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/roy/Documents/New project</string>
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict>
+			<key>Weekday</key>
+			<integer>1</integer>
+			<key>Hour</key>
+			<integer>6</integer>
+			<key>Minute</key>
+			<integer>20</integer>
+		</dict>
+		<dict>
+			<key>Weekday</key>
+			<integer>2</integer>
+			<key>Hour</key>
+			<integer>6</integer>
+			<key>Minute</key>
+			<integer>20</integer>
+		</dict>
+		<dict>
+			<key>Weekday</key>
+			<integer>3</integer>
+			<key>Hour</key>
+			<integer>6</integer>
+			<key>Minute</key>
+			<integer>20</integer>
+		</dict>
+		<dict>
+			<key>Weekday</key>
+			<integer>4</integer>
+			<key>Hour</key>
+			<integer>6</integer>
+			<key>Minute</key>
+			<integer>20</integer>
+		</dict>
+		<dict>
+			<key>Weekday</key>
+			<integer>5</integer>
+			<key>Hour</key>
+			<integer>6</integer>
+			<key>Minute</key>
+			<integer>20</integer>
+		</dict>
+	</array>
+	<key>StandardOutPath</key>
+	<string>/Users/roy/Library/Logs/ProjectGwala/com.project-gwala.opening-executive-report.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/roy/Library/Logs/ProjectGwala/com.project-gwala.opening-executive-report.err.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PYTHONUNBUFFERED</key>
+		<string>1</string>
+	</dict>
+</dict>
+</plist>

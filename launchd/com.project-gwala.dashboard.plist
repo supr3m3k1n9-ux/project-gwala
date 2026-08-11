@@ -8,7 +8,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/roy/Documents/New project/.venv/bin/python</string>
+    <string>/Users/roy/Documents/New project/.venv-webull/bin/python</string>
     <string>/Users/roy/Documents/New project/run_app.py</string>
     <string>--host</string>
     <string>127.0.0.1</string>
@@ -26,10 +26,10 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/roy/Documents/New project/logs/dashboard.launchd.out.log</string>
+  <string>/Users/roy/Library/Logs/ProjectGwala/dashboard.launchd.out.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/roy/Documents/New project/logs/dashboard.launchd.err.log</string>
+  <string>/Users/roy/Library/Logs/ProjectGwala/dashboard.launchd.err.log</string>
 
   <key>EnvironmentVariables</key>
   <dict>

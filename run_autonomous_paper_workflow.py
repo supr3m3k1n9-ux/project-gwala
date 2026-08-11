@@ -1,7 +1,7 @@
 """Run the paper-validation workflow whenever the market schedule calls for it.
 
 This is a local research supervisor. It can run pre-market checks, market-hours
-refresh/scan cycles, and after-close recap reports on a schedule. It never
+current-candle capture cycles, and after-close recap reports on a schedule. It never
 places orders, creates broker alerts, or imports reviewed paper trades.
 """
 
@@ -122,7 +122,7 @@ def choose_action(
         return SupervisorDecision("premarket_check", message, seconds_until(session.market_open, local))
 
     if session.market_open <= local <= session.market_close:
-        message = "Run market-hours refresh, scanner, sizing, and dashboard workflow."
+        message = "Run market-hours current-candle capture, gates, and dashboard sync checks."
         return SupervisorDecision("market_scan", message, seconds_until_next_scan(local, interval_minutes))
 
     message = "Regular session has closed; run recap and readiness reports."
@@ -137,12 +137,11 @@ def run_step(command: list[str]) -> None:
 
 
 def daily_workflow_command(args: argparse.Namespace) -> list[str]:
-    """Build the market-hours workflow command."""
+    """Build the market-hours current-candle capture command."""
 
     command = [
         sys.executable,
-        "run_daily_workflow.py",
-        "--refresh-data",
+        "run_current_candle_capture.py",
         "--output-dir",
         str(args.output_dir),
         "--pause",
@@ -166,6 +165,7 @@ def commands_for_action(action: str, args: argparse.Namespace) -> list[list[str]
         return [daily_workflow_command(args)]
     if action == "after_close_recap":
         return [
+            [sys.executable, "run_after_close_evidence_maturity.py", "--output-dir", str(args.output_dir)],
             [sys.executable, "run_daily_recap.py", "--output-dir", str(args.output_dir)],
             [sys.executable, "run_readiness_check.py", "--output-dir", str(args.output_dir)],
             [sys.executable, "run_system_state.py", "--output-dir", str(args.output_dir)],
@@ -271,9 +271,21 @@ def main() -> None:
         print(f"Saved supervisor status: {status_path}")
         run_due_action(args, decision)
         if not args.dry_run:
+            if decision.action == "market_scan":
+                run_step(
+                    [
+                        sys.executable,
+                        "run_production_heartbeat.py",
+                        "--output-dir",
+                        str(args.output_dir),
+                        "--interval-minutes",
+                        str(args.interval_minutes),
+                    ]
+                )
             run_step([sys.executable, "run_morning_watchdog.py", "--output-dir", str(args.output_dir)])
             run_step([sys.executable, "run_daily_automation_timeline.py", "--output-dir", str(args.output_dir)])
             run_step([sys.executable, "run_system_state.py", "--output-dir", str(args.output_dir)])
+            run_step([sys.executable, "run_dashboard_data_preflight.py", "--output-dir", str(args.output_dir)])
 
         if args.once or decision.action == "after_close_recap":
             return

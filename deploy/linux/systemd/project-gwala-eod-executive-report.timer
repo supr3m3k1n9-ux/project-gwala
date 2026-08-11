@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Project Gwala End-of-Day Executive Report readiness checks in shadow mode
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 13:05,10,15,20,30:00
+Unit=project-gwala-eod-executive-report.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

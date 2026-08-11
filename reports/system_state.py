@@ -17,6 +17,7 @@ from typing import Any
 
 import pandas as pd
 
+from data.market_data_sources import read_sources
 from run_data_integrity import coverage_is_issue
 
 from config.market_calendar import MARKET_TZ, market_session_for_date, next_market_session
@@ -70,6 +71,29 @@ def read_json_or_empty(path: Path) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def truthy_value(value: object) -> bool:
+    """Return True for CSV values that mean yes/true."""
+
+    return str(value).strip().lower() in {"true", "1", "yes", "y"}
+
+
+def has_value(value: object) -> bool:
+    """Return whether a CSV value is meaningfully populated."""
+
+    if value is None or pd.isna(value):
+        return False
+    return str(value).strip() != ""
+
+
+def number_value(value: object) -> float:
+    """Return a float for dashboard progress math."""
+
+    number = pd.to_numeric(value, errors="coerce")
+    if pd.isna(number):
+        return 0.0
+    return float(number)
 
 
 def premarket_verification_state(verification: dict[str, Any], path: Path) -> dict[str, Any]:
@@ -185,16 +209,39 @@ def data_freshness_state(scanner: pd.DataFrame, market: dict[str, Any]) -> dict[
         status = "outside_market_hours"
         action = (
             f"Today's scanner data is no longer actionable. On {next_session}, run "
-            "python run_daily_workflow.py --refresh-data before importing or sizing any paper trade."
+            "python run_daily_workflow.py --refresh-data --data-provider webull before importing or sizing any paper trade."
         )
     else:
         status = "stale"
-        action = f"Prep only. On {next_session}, run python run_daily_workflow.py --refresh-data before importing or sizing any paper trade."
+        action = f"Prep only. On {next_session}, run python run_daily_workflow.py --refresh-data --data-provider webull before importing or sizing any paper trade."
 
     return {
         "latest_scanner_session": latest or "unknown",
         "data_status": status,
         "action": action,
+    }
+
+
+def market_data_source_state(sources: pd.DataFrame) -> dict[str, Any]:
+    """Summarize the latest market-data provider metadata."""
+
+    if sources.empty:
+        return {
+            "rows": 0,
+            "latest_provider": "unknown",
+            "latest_refreshed_at_et": "",
+            "provider_counts": {},
+            "status_counts": {},
+        }
+    latest = sources.iloc[-1]
+    provider_counts = sources.groupby("provider").size().to_dict() if "provider" in sources.columns else {}
+    source_status_counts = sources.groupby("status").size().to_dict() if "status" in sources.columns else {}
+    return {
+        "rows": int(len(sources)),
+        "latest_provider": str(latest.get("provider", "unknown")),
+        "latest_refreshed_at_et": str(latest.get("refreshed_at_et", "")),
+        "provider_counts": {str(key): int(value) for key, value in provider_counts.items()},
+        "status_counts": {str(key): int(value) for key, value in source_status_counts.items()},
     }
 
 
@@ -344,6 +391,96 @@ def forward_evidence_bridge_state(
     }
 
 
+def evidence_maturity_progress_state(strategy_vault: dict[str, Any]) -> dict[str, Any]:
+    """Summarize research strategies by paper-watch evidence maturity."""
+
+    strategies = strategy_vault.get("strategies", []) if isinstance(strategy_vault.get("strategies", []), list) else []
+    thresholds = {
+        "tightened_pass_rows": 1,
+        "walk_forward_holding_rows": 1,
+        "shadow_samples": 10,
+        "matured_shadow_samples": 5,
+        "shadow_average_r": 0.10,
+        "forward_observations": 10,
+        "matured_forward_observations": 5,
+        "forward_average_r": 0.10,
+    }
+    rows: list[dict[str, Any]] = []
+    for strategy in strategies:
+        if strategy.get("status") == "active_paper_watch":
+            continue
+        checks = [
+            ("tightened", number_value(strategy.get("tightened_pass_rows", 0)) >= thresholds["tightened_pass_rows"]),
+            ("walk_forward", number_value(strategy.get("walk_forward_holding_rows", 0)) >= thresholds["walk_forward_holding_rows"]),
+            ("shadow_samples", number_value(strategy.get("shadow_samples", 0)) >= thresholds["shadow_samples"]),
+            ("matured_shadow", number_value(strategy.get("matured_shadow_samples", 0)) >= thresholds["matured_shadow_samples"]),
+            (
+                "shadow_average",
+                number_value(strategy.get("shadow_average_r", 0)) >= thresholds["shadow_average_r"]
+                and number_value(strategy.get("matured_shadow_samples", 0)) >= thresholds["matured_shadow_samples"],
+            ),
+            ("forward_observations", number_value(strategy.get("forward_observations", 0)) >= thresholds["forward_observations"]),
+            ("matured_forward", number_value(strategy.get("matured_forward_observations", 0)) >= thresholds["matured_forward_observations"]),
+            (
+                "forward_average",
+                number_value(strategy.get("forward_average_r", 0)) >= thresholds["forward_average_r"]
+                and number_value(strategy.get("matured_forward_observations", 0)) >= thresholds["matured_forward_observations"],
+            ),
+        ]
+        passed = sum(1 for _, status in checks if status)
+        blocker = str(strategy.get("paper_watch_blocker", "") or "")
+        if blocker in {"", "None"}:
+            failed = [name for name, status in checks if not status]
+            blocker = failed[0] if failed else "None"
+        rows.append(
+            {
+                "strategy_id": strategy.get("strategy_id", ""),
+                "strategy": strategy.get("name", ""),
+                "paper_watch_decision": strategy.get("paper_watch_decision", "not_applicable"),
+                "next_blocker": blocker,
+                "passed_checks": int(passed),
+                "total_checks": int(len(checks)),
+                "maturity_percent": round((passed / len(checks)) * 100, 1) if checks else 0.0,
+                "tightened_pass_rows": int(number_value(strategy.get("tightened_pass_rows", 0))),
+                "walk_forward_holding_rows": int(number_value(strategy.get("walk_forward_holding_rows", 0))),
+                "shadow_samples": int(number_value(strategy.get("shadow_samples", 0))),
+                "shadow_needed": max(0, thresholds["shadow_samples"] - int(number_value(strategy.get("shadow_samples", 0)))),
+                "matured_shadow_samples": int(number_value(strategy.get("matured_shadow_samples", 0))),
+                "matured_shadow_needed": max(0, thresholds["matured_shadow_samples"] - int(number_value(strategy.get("matured_shadow_samples", 0)))),
+                "shadow_average_r": float(number_value(strategy.get("shadow_average_r", 0))),
+                "forward_observations": int(number_value(strategy.get("forward_observations", 0))),
+                "forward_needed": max(0, thresholds["forward_observations"] - int(number_value(strategy.get("forward_observations", 0)))),
+                "matured_forward_observations": int(number_value(strategy.get("matured_forward_observations", 0))),
+                "matured_forward_needed": max(0, thresholds["matured_forward_observations"] - int(number_value(strategy.get("matured_forward_observations", 0)))),
+                "forward_average_r": float(number_value(strategy.get("forward_average_r", 0))),
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            row["maturity_percent"],
+            row["matured_shadow_samples"] + row["matured_forward_observations"],
+            row["shadow_samples"] + row["forward_observations"],
+            row["strategy"],
+        ),
+        reverse=True,
+    )
+    nearest = rows[0] if rows else {}
+    return {
+        "status": "complete" if rows else "missing",
+        "strategy_count": int(len(rows)),
+        "nearest_strategy": nearest,
+        "rows": rows,
+        "thresholds": thresholds,
+        "next_action": (
+            f"Keep collecting evidence for {nearest.get('strategy', 'the closest strategy')}; next blocker: {nearest.get('next_blocker', 'unknown')}."
+            if nearest
+            else "Run the strategy vault before reviewing evidence maturity."
+        ),
+        "guardrail": "Evidence maturity is paper-validation only. It does not place orders or enable execution.",
+    }
+
+
 def data_reliability_state(freshness: dict[str, Any], refresh_status: dict[str, Any], automation_timeline: dict[str, Any]) -> dict[str, Any]:
     """Summarize data reliability without requiring raw log reading."""
 
@@ -358,11 +495,11 @@ def data_reliability_state(freshness: dict[str, Any], refresh_status: dict[str, 
     if bool(possible_failures) and not recovered:
         status = "warn"
         headline = "Current automation reliability needs attention."
-        next_action = "If the next market scan fails, run the refresh status check and Webull refresh manually."
+        next_action = "If the next market scan fails, run the refresh status check and market-data refresh manually."
     elif recovered:
         status = "recovered_warn"
         headline = "Earlier automation errors were detected, but the latest structured workflow completed."
-        next_action = "No emergency action. If tomorrow's first scan fails, run refresh status and Webull refresh manually."
+        next_action = "No emergency action. If tomorrow's first scan fails, run refresh status and market-data refresh manually."
     elif freshness.get("data_status") == "fresh_for_today":
         status = "pass"
         headline = "Scanner data is fresh for today's open session."
@@ -595,6 +732,38 @@ def candidate_priority(
     }
 
 
+def router_candidate_key(row: pd.Series) -> tuple[str, str, str, str, str]:
+    """Return the stable key used to join scanner rows to router rows."""
+
+    return (
+        str(row.get("symbol", "")).upper(),
+        str(row.get("setup", "")),
+        str(row.get("direction", "")),
+        str(row.get("variant", "")),
+        str(row.get("exit_profile", "")),
+    )
+
+
+def router_candidate_lookup(router: dict[str, Any] | None) -> dict[tuple[str, str, str, str, str], dict[str, Any]]:
+    """Return routed scanner rows keyed for candidate-card enrichment."""
+
+    if not router or not isinstance(router.get("candidates", []), list):
+        return {}
+    lookup = {}
+    for item in router.get("candidates", []):
+        if not isinstance(item, dict):
+            continue
+        key = (
+            str(item.get("symbol", "")).upper(),
+            str(item.get("setup", "")),
+            str(item.get("direction", "")),
+            str(item.get("variant", "")),
+            str(item.get("exit_profile", "")),
+        )
+        lookup[key] = item
+    return lookup
+
+
 def current_candidate_state(
     scanner: pd.DataFrame,
     sizing: pd.DataFrame,
@@ -604,8 +773,9 @@ def current_candidate_state(
     setup_health: pd.DataFrame | None = None,
     promotion_review: pd.DataFrame | None = None,
     candidate_aging: pd.DataFrame | None = None,
+    market_regime_router: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build app cards for current-candle scanner candidates.
+    """Build app cards for current and one-candle grace scanner candidates.
 
     Candidate data already belongs to the scanner and position-sizing outputs.
     This function only joins those existing read-only outputs for display.
@@ -616,13 +786,21 @@ def current_candidate_state(
 
     candidates = scanner[
         scanner["scanner_status"].isin(["allowed", "blocked_watch_only"])
-        & (scanner["signal_freshness"] == "current_candle")
+        & scanner["signal_freshness"].isin(["current_candle", "grace_candle"])
     ].copy()
     if candidates.empty:
         return {"count": 0, "ready_for_review_count": 0, "cards": []}
 
     cards = []
+    router_lookup = router_candidate_lookup(market_regime_router)
     for _, row in candidates.iterrows():
+        route = router_lookup.get(router_candidate_key(row), {})
+        route_name = str(route.get("candidate_route", "unrouted"))
+        route_action = str(route.get("action", "Router has not classified this candidate yet."))
+        freshness_label = str(row.get("signal_freshness", ""))
+        validation_lane = str(row.get("validation_lane", "B" if freshness_label == "grace_candle" else "A"))
+        grace_lane = freshness_label == "grace_candle" or validation_lane.upper() == "B"
+        router_allows_review = route_name in ({"review_first", "caution_review", "unrouted"} if grace_lane else {"review_first", "unrouted"})
         matching_size = pd.DataFrame()
         if not sizing.empty:
             matching_size = sizing[
@@ -636,7 +814,8 @@ def current_candidate_state(
         data_fresh = freshness["data_status"] == "fresh_for_today"
         sizing_ok = size.get("sizing_status", "") == "size_ok"
         paper_import_unblocked = refresh_status.get("paper_import_blocked", True) is False
-        ready_for_review = scanner_allowed and data_fresh and sizing_ok and paper_import_unblocked
+        import_path_ok = True if grace_lane else paper_import_unblocked
+        ready_for_review = scanner_allowed and data_fresh and sizing_ok and import_path_ok and router_allows_review
 
         blockers = []
         if not scanner_allowed:
@@ -645,8 +824,10 @@ def current_candidate_state(
             blockers.append("Scanner data is not fresh for today.")
         if not sizing_ok:
             blockers.append(str(size.get("sizing_reason", "No eligible paper size is available.")))
-        if not paper_import_unblocked:
+        if not import_path_ok:
             blockers.append("Paper import remains blocked until a reviewed current-session candidate is eligible.")
+        if not router_allows_review:
+            blockers.append(f"Market regime router says {route_name}: {route_action}")
 
         scaling = scale_guidance(row, ready_for_review, risk_guard)
         priority = candidate_priority(
@@ -662,6 +843,11 @@ def current_candidate_state(
                 "direction": str(row.get("direction", "")),
                 "scanner_status": str(row.get("scanner_status", "")),
                 "signal_time_et": str(row.get("latest_signal_et", "")),
+                "source_signal_et": str(row.get("source_signal_et", row.get("latest_signal_et", ""))),
+                "candidate_entry_et": str(row.get("candidate_entry_et", row.get("latest_signal_et", ""))),
+                "signal_freshness": freshness_label,
+                "validation_lane": validation_lane,
+                "manual_review_required": bool(row.get("manual_review_required", True)),
                 "entry": app_value(row.get("planned_entry", "")),
                 "stop": app_value(row.get("planned_stop", "")),
                 "target": app_value(row.get("planned_target", "")),
@@ -680,6 +866,10 @@ def current_candidate_state(
                 "scale_reason": scaling["scale_reason"],
                 "risk_guard_status": str(risk_guard.get("status", "")) if risk_guard else "",
                 "risk_guard_message": str(risk_guard.get("message", "")) if risk_guard else "",
+                "router_route": route_name,
+                "router_action": route_action,
+                "router_strategy_id": str(route.get("strategy_id", "")),
+                "router_time_bucket": str(route.get("time_bucket", "")),
                 "evidence_priority": priority["priority"],
                 "priority_reason": priority["reason"],
                 "historical_expectancy_r": priority["historical_expectancy_r"],
@@ -690,14 +880,33 @@ def current_candidate_state(
                 "ready_for_review": ready_for_review,
                 "blockers": blockers,
                 "checklist_flags": [
-                    {"label": "Current-candle signal", "passed": True},
+                    {"label": "A current or B grace signal", "passed": freshness_label in {"current_candle", "grace_candle"}},
                     {"label": "Scanner status allowed", "passed": scanner_allowed},
                     {"label": "Fresh current session data", "passed": data_fresh},
                     {"label": "Position sizing is size_ok", "passed": sizing_ok},
-                    {"label": "Paper import review available", "passed": paper_import_unblocked},
+                    {"label": "Manual validation path available", "passed": import_path_ok},
+                    {"label": "Router supports this lane", "passed": router_allows_review},
                 ],
             }
         )
+
+    route_order = {
+        "review_first": 0,
+        "caution_review": 1,
+        "shadow_only": 2,
+        "blocked_by_regime": 3,
+        "stale_or_earlier_today": 4,
+        "not_ready": 5,
+        "unrouted": 6,
+    }
+    cards = sorted(
+        cards,
+        key=lambda card: (
+            route_order.get(str(card.get("router_route", "unrouted")), 99),
+            not bool(card.get("ready_for_review", False)),
+            str(card.get("symbol", "")),
+        ),
+    )
 
     return {
         "count": len(cards),
@@ -811,6 +1020,98 @@ def paper_visualization_state(paper_review: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+def paper_trade_command_center_state(
+    *,
+    current_candidates: dict[str, Any],
+    paper_progress: dict[str, Any],
+    paper_validation_samples: pd.DataFrame,
+    daily_ship_report: dict[str, Any],
+    market_regime_router: dict[str, Any],
+) -> dict[str, Any]:
+    """Return the launch-focused one-screen paper trade summary."""
+
+    official = pd.Series([False] * len(paper_validation_samples), index=paper_validation_samples.index)
+    if not paper_validation_samples.empty:
+        if "counts_toward_30" in paper_validation_samples.columns:
+            official = paper_validation_samples["counts_toward_30"].map(truthy_value)
+        elif "sample_tier" in paper_validation_samples.columns:
+            official = paper_validation_samples["sample_tier"].astype(str).str.upper().isin({"A", "B"})
+        if "invalid_for_validation" in paper_validation_samples.columns:
+            official = official & ~paper_validation_samples["invalid_for_validation"].map(truthy_value)
+
+    completed = pd.Series([False] * len(paper_validation_samples), index=paper_validation_samples.index)
+    if not paper_validation_samples.empty and "outcome_r" in paper_validation_samples.columns:
+        completed = official & paper_validation_samples["outcome_r"].map(has_value)
+
+    completed_count = int(completed.sum())
+    official_count = int(official.sum())
+    open_count = max(official_count - completed_count, 0)
+    remaining = max(FIRST_PAPER_GATE - completed_count, 0)
+    if not paper_validation_samples.empty and "outcome_r" in paper_validation_samples.columns:
+        outcomes = pd.to_numeric(paper_validation_samples.loc[completed, "outcome_r"], errors="coerce").dropna()
+    else:
+        outcomes = pd.Series(dtype=float)
+    if outcomes.empty and completed_count == 0:
+        completed_count = int(daily_ship_report.get("completed_official_paper_trades", 0) or paper_progress.get("allowed_completed_trades", 0) or 0)
+        remaining = int(daily_ship_report.get("remaining_to_30", max(FIRST_PAPER_GATE - completed_count, 0)) or 0)
+    win_rate = round(float((outcomes > 0).mean()) * 100, 1) if not outcomes.empty else 0.0
+    average_r = round(float(outcomes.mean()), 4) if not outcomes.empty else float(paper_progress.get("allowed_average_r", 0.0) or 0.0)
+    progress_pct = round(min(completed_count / FIRST_PAPER_GATE, 1.0) * 100, 1)
+
+    funnel_rows = daily_ship_report.get("funnel_rows", [])
+    if not isinstance(funnel_rows, list):
+        funnel_rows = []
+    first_bottleneck = str(daily_ship_report.get("first_bottleneck", "") or "unknown")
+    worst_drop = str(daily_ship_report.get("worst_drop", "") or "n/a")
+    candidates = current_candidates.get("cards", []) if isinstance(current_candidates.get("cards", []), list) else []
+    ready_count = int(current_candidates.get("ready_for_review_count", 0) or 0)
+    current_count = int(current_candidates.get("count", 0) or 0)
+
+    moving = ready_count > 0 or int(daily_ship_report.get("validation_import_new_rows", 0) or 0) > 0 or open_count > 0
+    if completed_count >= FIRST_PAPER_GATE:
+        launch_status = "gate_complete"
+        launch_summary = "The 30-trade paper gate is complete. Review live-readiness safety before any next step."
+    elif moving:
+        launch_status = "moving"
+        launch_summary = "The paper workflow has candidates or open official samples moving through the gate."
+    elif first_bottleneck not in {"none", "n/a", "unknown"}:
+        launch_status = "blocked"
+        launch_summary = f"Launch progress is blocked at {first_bottleneck}."
+    else:
+        launch_status = "scanning"
+        launch_summary = "No hard bottleneck is visible. Keep scanning for current-candle candidates."
+
+    regime = market_regime_router.get("regime", {}) if isinstance(market_regime_router.get("regime", {}), dict) else {}
+    if first_bottleneck in {"none", "n/a", "unknown"}:
+        next_action = str(market_regime_router.get("next_action", "Run the next current-candle capture."))
+    else:
+        next_action = f"Fix {first_bottleneck} so candidates can keep moving toward the 30-trade gate."
+
+    return {
+        "launch_status": launch_status,
+        "launch_summary": launch_summary,
+        "current_candidate_count": current_count,
+        "ready_candidate_count": ready_count,
+        "top_candidates": candidates[:4],
+        "current_bottleneck": first_bottleneck,
+        "worst_drop": worst_drop,
+        "funnel_rows": funnel_rows[:8],
+        "official_validation_samples": official_count,
+        "open_official_paper_trades": open_count,
+        "completed_official_paper_trades": completed_count,
+        "remaining_to_30": remaining,
+        "progress_pct": progress_pct,
+        "win_rate_pct": win_rate,
+        "average_r": average_r,
+        "market_regime": str(regime.get("market_regime", "unknown")),
+        "volatility_regime": str(regime.get("volatility_regime", "unknown")),
+        "regime_confidence": str(regime.get("confidence", "unknown")),
+        "regime_reason": str(regime.get("reason", "")),
+        "next_action": next_action,
+        "source": "data/paper_validation_samples.csv when available; DAILY_SHIP_REPORT and paper progress as fallback.",
+    }
+
+
 def setup_health_state(setup_health: pd.DataFrame) -> dict[str, Any]:
     """Summarize setup health scoring."""
 
@@ -836,6 +1137,10 @@ def setup_health_state(setup_health: pd.DataFrame) -> dict[str, Any]:
             expectancy_value = pd.to_numeric(item.get("expectancy_r", 0), errors="coerce")
             trades = 0 if pd.isna(trades_value) else int(trades_value)
             expectancy = 0.0 if pd.isna(expectancy_value) else float(expectancy_value)
+            item["health_score"] = int(clean_backtest_number(item.get("health_score", 0)))
+            item["trades"] = trades
+            item["expectancy_r"] = clean_backtest_number(item.get("expectancy_r", 0))
+            item["profit_factor"] = clean_backtest_number(item.get("profit_factor", 0))
             if status == "caution":
                 action = "Caution-only. Do not prioritize for new paper entries until the math improves."
             elif trades < 10:
@@ -871,6 +1176,40 @@ def clean_backtest_number(value: Any, *, percent: bool = False) -> float:
     return round(result, 2 if percent else 4)
 
 
+ENTRY_MODEL_LABELS = {
+    "current": "Baseline Pullback",
+    "quality_entry": "Quality Trend",
+    "market_confirmed": "Market Confirmed",
+    "quality_entry_market_confirmed": "Quality + Market",
+    "full_session": "Full Session",
+    "quality_full_session": "Quality Full Session",
+    "setup_b_short": "Baseline Short",
+    "setup_b_quality_short": "Quality Short",
+    "setup_b_full_session": "Full Session Short",
+    "setup_b_quality_full_session": "Quality Full Session Short",
+}
+
+EXIT_PLAN_LABELS = {
+    "no_vwap_exit": "Hold to Close",
+    "current": "VWAP Exit",
+    "two_vwap_closes": "2 VWAP Closes",
+    "bearish_vwap_loss": "Bearish VWAP Loss",
+    "ema9_exit": "9 EMA Exit",
+    "target_1_5r": "1.5R Target",
+    "breakeven_after_1r": "BE After 1R",
+}
+
+
+def backtest_candidate_label(variant: object, exit_profile: object) -> str:
+    """Return a short app label for a historical backtest candidate."""
+
+    variant_text = str(variant or "").strip()
+    exit_text = str(exit_profile or "").strip()
+    entry_label = ENTRY_MODEL_LABELS.get(variant_text, variant_text.replace("_", " ").title() or "Unknown Entry")
+    exit_label = EXIT_PLAN_LABELS.get(exit_text, exit_text.replace("_", " ").title() or "Unknown Exit")
+    return f"{entry_label} / {exit_label}"
+
+
 def backtest_performance_state(output_dir: Path) -> dict[str, Any]:
     """Summarize latest watchlist backtest success for the app."""
 
@@ -892,11 +1231,15 @@ def backtest_performance_state(output_dir: Path) -> dict[str, Any]:
             win_rate_pct = clean_backtest_number(row.get("baseline_win_rate", 0), percent=True)
             expectancy = clean_backtest_number(row.get("baseline_expectancy_r", 0))
             profit_factor = clean_backtest_number(row.get("baseline_profit_factor", 0))
+            variant = row.get("variant", "")
+            exit_profile = row.get("exit_profile", "")
             rows.append(
                 {
                     "setup_family": setup_family,
                     "symbol": str(row.get("symbol", "")),
-                    "candidate": f"{row.get('variant', '')} + {row.get('exit_profile', '')}",
+                    "candidate": backtest_candidate_label(variant, exit_profile),
+                    "variant": str(variant),
+                    "exit_profile": str(exit_profile),
                     "trades": trades,
                     "win_rate_pct": win_rate_pct,
                     "expectancy_r": expectancy,
@@ -1062,9 +1405,13 @@ def readiness_verdict(
     scanner: dict[str, Any],
     sizing: dict[str, Any],
     paper: dict[str, Any],
+    refresh_status: dict[str, Any] | None = None,
 ) -> str:
     """Choose the highest-level operating verdict."""
 
+    refresh = refresh_status or {}
+    if str(refresh.get("status", "")).startswith("blocked_"):
+        return str(refresh.get("next_action") or refresh.get("paper_import_reason") or freshness["action"])
     if freshness["data_status"] != "fresh_for_today":
         return freshness["action"]
     if scanner["current_candidate_count"] > 0 and sizing["eligible_size_count"] > 0:
@@ -1088,7 +1435,16 @@ def build_system_state(
     shadow_samples_csv = Path("data/shadow_samples.csv")
     vwap_mean_reversion_shadow_samples_csv = Path("data/vwap_mean_reversion_shadow_samples.csv")
     vwap_reclaim_reject_shadow_samples_csv = Path("data/vwap_reclaim_reject_shadow_samples.csv")
+    trend_pullback_continuation_shadow_samples_csv = Path("data/trend_pullback_continuation_shadow_samples.csv")
+    gap_fill_fade_shadow_samples_csv = Path("data/gap_fill_fade_shadow_samples.csv")
+    opening_range_breakout_shadow_samples_csv = Path("data/opening_range_breakout_shadow_samples.csv")
+    opening_range_failure_shadow_samples_csv = Path("data/opening_range_failure_shadow_samples.csv")
     vwap_mean_reversion_forward_observations_csv = Path("data/vwap_mean_reversion_forward_observations.csv")
+    vwap_reclaim_reject_forward_observations_csv = Path("data/vwap_reclaim_reject_forward_observations.csv")
+    trend_pullback_continuation_forward_observations_csv = Path("data/trend_pullback_continuation_forward_observations.csv")
+    gap_fill_fade_forward_observations_csv = Path("data/gap_fill_fade_forward_observations.csv")
+    opening_range_breakout_forward_observations_csv = Path("data/opening_range_breakout_forward_observations.csv")
+    opening_range_failure_forward_observations_csv = Path("data/opening_range_failure_forward_observations.csv")
     forward_observations_md = output_dir / "forward_signal_observations.md"
     near_miss_csv = Path("data/near_miss_observations.csv")
     near_miss_md = output_dir / "near_miss_analytics.md"
@@ -1096,25 +1452,52 @@ def build_system_state(
     shadow_outcomes_csv = output_dir / "shadow_sample_outcomes.csv"
     vwap_mean_reversion_shadow_outcomes_csv = output_dir / "vwap_mean_reversion_shadow_outcomes.csv"
     vwap_reclaim_reject_shadow_outcomes_csv = output_dir / "vwap_reclaim_reject_shadow_outcomes.csv"
+    trend_pullback_continuation_shadow_outcomes_csv = output_dir / "trend_pullback_continuation_shadow_outcomes.csv"
+    gap_fill_fade_shadow_outcomes_csv = output_dir / "gap_fill_fade_shadow_outcomes.csv"
+    opening_range_breakout_shadow_outcomes_csv = output_dir / "opening_range_breakout_shadow_outcomes.csv"
+    opening_range_failure_shadow_outcomes_csv = output_dir / "opening_range_failure_shadow_outcomes.csv"
     vwap_mean_reversion_forward_results_csv = output_dir / "vwap_mean_reversion_forward_observation_results.csv"
+    vwap_reclaim_reject_forward_results_csv = output_dir / "vwap_reclaim_reject_forward_observation_results.csv"
+    trend_pullback_continuation_forward_results_csv = output_dir / "trend_pullback_continuation_forward_observation_results.csv"
+    gap_fill_fade_forward_results_csv = output_dir / "gap_fill_fade_forward_observation_results.csv"
+    opening_range_breakout_forward_results_csv = output_dir / "opening_range_breakout_forward_observation_results.csv"
+    opening_range_failure_forward_results_csv = output_dir / "opening_range_failure_forward_observation_results.csv"
     candidate_aging_csv = output_dir / "candidate_aging.csv"
     forward_review_md = output_dir / "forward_observation_review.md"
     reconciliation_csv = output_dir / "observation_paper_reconciliation.csv"
     reconciliation_md = output_dir / "observation_paper_reconciliation.md"
     integrity_csv = output_dir / "candle_data_integrity.csv"
     integrity_md = output_dir / "candle_data_integrity.md"
+    market_data_sources_csv = output_dir / "market_data_sources.csv"
     refresh_audit_csv = Path("data/market_refresh_audit.csv")
     refresh_audit_md = output_dir / "market_refresh_audit.md"
     paper_review_csv = output_dir / "paper_review_clean_trades.csv"
     pre_entry_review_json = output_dir / "pre_entry_review.json"
     pre_entry_review_md = output_dir / "pre_entry_review.md"
     pre_entry_review_csv = output_dir / "pre_entry_review.csv"
+    paper_entry_packet_json = output_dir / "paper_entry_packet.json"
+    paper_entry_packet_md = output_dir / "paper_entry_packet.md"
+    paper_entry_packet_csv = output_dir / "paper_entry_packet.csv"
+    paper_gate_v2_json = output_dir / "paper_gate_v2.json"
+    paper_gate_v2_md = output_dir / "paper_gate_v2.md"
+    paper_gate_v2_csv = output_dir / "paper_gate_v2.csv"
+    options_contract_gate_json = output_dir / "options_contract_gate.json"
+    options_contract_gate_md = output_dir / "options_contract_gate.md"
+    options_contract_gate_csv = output_dir / "options_contract_gate.csv"
+    options_contract_gate_template_csv = output_dir / "options_contract_gate_template.csv"
+    options_contract_audit_csv = Path("data/options_contract_audit.csv")
+    paper_validation_sample_import_json = output_dir / "paper_validation_sample_import.json"
+    paper_validation_sample_import_md = output_dir / "paper_validation_sample_import.md"
+    paper_validation_sample_import_csv = output_dir / "paper_validation_sample_import.csv"
+    paper_validation_samples_csv = Path("data/paper_validation_samples.csv")
     setup_health_csv = output_dir / "setup_health.csv"
     promotion_review_csv = output_dir / "promotion_review.csv"
     strategy_improvement_plan_json = output_dir / "strategy_improvement_plan.json"
     strategy_improvement_plan_md = output_dir / "strategy_improvement_plan.md"
     strategy_vault_json = output_dir / "strategy_vault.json"
     strategy_vault_md = output_dir / "strategy_vault.md"
+    market_regime_router_json = output_dir / "market_regime_router.json"
+    market_regime_router_md = output_dir / "market_regime_router.md"
     vwap_mean_reversion_json = output_dir / "vwap_mean_reversion.json"
     vwap_mean_reversion_md = output_dir / "vwap_mean_reversion.md"
     vwap_mean_reversion_summary_csv = output_dir / "vwap_mean_reversion_summary.csv"
@@ -1129,6 +1512,14 @@ def build_system_state(
     gap_fill_fade_json = output_dir / "gap_fill_fade.json"
     gap_fill_fade_md = output_dir / "gap_fill_fade.md"
     gap_fill_fade_summary_csv = output_dir / "gap_fill_fade_summary.csv"
+    gap_fill_fade_tightened_review_json = output_dir / "gap_fill_fade_tightened_review.json"
+    gap_fill_fade_tightened_review_md = output_dir / "gap_fill_fade_tightened_review.md"
+    gap_fill_fade_tightened_review_csv = output_dir / "gap_fill_fade_tightened_review.csv"
+    gap_fill_fade_shadow_md = output_dir / "gap_fill_fade_shadow_samples.md"
+    gap_fill_fade_forward_md = output_dir / "gap_fill_fade_forward_observations.md"
+    gap_fill_fade_paper_watch_gate_json = output_dir / "gap_fill_fade_paper_watch_gate.json"
+    gap_fill_fade_paper_watch_gate_md = output_dir / "gap_fill_fade_paper_watch_gate.md"
+    gap_fill_fade_paper_watch_gate_csv = output_dir / "gap_fill_fade_paper_watch_gate.csv"
     vwap_reclaim_reject_json = output_dir / "vwap_reclaim_reject.json"
     vwap_reclaim_reject_md = output_dir / "vwap_reclaim_reject.md"
     vwap_reclaim_reject_summary_csv = output_dir / "vwap_reclaim_reject_summary.csv"
@@ -1136,21 +1527,86 @@ def build_system_state(
     vwap_reclaim_reject_walk_forward_md = output_dir / "vwap_reclaim_reject_walk_forward.md"
     vwap_reclaim_reject_walk_forward_csv = output_dir / "vwap_reclaim_reject_walk_forward.csv"
     vwap_reclaim_reject_shadow_md = output_dir / "vwap_reclaim_reject_shadow_samples.md"
+    trend_pullback_continuation_shadow_md = output_dir / "trend_pullback_continuation_shadow_samples.md"
+    vwap_reclaim_reject_forward_md = output_dir / "vwap_reclaim_reject_forward_observations.md"
+    trend_pullback_continuation_forward_md = output_dir / "trend_pullback_continuation_forward_observations.md"
+    vwap_reclaim_reject_paper_watch_gate_json = output_dir / "vwap_reclaim_reject_paper_watch_gate.json"
+    vwap_reclaim_reject_paper_watch_gate_md = output_dir / "vwap_reclaim_reject_paper_watch_gate.md"
+    vwap_reclaim_reject_paper_watch_gate_csv = output_dir / "vwap_reclaim_reject_paper_watch_gate.csv"
+    vwap_reclaim_reject_evidence_maturity_json = output_dir / "vwap_reclaim_reject_evidence_maturity.json"
+    vwap_reclaim_reject_evidence_maturity_md = output_dir / "vwap_reclaim_reject_evidence_maturity.md"
+    vwap_reclaim_reject_evidence_maturity_csv = output_dir / "vwap_reclaim_reject_evidence_maturity.csv"
     opening_range_breakout_json = output_dir / "opening_range_breakout.json"
     opening_range_breakout_md = output_dir / "opening_range_breakout.md"
     opening_range_breakout_summary_csv = output_dir / "opening_range_breakout_summary.csv"
+    opening_range_breakout_tightened_review_json = output_dir / "opening_range_breakout_tightened_review.json"
+    opening_range_breakout_tightened_review_md = output_dir / "opening_range_breakout_tightened_review.md"
+    opening_range_breakout_tightened_review_csv = output_dir / "opening_range_breakout_tightened_review.csv"
+    opening_range_breakout_walk_forward_deepening_json = output_dir / "opening_range_breakout_walk_forward_deepening.json"
+    opening_range_breakout_walk_forward_deepening_md = output_dir / "opening_range_breakout_walk_forward_deepening.md"
+    opening_range_breakout_walk_forward_deepening_csv = output_dir / "opening_range_breakout_walk_forward_deepening.csv"
+    opening_range_breakout_shadow_md = output_dir / "opening_range_breakout_shadow_samples.md"
+    opening_range_breakout_forward_md = output_dir / "opening_range_breakout_forward_observations.md"
+    opening_range_breakout_paper_watch_gate_json = output_dir / "opening_range_breakout_paper_watch_gate.json"
+    opening_range_breakout_paper_watch_gate_md = output_dir / "opening_range_breakout_paper_watch_gate.md"
+    opening_range_breakout_paper_watch_gate_csv = output_dir / "opening_range_breakout_paper_watch_gate.csv"
     trend_pullback_continuation_json = output_dir / "trend_pullback_continuation.json"
     trend_pullback_continuation_md = output_dir / "trend_pullback_continuation.md"
     trend_pullback_continuation_summary_csv = output_dir / "trend_pullback_continuation_summary.csv"
+    trend_pullback_continuation_tightened_review_json = output_dir / "trend_pullback_continuation_tightened_review.json"
+    trend_pullback_continuation_tightened_review_md = output_dir / "trend_pullback_continuation_tightened_review.md"
+    trend_pullback_continuation_tightened_review_csv = output_dir / "trend_pullback_continuation_tightened_review.csv"
+    trend_pullback_continuation_paper_watch_gate_json = output_dir / "trend_pullback_continuation_paper_watch_gate.json"
+    trend_pullback_continuation_paper_watch_gate_md = output_dir / "trend_pullback_continuation_paper_watch_gate.md"
+    trend_pullback_continuation_paper_watch_gate_csv = output_dir / "trend_pullback_continuation_paper_watch_gate.csv"
     opening_range_failure_json = output_dir / "opening_range_failure.json"
     opening_range_failure_md = output_dir / "opening_range_failure.md"
     opening_range_failure_summary_csv = output_dir / "opening_range_failure_summary.csv"
+    opening_range_failure_tightened_review_json = output_dir / "opening_range_failure_tightened_review.json"
+    opening_range_failure_tightened_review_md = output_dir / "opening_range_failure_tightened_review.md"
+    opening_range_failure_tightened_review_csv = output_dir / "opening_range_failure_tightened_review.csv"
+    opening_range_failure_walk_forward_deepening_json = output_dir / "opening_range_failure_walk_forward_deepening.json"
+    opening_range_failure_walk_forward_deepening_md = output_dir / "opening_range_failure_walk_forward_deepening.md"
+    opening_range_failure_walk_forward_deepening_csv = output_dir / "opening_range_failure_walk_forward_deepening.csv"
+    opening_range_failure_shadow_md = output_dir / "opening_range_failure_shadow_samples.md"
+    opening_range_failure_forward_md = output_dir / "opening_range_failure_forward_observations.md"
+    opening_range_failure_paper_watch_gate_json = output_dir / "opening_range_failure_paper_watch_gate.json"
+    opening_range_failure_paper_watch_gate_md = output_dir / "opening_range_failure_paper_watch_gate.md"
+    opening_range_failure_paper_watch_gate_csv = output_dir / "opening_range_failure_paper_watch_gate.csv"
     strategy_evidence_accumulator_json = output_dir / "strategy_evidence_accumulator.json"
     strategy_evidence_accumulator_md = output_dir / "strategy_evidence_accumulator.md"
     strategy_evidence_accumulator_csv = output_dir / "strategy_evidence_accumulator.csv"
     paper_activation_rules_json = output_dir / "paper_activation_rules.json"
     paper_activation_rules_md = output_dir / "paper_activation_rules.md"
     paper_activation_rules_csv = output_dir / "paper_activation_rules.csv"
+    strategy_walk_forward_matrix_json = output_dir / "strategy_walk_forward_matrix.json"
+    strategy_walk_forward_matrix_md = output_dir / "strategy_walk_forward_matrix.md"
+    strategy_walk_forward_matrix_csv = output_dir / "strategy_walk_forward_matrix.csv"
+    research_strategy_tightened_review_json = output_dir / "research_strategy_tightened_review.json"
+    research_strategy_tightened_review_md = output_dir / "research_strategy_tightened_review.md"
+    research_strategy_tightened_review_csv = output_dir / "research_strategy_tightened_review.csv"
+    strategy_backtest_coverage_json = output_dir / "strategy_backtest_coverage.json"
+    strategy_backtest_coverage_md = output_dir / "strategy_backtest_coverage.md"
+    strategy_backtest_coverage_csv = output_dir / "strategy_backtest_coverage.csv"
+    validation_deepening_queue_json = output_dir / "validation_deepening_queue.json"
+    validation_deepening_queue_md = output_dir / "validation_deepening_queue.md"
+    validation_deepening_queue_csv = output_dir / "validation_deepening_queue.csv"
+    strategy_triage_json = output_dir / "strategy_triage.json"
+    strategy_triage_md = output_dir / "strategy_triage.md"
+    strategy_triage_csv = output_dir / "strategy_triage.csv"
+    after_close_evidence_maturity_json = output_dir / "after_close_evidence_maturity.json"
+    after_close_evidence_maturity_md = output_dir / "after_close_evidence_maturity.md"
+    after_close_evidence_maturity_csv = output_dir / "after_close_evidence_maturity.csv"
+    phase_milestones_json = output_dir / "phase_milestones.json"
+    phase_milestones_md = output_dir / "phase_milestones.md"
+    historical_bucket_sync_json = output_dir / "historical_bucket_sync.json"
+    historical_bucket_sync_md = output_dir / "historical_bucket_sync.md"
+    data_flow_sentinel_json = output_dir / "data_flow_sentinel.json"
+    data_flow_sentinel_md = output_dir / "data_flow_sentinel.md"
+    data_flow_contract_json = output_dir / "data_flow_contract.json"
+    daily_ship_report_json = output_dir / "DAILY_SHIP_REPORT.json"
+    daily_ship_report_md = output_dir / "DAILY_SHIP_REPORT.md"
+    daily_ship_report_csv = output_dir / "DAILY_SHIP_REPORT.csv"
     feature_wiring_audit_json = output_dir / "feature_wiring_audit.json"
     feature_wiring_audit_md = output_dir / "feature_wiring_audit.md"
     dashboard_md = output_dir / "project_gwala_dashboard.md"
@@ -1159,10 +1615,21 @@ def build_system_state(
     system_state_md = output_dir / "system_state.md"
     refresh_status_json = output_dir / "refresh_status.json"
     refresh_status_md = output_dir / "refresh_status.md"
+    provider_stability_audit_json = output_dir / "provider_stability_audit.json"
+    provider_stability_audit_md = output_dir / "provider_stability_audit.md"
     forward_sample_queue_csv = output_dir / "forward_sample_queue.csv"
     forward_sample_queue_md = output_dir / "forward_sample_queue.md"
     almost_ready_breakout_json = output_dir / "almost_ready_breakout.json"
     almost_ready_breakout_md = output_dir / "almost_ready_breakout.md"
+    market_sprint_mode_json = output_dir / "market_sprint_mode.json"
+    market_sprint_mode_md = output_dir / "market_sprint_mode.md"
+    controlled_universe_expansion_json = output_dir / "controlled_universe_expansion.json"
+    controlled_universe_expansion_md = output_dir / "controlled_universe_expansion.md"
+    controlled_universe_expansion_csv = output_dir / "controlled_universe_expansion.csv"
+    probation_watch_json = output_dir / "probation_watch.json"
+    probation_watch_md = output_dir / "probation_watch.md"
+    probation_watch_csv = output_dir / "probation_watch.csv"
+    probation_watch_ledger_csv = Path("data/probation_watch_observations.csv")
     post_scan_digest_json = output_dir / "post_scan_digest.json"
     post_scan_digest_md = output_dir / "post_scan_digest.md"
     premarket_verification_json = output_dir / "premarket_verification.json"
@@ -1182,27 +1649,50 @@ def build_system_state(
     shadow_samples = read_csv_or_empty(shadow_samples_csv)
     vwap_mean_reversion_shadow_samples = read_csv_or_empty(vwap_mean_reversion_shadow_samples_csv)
     vwap_reclaim_reject_shadow_samples = read_csv_or_empty(vwap_reclaim_reject_shadow_samples_csv)
+    trend_pullback_continuation_shadow_samples = read_csv_or_empty(trend_pullback_continuation_shadow_samples_csv)
     vwap_mean_reversion_forward_observations = read_csv_or_empty(vwap_mean_reversion_forward_observations_csv)
+    vwap_reclaim_reject_forward_observations = read_csv_or_empty(vwap_reclaim_reject_forward_observations_csv)
+    trend_pullback_continuation_forward_observations = read_csv_or_empty(trend_pullback_continuation_forward_observations_csv)
     forward_results = read_csv_or_empty(forward_results_csv)
     shadow_outcomes = read_csv_or_empty(shadow_outcomes_csv)
     vwap_mean_reversion_shadow_outcomes = read_csv_or_empty(vwap_mean_reversion_shadow_outcomes_csv)
     vwap_reclaim_reject_shadow_outcomes = read_csv_or_empty(vwap_reclaim_reject_shadow_outcomes_csv)
+    trend_pullback_continuation_shadow_outcomes = read_csv_or_empty(trend_pullback_continuation_shadow_outcomes_csv)
     vwap_mean_reversion_forward_results = read_csv_or_empty(vwap_mean_reversion_forward_results_csv)
+    vwap_reclaim_reject_forward_results = read_csv_or_empty(vwap_reclaim_reject_forward_results_csv)
+    trend_pullback_continuation_forward_results = read_csv_or_empty(trend_pullback_continuation_forward_results_csv)
     candidate_aging = read_csv_or_empty(candidate_aging_csv)
     reconciliation = read_csv_or_empty(reconciliation_csv)
     integrity = read_csv_or_empty(integrity_csv)
+    market_data_sources = read_sources(market_data_sources_csv)
     refresh_audit = read_csv_or_empty(refresh_audit_csv)
     paper_log = read_csv_or_empty(paper_csv)
     paper_review = read_csv_or_empty(paper_review_csv)
+    paper_validation_samples = read_csv_or_empty(paper_validation_samples_csv)
     setup_health = read_csv_or_empty(setup_health_csv)
     promotion_review_frame = read_csv_or_empty(promotion_review_csv)
     strategy_improvement_plan = read_json_or_empty(strategy_improvement_plan_json)
     strategy_vault = read_json_or_empty(strategy_vault_json)
+    market_regime_router = read_json_or_empty(market_regime_router_json)
     feature_wiring_audit = read_json_or_empty(feature_wiring_audit_json)
+    validation_deepening_queue = read_json_or_empty(validation_deepening_queue_json)
+    strategy_triage = read_json_or_empty(strategy_triage_json)
+    phase_milestones = read_json_or_empty(phase_milestones_json)
+    historical_bucket_sync = read_json_or_empty(historical_bucket_sync_json)
+    data_flow_sentinel = read_json_or_empty(data_flow_sentinel_json)
+    daily_ship_report = read_json_or_empty(daily_ship_report_json)
     refresh_status = read_json_or_empty(refresh_status_json)
+    provider_stability_audit = read_json_or_empty(provider_stability_audit_json)
     premarket_verification = read_json_or_empty(premarket_verification_json)
+    paper_entry_packet = read_json_or_empty(paper_entry_packet_json)
+    paper_gate_v2 = read_json_or_empty(paper_gate_v2_json)
+    options_contract_gate = read_json_or_empty(options_contract_gate_json)
+    paper_validation_sample_import = read_json_or_empty(paper_validation_sample_import_json)
     setup_replay = read_json_or_empty(setup_replay_json)
     almost_ready_breakout = read_json_or_empty(almost_ready_breakout_json)
+    market_sprint_mode = read_json_or_empty(market_sprint_mode_json)
+    controlled_universe_expansion = read_json_or_empty(controlled_universe_expansion_json)
+    probation_watch = read_json_or_empty(probation_watch_json)
     morning_watchdog = read_json_or_empty(morning_watchdog_json)
     post_scan_digest = read_json_or_empty(post_scan_digest_json)
     automation_timeline = read_json_or_empty(automation_timeline_json)
@@ -1224,6 +1714,7 @@ def build_system_state(
         setup_health=setup_health,
         promotion_review=promotion_review_frame,
         candidate_aging=candidate_aging,
+        market_regime_router=market_regime_router,
     )
     forward_sample_queue = forward_sample_queue_payload(
         build_forward_sample_queue(scanner_frame, sizing_frame, market),
@@ -1240,7 +1731,16 @@ def build_system_state(
         forward_sample_queue,
     )
     data_reliability = data_reliability_state(freshness, refresh_status, automation_timeline)
+    market_data_sources_state = market_data_source_state(market_data_sources)
+    evidence_maturity_progress = evidence_maturity_progress_state(strategy_vault)
     paper_visualization = paper_visualization_state(paper_review)
+    paper_trade_command_center = paper_trade_command_center_state(
+        current_candidates=current_candidates,
+        paper_progress=paper,
+        paper_validation_samples=paper_validation_samples,
+        daily_ship_report=daily_ship_report,
+        market_regime_router=market_regime_router,
+    )
     health = setup_health_state(setup_health)
     backtests = backtest_performance_state(output_dir)
     research_confidence = research_confidence_state(output_dir)
@@ -1254,20 +1754,47 @@ def build_system_state(
         "shadow_samples_csv": str(shadow_samples_csv),
         "vwap_mean_reversion_shadow_samples_csv": str(vwap_mean_reversion_shadow_samples_csv),
         "vwap_reclaim_reject_shadow_samples_csv": str(vwap_reclaim_reject_shadow_samples_csv),
+        "trend_pullback_continuation_shadow_samples_csv": str(trend_pullback_continuation_shadow_samples_csv),
+        "gap_fill_fade_shadow_samples_csv": str(gap_fill_fade_shadow_samples_csv),
+        "opening_range_breakout_shadow_samples_csv": str(opening_range_breakout_shadow_samples_csv),
+        "opening_range_failure_shadow_samples_csv": str(opening_range_failure_shadow_samples_csv),
         "vwap_mean_reversion_forward_observations_csv": str(vwap_mean_reversion_forward_observations_csv),
+        "vwap_reclaim_reject_forward_observations_csv": str(vwap_reclaim_reject_forward_observations_csv),
+        "trend_pullback_continuation_forward_observations_csv": str(trend_pullback_continuation_forward_observations_csv),
+        "gap_fill_fade_forward_observations_csv": str(gap_fill_fade_forward_observations_csv),
+        "opening_range_breakout_forward_observations_csv": str(opening_range_breakout_forward_observations_csv),
+        "opening_range_failure_forward_observations_csv": str(opening_range_failure_forward_observations_csv),
         "near_miss_csv": str(near_miss_csv),
         "forward_results_csv": str(forward_results_csv),
         "reconciliation_csv": str(reconciliation_csv),
         "integrity_csv": str(integrity_csv),
+        "market_data_sources_csv": str(market_data_sources_csv),
         "refresh_audit_csv": str(refresh_audit_csv),
         "paper_csv": str(paper_csv),
         "paper_review_csv": str(paper_review_csv),
         "pre_entry_review_json": str(pre_entry_review_json),
+        "paper_entry_packet_json": str(paper_entry_packet_json),
+        "paper_gate_v2_json": str(paper_gate_v2_json),
+        "paper_gate_v2_csv": str(paper_gate_v2_csv),
+        "options_contract_gate_json": str(options_contract_gate_json),
+        "options_contract_gate_csv": str(options_contract_gate_csv),
+        "options_contract_gate_template_csv": str(options_contract_gate_template_csv),
+        "options_contract_audit_csv": str(options_contract_audit_csv),
+        "paper_validation_sample_import_json": str(paper_validation_sample_import_json),
+        "paper_validation_sample_import_csv": str(paper_validation_sample_import_csv),
+        "paper_validation_samples_csv": str(paper_validation_samples_csv),
         "setup_health_csv": str(setup_health_csv),
         "research_confidence_csv": str(output_dir / "universe_expansion" / "research_confidence.csv"),
         "promotion_review_csv": str(promotion_review_csv),
         "strategy_improvement_plan_json": str(strategy_improvement_plan_json),
         "strategy_vault_json": str(strategy_vault_json),
+        "market_regime_router_json": str(market_regime_router_json),
+        "market_sprint_mode_json": str(market_sprint_mode_json),
+        "controlled_universe_expansion_json": str(controlled_universe_expansion_json),
+        "controlled_universe_expansion_csv": str(controlled_universe_expansion_csv),
+        "probation_watch_json": str(probation_watch_json),
+        "probation_watch_csv": str(probation_watch_csv),
+        "probation_watch_ledger_csv": str(probation_watch_ledger_csv),
         "vwap_mean_reversion_json": str(vwap_mean_reversion_json),
         "vwap_mean_reversion_walk_forward_json": str(vwap_mean_reversion_walk_forward_json),
         "feature_wiring_audit_json": str(feature_wiring_audit_json),
@@ -1276,19 +1803,64 @@ def build_system_state(
         "shadow_outcomes_csv": str(shadow_outcomes_csv),
         "vwap_mean_reversion_shadow_outcomes_csv": str(vwap_mean_reversion_shadow_outcomes_csv),
         "vwap_reclaim_reject_shadow_outcomes_csv": str(vwap_reclaim_reject_shadow_outcomes_csv),
+        "trend_pullback_continuation_shadow_outcomes_csv": str(trend_pullback_continuation_shadow_outcomes_csv),
+        "gap_fill_fade_shadow_outcomes_csv": str(gap_fill_fade_shadow_outcomes_csv),
+        "opening_range_breakout_shadow_outcomes_csv": str(opening_range_breakout_shadow_outcomes_csv),
+        "opening_range_failure_shadow_outcomes_csv": str(opening_range_failure_shadow_outcomes_csv),
         "vwap_mean_reversion_forward_observation_results_csv": str(vwap_mean_reversion_forward_results_csv),
+        "vwap_reclaim_reject_forward_observation_results_csv": str(vwap_reclaim_reject_forward_results_csv),
+        "trend_pullback_continuation_forward_observation_results_csv": str(trend_pullback_continuation_forward_results_csv),
+        "gap_fill_fade_forward_observation_results_csv": str(gap_fill_fade_forward_results_csv),
+        "opening_range_breakout_forward_observation_results_csv": str(opening_range_breakout_forward_results_csv),
+        "opening_range_failure_forward_observation_results_csv": str(opening_range_failure_forward_results_csv),
         "vwap_mean_reversion_paper_watch_gate_json": str(vwap_mean_reversion_paper_watch_gate_json),
         "gap_fill_fade_json": str(gap_fill_fade_json),
+        "gap_fill_fade_tightened_review_json": str(gap_fill_fade_tightened_review_json),
+        "gap_fill_fade_tightened_review_csv": str(gap_fill_fade_tightened_review_csv),
+        "gap_fill_fade_shadow_md": str(gap_fill_fade_shadow_md),
+        "gap_fill_fade_forward_md": str(gap_fill_fade_forward_md),
+        "gap_fill_fade_paper_watch_gate_json": str(gap_fill_fade_paper_watch_gate_json),
         "vwap_reclaim_reject_json": str(vwap_reclaim_reject_json),
         "vwap_reclaim_reject_walk_forward_json": str(vwap_reclaim_reject_walk_forward_json),
+        "vwap_reclaim_reject_paper_watch_gate_json": str(vwap_reclaim_reject_paper_watch_gate_json),
+        "vwap_reclaim_reject_evidence_maturity_json": str(vwap_reclaim_reject_evidence_maturity_json),
         "opening_range_breakout_json": str(opening_range_breakout_json),
+        "opening_range_breakout_tightened_review_json": str(opening_range_breakout_tightened_review_json),
+        "opening_range_breakout_tightened_review_csv": str(opening_range_breakout_tightened_review_csv),
+        "opening_range_breakout_walk_forward_deepening_json": str(opening_range_breakout_walk_forward_deepening_json),
+        "opening_range_breakout_walk_forward_deepening_csv": str(opening_range_breakout_walk_forward_deepening_csv),
+        "opening_range_breakout_shadow_md": str(opening_range_breakout_shadow_md),
+        "opening_range_breakout_forward_md": str(opening_range_breakout_forward_md),
+        "opening_range_breakout_paper_watch_gate_json": str(opening_range_breakout_paper_watch_gate_json),
         "trend_pullback_continuation_json": str(trend_pullback_continuation_json),
+        "trend_pullback_continuation_tightened_review_json": str(trend_pullback_continuation_tightened_review_json),
+        "trend_pullback_continuation_paper_watch_gate_json": str(trend_pullback_continuation_paper_watch_gate_json),
         "opening_range_failure_json": str(opening_range_failure_json),
+        "opening_range_failure_tightened_review_json": str(opening_range_failure_tightened_review_json),
+        "opening_range_failure_tightened_review_csv": str(opening_range_failure_tightened_review_csv),
+        "opening_range_failure_walk_forward_deepening_json": str(opening_range_failure_walk_forward_deepening_json),
+        "opening_range_failure_walk_forward_deepening_csv": str(opening_range_failure_walk_forward_deepening_csv),
+        "opening_range_failure_shadow_md": str(opening_range_failure_shadow_md),
+        "opening_range_failure_forward_md": str(opening_range_failure_forward_md),
+        "opening_range_failure_paper_watch_gate_json": str(opening_range_failure_paper_watch_gate_json),
         "strategy_evidence_accumulator_json": str(strategy_evidence_accumulator_json),
         "paper_activation_rules_json": str(paper_activation_rules_json),
+        "strategy_walk_forward_matrix_json": str(strategy_walk_forward_matrix_json),
+        "research_strategy_tightened_review_json": str(research_strategy_tightened_review_json),
+        "strategy_backtest_coverage_json": str(strategy_backtest_coverage_json),
+        "validation_deepening_queue_json": str(validation_deepening_queue_json),
+        "strategy_triage_json": str(strategy_triage_json),
+        "after_close_evidence_maturity_json": str(after_close_evidence_maturity_json),
+        "phase_milestones_json": str(phase_milestones_json),
+        "historical_bucket_sync_json": str(historical_bucket_sync_json),
+        "data_flow_sentinel_json": str(data_flow_sentinel_json),
+        "data_flow_contract_json": str(data_flow_contract_json),
+        "daily_ship_report_json": str(daily_ship_report_json),
+        "daily_ship_report_csv": str(daily_ship_report_csv),
         "candidate_aging_csv": str(candidate_aging_csv),
         "post_scan_digest_json": str(post_scan_digest_json),
         "refresh_status_json": str(refresh_status_json),
+        "provider_stability_audit_json": str(provider_stability_audit_json),
         "premarket_verification_json": str(premarket_verification_json),
         "setup_replay_json": str(setup_replay_json),
         "autonomous_status_md": str(autonomous_status_md),
@@ -1314,11 +1886,16 @@ def build_system_state(
         "forward_validation": forward_validation,
         "forward_evidence_bridge": forward_evidence_bridge,
         "data_reliability": data_reliability,
+        "market_data_sources": market_data_sources_state,
         "current_candidates": current_candidates,
         "forward_sample_queue": forward_sample_queue,
         "almost_ready_breakout": almost_ready_breakout,
+        "market_sprint_mode": market_sprint_mode,
+        "controlled_universe_expansion": controlled_universe_expansion,
+        "probation_watch": probation_watch,
         "post_scan_digest": post_scan_digest,
         "paper_progress": paper,
+        "paper_trade_command_center": paper_trade_command_center,
         "risk_guard": risk_guard,
         "paper_visualization": paper_visualization,
         "setup_health": health,
@@ -1327,16 +1904,29 @@ def build_system_state(
         "promotion_review": promotion_review,
         "strategy_improvement_plan": strategy_improvement_plan,
         "strategy_vault": strategy_vault,
+        "market_regime_router": market_regime_router,
+        "evidence_maturity_progress": evidence_maturity_progress,
+        "validation_deepening_queue": validation_deepening_queue,
+        "strategy_triage": strategy_triage,
         "feature_wiring_audit": feature_wiring_audit,
+        "phase_milestones": phase_milestones,
+        "historical_bucket_sync": historical_bucket_sync,
+        "data_flow_sentinel": data_flow_sentinel,
+        "daily_ship_report": daily_ship_report,
         "refresh_status": refresh_status,
+        "provider_stability_audit": provider_stability_audit,
         "premarket_verification": premarket,
+        "paper_entry_packet": paper_entry_packet,
+        "paper_gate_v2": paper_gate_v2,
+        "options_contract_gate": options_contract_gate,
+        "paper_validation_sample_import": paper_validation_sample_import,
         "morning_watchdog": morning_watchdog,
         "automation_timeline": automation_timeline,
         "setup_replay": {
             "count": int(setup_replay.get("count", 0)),
             "cards": setup_replay.get("cards", []) if isinstance(setup_replay.get("cards", []), list) else [],
         },
-        "readiness_verdict": readiness_verdict(market, freshness, scanner, sizing, paper),
+        "readiness_verdict": readiness_verdict(market, freshness, scanner, sizing, paper, refresh_status),
         "app_health": {
             "generated_at_et": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
             "source_file_states": {
@@ -1346,7 +1936,16 @@ def build_system_state(
                 "shadow_samples_csv": file_state(shadow_samples_csv),
                 "vwap_mean_reversion_shadow_samples_csv": file_state(vwap_mean_reversion_shadow_samples_csv),
                 "vwap_reclaim_reject_shadow_samples_csv": file_state(vwap_reclaim_reject_shadow_samples_csv),
+                "trend_pullback_continuation_shadow_samples_csv": file_state(trend_pullback_continuation_shadow_samples_csv),
+                "gap_fill_fade_shadow_samples_csv": file_state(gap_fill_fade_shadow_samples_csv),
+                "opening_range_breakout_shadow_samples_csv": file_state(opening_range_breakout_shadow_samples_csv),
+                "opening_range_failure_shadow_samples_csv": file_state(opening_range_failure_shadow_samples_csv),
                 "vwap_mean_reversion_forward_observations_csv": file_state(vwap_mean_reversion_forward_observations_csv),
+                "vwap_reclaim_reject_forward_observations_csv": file_state(vwap_reclaim_reject_forward_observations_csv),
+                "trend_pullback_continuation_forward_observations_csv": file_state(trend_pullback_continuation_forward_observations_csv),
+                "gap_fill_fade_forward_observations_csv": file_state(gap_fill_fade_forward_observations_csv),
+                "opening_range_breakout_forward_observations_csv": file_state(opening_range_breakout_forward_observations_csv),
+                "opening_range_failure_forward_observations_csv": file_state(opening_range_failure_forward_observations_csv),
                 "forward_observations_md": file_state(forward_observations_md),
                 "near_miss_csv": file_state(near_miss_csv),
                 "near_miss_md": file_state(near_miss_md),
@@ -1356,6 +1955,7 @@ def build_system_state(
                 "reconciliation_md": file_state(reconciliation_md),
                 "integrity_csv": file_state(integrity_csv),
                 "integrity_md": file_state(integrity_md),
+                "market_data_sources_csv": file_state(market_data_sources_csv),
                 "refresh_audit_csv": file_state(refresh_audit_csv),
                 "refresh_audit_md": file_state(refresh_audit_md),
                 "paper_csv": file_state(paper_csv),
@@ -1363,6 +1963,21 @@ def build_system_state(
                 "pre_entry_review_json": file_state(pre_entry_review_json),
                 "pre_entry_review_md": file_state(pre_entry_review_md),
                 "pre_entry_review_csv": file_state(pre_entry_review_csv),
+                "paper_entry_packet_json": file_state(paper_entry_packet_json),
+                "paper_entry_packet_md": file_state(paper_entry_packet_md),
+                "paper_entry_packet_csv": file_state(paper_entry_packet_csv),
+                "paper_gate_v2_json": file_state(paper_gate_v2_json),
+                "paper_gate_v2_md": file_state(paper_gate_v2_md),
+                "paper_gate_v2_csv": file_state(paper_gate_v2_csv),
+                "options_contract_gate_json": file_state(options_contract_gate_json),
+                "options_contract_gate_md": file_state(options_contract_gate_md),
+                "options_contract_gate_csv": file_state(options_contract_gate_csv),
+                "options_contract_gate_template_csv": file_state(options_contract_gate_template_csv),
+                "options_contract_audit_csv": file_state(options_contract_audit_csv),
+                "paper_validation_sample_import_json": file_state(paper_validation_sample_import_json),
+                "paper_validation_sample_import_md": file_state(paper_validation_sample_import_md),
+                "paper_validation_sample_import_csv": file_state(paper_validation_sample_import_csv),
+                "paper_validation_samples_csv": file_state(paper_validation_samples_csv),
                 "setup_health_csv": file_state(setup_health_csv),
                 "research_confidence_csv": research_confidence["source_csv"],
                 "research_confidence_md": research_confidence["source_report"],
@@ -1372,6 +1987,17 @@ def build_system_state(
                 "strategy_improvement_plan_md": file_state(strategy_improvement_plan_md),
                 "strategy_vault_json": file_state(strategy_vault_json),
                 "strategy_vault_md": file_state(strategy_vault_md),
+                "market_regime_router_json": file_state(market_regime_router_json),
+                "market_regime_router_md": file_state(market_regime_router_md),
+                "market_sprint_mode_json": file_state(market_sprint_mode_json),
+                "market_sprint_mode_md": file_state(market_sprint_mode_md),
+                "controlled_universe_expansion_json": file_state(controlled_universe_expansion_json),
+                "controlled_universe_expansion_md": file_state(controlled_universe_expansion_md),
+                "controlled_universe_expansion_csv": file_state(controlled_universe_expansion_csv),
+                "probation_watch_json": file_state(probation_watch_json),
+                "probation_watch_md": file_state(probation_watch_md),
+                "probation_watch_csv": file_state(probation_watch_csv),
+                "probation_watch_ledger_csv": file_state(probation_watch_ledger_csv),
                 "vwap_mean_reversion_json": file_state(vwap_mean_reversion_json),
                 "vwap_mean_reversion_md": file_state(vwap_mean_reversion_md),
                 "vwap_mean_reversion_summary_csv": file_state(vwap_mean_reversion_summary_csv),
@@ -1382,41 +2008,125 @@ def build_system_state(
                 "vwap_mean_reversion_shadow_outcomes_csv": file_state(vwap_mean_reversion_shadow_outcomes_csv),
                 "vwap_reclaim_reject_shadow_md": file_state(vwap_reclaim_reject_shadow_md),
                 "vwap_reclaim_reject_shadow_outcomes_csv": file_state(vwap_reclaim_reject_shadow_outcomes_csv),
+                "trend_pullback_continuation_shadow_md": file_state(trend_pullback_continuation_shadow_md),
+                "trend_pullback_continuation_shadow_outcomes_csv": file_state(trend_pullback_continuation_shadow_outcomes_csv),
+                "gap_fill_fade_shadow_md": file_state(gap_fill_fade_shadow_md),
+                "gap_fill_fade_shadow_outcomes_csv": file_state(gap_fill_fade_shadow_outcomes_csv),
+                "opening_range_breakout_shadow_md": file_state(opening_range_breakout_shadow_md),
+                "opening_range_breakout_shadow_outcomes_csv": file_state(opening_range_breakout_shadow_outcomes_csv),
+                "opening_range_failure_shadow_md": file_state(opening_range_failure_shadow_md),
+                "opening_range_failure_shadow_outcomes_csv": file_state(opening_range_failure_shadow_outcomes_csv),
                 "vwap_mean_reversion_forward_md": file_state(vwap_mean_reversion_forward_md),
                 "vwap_mean_reversion_forward_observation_results_csv": file_state(vwap_mean_reversion_forward_results_csv),
+                "vwap_reclaim_reject_forward_md": file_state(vwap_reclaim_reject_forward_md),
+                "vwap_reclaim_reject_forward_observation_results_csv": file_state(vwap_reclaim_reject_forward_results_csv),
+                "trend_pullback_continuation_forward_md": file_state(trend_pullback_continuation_forward_md),
+                "trend_pullback_continuation_forward_observation_results_csv": file_state(trend_pullback_continuation_forward_results_csv),
+                "gap_fill_fade_forward_md": file_state(gap_fill_fade_forward_md),
+                "gap_fill_fade_forward_observation_results_csv": file_state(gap_fill_fade_forward_results_csv),
+                "opening_range_breakout_forward_md": file_state(opening_range_breakout_forward_md),
+                "opening_range_breakout_forward_observation_results_csv": file_state(opening_range_breakout_forward_results_csv),
+                "opening_range_failure_forward_md": file_state(opening_range_failure_forward_md),
+                "opening_range_failure_forward_observation_results_csv": file_state(opening_range_failure_forward_results_csv),
                 "vwap_mean_reversion_paper_watch_gate_json": file_state(vwap_mean_reversion_paper_watch_gate_json),
                 "vwap_mean_reversion_paper_watch_gate_md": file_state(vwap_mean_reversion_paper_watch_gate_md),
                 "vwap_mean_reversion_paper_watch_gate_csv": file_state(vwap_mean_reversion_paper_watch_gate_csv),
                 "gap_fill_fade_json": file_state(gap_fill_fade_json),
                 "gap_fill_fade_md": file_state(gap_fill_fade_md),
                 "gap_fill_fade_summary_csv": file_state(gap_fill_fade_summary_csv),
+                "gap_fill_fade_tightened_review_json": file_state(gap_fill_fade_tightened_review_json),
+                "gap_fill_fade_tightened_review_md": file_state(gap_fill_fade_tightened_review_md),
+                "gap_fill_fade_tightened_review_csv": file_state(gap_fill_fade_tightened_review_csv),
+                "gap_fill_fade_paper_watch_gate_json": file_state(gap_fill_fade_paper_watch_gate_json),
+                "gap_fill_fade_paper_watch_gate_md": file_state(gap_fill_fade_paper_watch_gate_md),
+                "gap_fill_fade_paper_watch_gate_csv": file_state(gap_fill_fade_paper_watch_gate_csv),
                 "vwap_reclaim_reject_json": file_state(vwap_reclaim_reject_json),
                 "vwap_reclaim_reject_md": file_state(vwap_reclaim_reject_md),
                 "vwap_reclaim_reject_summary_csv": file_state(vwap_reclaim_reject_summary_csv),
                 "vwap_reclaim_reject_walk_forward_json": file_state(vwap_reclaim_reject_walk_forward_json),
                 "vwap_reclaim_reject_walk_forward_md": file_state(vwap_reclaim_reject_walk_forward_md),
                 "vwap_reclaim_reject_walk_forward_csv": file_state(vwap_reclaim_reject_walk_forward_csv),
+                "vwap_reclaim_reject_paper_watch_gate_json": file_state(vwap_reclaim_reject_paper_watch_gate_json),
+                "vwap_reclaim_reject_paper_watch_gate_md": file_state(vwap_reclaim_reject_paper_watch_gate_md),
+                "vwap_reclaim_reject_paper_watch_gate_csv": file_state(vwap_reclaim_reject_paper_watch_gate_csv),
+                "vwap_reclaim_reject_evidence_maturity_json": file_state(vwap_reclaim_reject_evidence_maturity_json),
+                "vwap_reclaim_reject_evidence_maturity_md": file_state(vwap_reclaim_reject_evidence_maturity_md),
+                "vwap_reclaim_reject_evidence_maturity_csv": file_state(vwap_reclaim_reject_evidence_maturity_csv),
                 "opening_range_breakout_json": file_state(opening_range_breakout_json),
                 "opening_range_breakout_md": file_state(opening_range_breakout_md),
                 "opening_range_breakout_summary_csv": file_state(opening_range_breakout_summary_csv),
+                "opening_range_breakout_tightened_review_json": file_state(opening_range_breakout_tightened_review_json),
+                "opening_range_breakout_tightened_review_md": file_state(opening_range_breakout_tightened_review_md),
+                "opening_range_breakout_tightened_review_csv": file_state(opening_range_breakout_tightened_review_csv),
+                "opening_range_breakout_walk_forward_deepening_json": file_state(opening_range_breakout_walk_forward_deepening_json),
+                "opening_range_breakout_walk_forward_deepening_md": file_state(opening_range_breakout_walk_forward_deepening_md),
+                "opening_range_breakout_walk_forward_deepening_csv": file_state(opening_range_breakout_walk_forward_deepening_csv),
+                "opening_range_breakout_paper_watch_gate_json": file_state(opening_range_breakout_paper_watch_gate_json),
+                "opening_range_breakout_paper_watch_gate_md": file_state(opening_range_breakout_paper_watch_gate_md),
+                "opening_range_breakout_paper_watch_gate_csv": file_state(opening_range_breakout_paper_watch_gate_csv),
                 "trend_pullback_continuation_json": file_state(trend_pullback_continuation_json),
                 "trend_pullback_continuation_md": file_state(trend_pullback_continuation_md),
                 "trend_pullback_continuation_summary_csv": file_state(trend_pullback_continuation_summary_csv),
+                "trend_pullback_continuation_paper_watch_gate_json": file_state(trend_pullback_continuation_paper_watch_gate_json),
+                "trend_pullback_continuation_paper_watch_gate_md": file_state(trend_pullback_continuation_paper_watch_gate_md),
+                "trend_pullback_continuation_paper_watch_gate_csv": file_state(trend_pullback_continuation_paper_watch_gate_csv),
+                "trend_pullback_continuation_tightened_review_json": file_state(trend_pullback_continuation_tightened_review_json),
+                "trend_pullback_continuation_tightened_review_md": file_state(trend_pullback_continuation_tightened_review_md),
+                "trend_pullback_continuation_tightened_review_csv": file_state(trend_pullback_continuation_tightened_review_csv),
                 "opening_range_failure_json": file_state(opening_range_failure_json),
                 "opening_range_failure_md": file_state(opening_range_failure_md),
                 "opening_range_failure_summary_csv": file_state(opening_range_failure_summary_csv),
+                "opening_range_failure_tightened_review_json": file_state(opening_range_failure_tightened_review_json),
+                "opening_range_failure_tightened_review_md": file_state(opening_range_failure_tightened_review_md),
+                "opening_range_failure_tightened_review_csv": file_state(opening_range_failure_tightened_review_csv),
+                "opening_range_failure_walk_forward_deepening_json": file_state(opening_range_failure_walk_forward_deepening_json),
+                "opening_range_failure_walk_forward_deepening_md": file_state(opening_range_failure_walk_forward_deepening_md),
+                "opening_range_failure_walk_forward_deepening_csv": file_state(opening_range_failure_walk_forward_deepening_csv),
+                "opening_range_failure_paper_watch_gate_json": file_state(opening_range_failure_paper_watch_gate_json),
+                "opening_range_failure_paper_watch_gate_md": file_state(opening_range_failure_paper_watch_gate_md),
+                "opening_range_failure_paper_watch_gate_csv": file_state(opening_range_failure_paper_watch_gate_csv),
                 "strategy_evidence_accumulator_json": file_state(strategy_evidence_accumulator_json),
                 "strategy_evidence_accumulator_md": file_state(strategy_evidence_accumulator_md),
                 "strategy_evidence_accumulator_csv": file_state(strategy_evidence_accumulator_csv),
                 "paper_activation_rules_json": file_state(paper_activation_rules_json),
                 "paper_activation_rules_md": file_state(paper_activation_rules_md),
                 "paper_activation_rules_csv": file_state(paper_activation_rules_csv),
+                "strategy_walk_forward_matrix_json": file_state(strategy_walk_forward_matrix_json),
+                "strategy_walk_forward_matrix_md": file_state(strategy_walk_forward_matrix_md),
+                "strategy_walk_forward_matrix_csv": file_state(strategy_walk_forward_matrix_csv),
+                "research_strategy_tightened_review_json": file_state(research_strategy_tightened_review_json),
+                "research_strategy_tightened_review_md": file_state(research_strategy_tightened_review_md),
+                "research_strategy_tightened_review_csv": file_state(research_strategy_tightened_review_csv),
+                "strategy_backtest_coverage_json": file_state(strategy_backtest_coverage_json),
+                "strategy_backtest_coverage_md": file_state(strategy_backtest_coverage_md),
+                "strategy_backtest_coverage_csv": file_state(strategy_backtest_coverage_csv),
+                "validation_deepening_queue_json": file_state(validation_deepening_queue_json),
+                "validation_deepening_queue_md": file_state(validation_deepening_queue_md),
+                "validation_deepening_queue_csv": file_state(validation_deepening_queue_csv),
+                "strategy_triage_json": file_state(strategy_triage_json),
+                "strategy_triage_md": file_state(strategy_triage_md),
+                "strategy_triage_csv": file_state(strategy_triage_csv),
+                "after_close_evidence_maturity_json": file_state(after_close_evidence_maturity_json),
+                "after_close_evidence_maturity_md": file_state(after_close_evidence_maturity_md),
+                "after_close_evidence_maturity_csv": file_state(after_close_evidence_maturity_csv),
+                "phase_milestones_json": file_state(phase_milestones_json),
+                "phase_milestones_md": file_state(phase_milestones_md),
+                "historical_bucket_sync_json": file_state(historical_bucket_sync_json),
+                "historical_bucket_sync_md": file_state(historical_bucket_sync_md),
+                "data_flow_sentinel_json": file_state(data_flow_sentinel_json),
+                "data_flow_sentinel_md": file_state(data_flow_sentinel_md),
+                "data_flow_contract_json": file_state(data_flow_contract_json),
+                "daily_ship_report_json": file_state(daily_ship_report_json),
+                "daily_ship_report_md": file_state(daily_ship_report_md),
+                "daily_ship_report_csv": file_state(daily_ship_report_csv),
                 "feature_wiring_audit_json": file_state(feature_wiring_audit_json),
                 "feature_wiring_audit_md": file_state(feature_wiring_audit_md),
                 "dashboard_md": file_state(dashboard_md),
                 "readiness_md": file_state(readiness_md),
                 "refresh_status_json": file_state(refresh_status_json),
                 "refresh_status_md": file_state(refresh_status_md),
+                "provider_stability_audit_json": file_state(provider_stability_audit_json),
+                "provider_stability_audit_md": file_state(provider_stability_audit_md),
                 "forward_sample_queue_csv": file_state(forward_sample_queue_csv),
                 "almost_ready_breakout_json": file_state(almost_ready_breakout_json),
                 "almost_ready_breakout_md": file_state(almost_ready_breakout_md),

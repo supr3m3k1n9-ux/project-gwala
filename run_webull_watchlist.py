@@ -22,6 +22,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path("logs") / ".matplotlib"))
 from backtesting.engine import ExitProfile, run_long_backtest, run_short_backtest
 from backtesting.metrics import calculate_exit_reason_breakdown, calculate_metrics
 from config.settings import STRATEGY
+from data.candle_cache import preferred_candle_path, save_candle_cache
 from data.market_data import load_candles_from_csv, save_candles
 from data.webull_data import build_data_client, fetch_history_bars_paged, write_backtest_csv, write_raw_json
 from indicators.multitimeframe import add_higher_timeframe_bias
@@ -42,6 +43,19 @@ STRATEGY_VARIANTS = {
     "relvol_1_0": {"min_relative_volume": 1.0},
     "room_0_75": {"min_room_to_resistance_r": 0.75},
     "no_opening_range": {"require_above_opening_range": False},
+    "full_session": {
+        "entry_start_time": "09:30",
+        "latest_entry_time": "15:30",
+        "require_above_opening_range": False,
+    },
+    "quality_full_session": {
+        "entry_start_time": "09:30",
+        "latest_entry_time": "15:30",
+        "require_above_opening_range": False,
+        "elite_min_score": 6,
+        "min_relative_volume": 1.0,
+        "min_room_to_resistance_r": 0.75,
+    },
     "balanced_relaxed": {
         "elite_min_score": 6,
         "min_relative_volume": 1.0,
@@ -64,10 +78,38 @@ STRATEGY_VARIANTS = {
         "min_relative_volume": 1.0,
         "min_room_to_resistance_r": 0.75,
     },
+    "setup_b_full_session": {
+        "entry_start_time": "09:30",
+        "latest_entry_time": "15:30",
+        "require_above_opening_range": False,
+    },
+    "setup_b_quality_full_session": {
+        "entry_start_time": "09:30",
+        "latest_entry_time": "15:30",
+        "require_above_opening_range": False,
+        "elite_min_score": 6,
+        "min_relative_volume": 1.0,
+        "min_room_to_resistance_r": 0.75,
+    },
+    "trend_pullback_long": {
+        "entry_start_time": "09:30",
+        "latest_entry_time": "15:30",
+        "require_above_opening_range": False,
+    },
+    "trend_pullback_short": {
+        "entry_start_time": "09:30",
+        "latest_entry_time": "15:30",
+        "require_above_opening_range": False,
+    },
 }
 
 MARKET_CONFIRMED_VARIANTS = {"market_confirmed", "quality_entry_market_confirmed"}
-SETUP_B_SHORT_VARIANTS = {"setup_b_short", "setup_b_quality_short"}
+SETUP_B_SHORT_VARIANTS = {
+    "setup_b_short",
+    "setup_b_quality_short",
+    "setup_b_full_session",
+    "setup_b_quality_full_session",
+}
 
 EXIT_PROFILES = {
     "current": ExitProfile(name="current"),
@@ -97,6 +139,12 @@ CANDIDATE_PRESETS = {
     "setup_b": [
         ("setup_b_short", "no_vwap_exit"),
         ("setup_b_quality_short", "no_vwap_exit"),
+    ],
+    "full_session": [
+        ("full_session", "no_vwap_exit"),
+        ("quality_full_session", "no_vwap_exit"),
+        ("setup_b_full_session", "no_vwap_exit"),
+        ("setup_b_quality_full_session", "no_vwap_exit"),
     ],
 }
 
@@ -258,19 +306,23 @@ def apply_market_confirmation(candles: pd.DataFrame) -> pd.DataFrame:
 def signal_column_for_variant(variant: str) -> str:
     """Return the stricter signal column used for the variant comparison."""
 
-    if variant in {"quality_entry", "quality_entry_market_confirmed"}:
+    if variant in {"quality_entry", "quality_entry_market_confirmed", "quality_full_session"}:
         return "quality_entry_signal"
-    if variant == "setup_b_short":
+    if variant in {"setup_b_short", "setup_b_full_session"}:
         return "elite_short_signal"
-    if variant == "setup_b_quality_short":
+    if variant in {"setup_b_quality_short", "setup_b_quality_full_session"}:
         return "quality_short_signal"
+    if variant == "trend_pullback_long":
+        return "trend_pullback_long_signal"
+    if variant == "trend_pullback_short":
+        return "trend_pullback_short_signal"
     return "elite_long_signal"
 
 
 def use_baseline_candidate_metrics(variant: str) -> bool:
     """Return True when the variant's main candidate is the baseline signal."""
 
-    return variant in {"current", "market_confirmed", "setup_b_short"}
+    return variant in {"current", "market_confirmed", "setup_b_short", "full_session", "setup_b_full_session"}
 
 
 def is_setup_b_short_variant(variant: str) -> bool:
@@ -450,7 +502,8 @@ def fetch_and_save(
     csv_path = output_dir / f"webull_{symbol}_{timespan}_candles.csv"
     write_raw_json(rows, raw_path)
     write_backtest_csv(rows, csv_path)
-    return csv_path
+    candles = pd.read_csv(csv_path)
+    return save_candle_cache(candles, output_dir, symbol, timespan, write_legacy_alias=True)
 
 
 def fetch_chart_only_timeframes(data_client, symbol: str, args: argparse.Namespace, output_dir: Path) -> None:
@@ -564,6 +617,10 @@ market_confirmed + no_vwap_exit = baseline candidate with SPY market confirmatio
 quality_entry_market_confirmed + no_vwap_exit = quality candidate with SPY market confirmation
 setup_b_short + no_vwap_exit = bearish baseline candidate
 setup_b_quality_short + no_vwap_exit = bearish quality candidate
+full_session + no_vwap_exit = regular-session baseline candidate without the opening-range break requirement
+quality_full_session + no_vwap_exit = regular-session quality candidate without the opening-range break requirement
+setup_b_full_session + no_vwap_exit = regular-session bearish candidate without the opening-range break requirement
+setup_b_quality_full_session + no_vwap_exit = regular-session bearish quality candidate without the opening-range break requirement
 ```
 
 These are still research candidates, not live-trading rules.
@@ -735,8 +792,8 @@ def main() -> None:
     for symbol in [item.upper() for item in args.symbols]:
         try:
             if args.reuse_csv:
-                entry_csv = output_dir / f"webull_{symbol}_M30_candles.csv"
-                exit_csv = output_dir / f"webull_{symbol}_M5_candles.csv"
+                entry_csv = preferred_candle_path(output_dir, symbol, "M30")
+                exit_csv = preferred_candle_path(output_dir, symbol, "M5")
                 print(f"\n=== {symbol}: reusing {entry_csv} and {exit_csv} ===", flush=True)
             else:
                 print(f"\n=== {symbol}: fetching M30 entry candles ===", flush=True)
@@ -773,7 +830,7 @@ def main() -> None:
             for variant, exit_profile_name in pairs:
                 market_csv = None
                 if variant in MARKET_CONFIRMED_VARIANTS:
-                    market_csv = output_dir / f"webull_{args.market_regime_symbol.upper()}_M30_candles.csv"
+                    market_csv = preferred_candle_path(output_dir, args.market_regime_symbol.upper(), "M30")
                     if not market_csv.exists():
                         raise FileNotFoundError(
                             f"Market regime CSV not found: {market_csv}. "

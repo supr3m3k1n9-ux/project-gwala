@@ -14,11 +14,12 @@ from pathlib import Path
 import pandas as pd
 
 from backtesting.engine import ExitProfile
+from config.filter_policy import DEFAULT_PAPER_TRADE_FILTER
 from config.market_calendar import MARKET_TZ, market_session_for_date, next_market_session
 from config.settings import STRATEGY
 from config.symbol_playbook import PLAYBOOKS, PlaybookEntry
+from data.candle_cache import preferred_candle_path
 from data.market_data import load_candles_from_csv
-from risk_management.rules import build_long_risk, build_short_risk
 from run_playbook import markdown_table
 from run_signal_journal import weakness_v1_block_reason
 from run_webull_watchlist import (
@@ -26,10 +27,12 @@ from run_webull_watchlist import (
     MARKET_CONFIRMED_VARIANTS,
     add_strategy_columns,
     apply_market_confirmation,
-    is_setup_b_short_variant,
     settings_for_variant,
-    signal_column_for_variant,
-    use_baseline_candidate_metrics,
+)
+from strategies.scanner_adapters import (
+    entry_direction,
+    scanner_adapter_for_entry,
+    selected_signal_column,
 )
 
 
@@ -40,21 +43,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where scanner reports are saved.")
     parser.add_argument("--scan-date", help="Optional session date to scan, formatted YYYY-MM-DD.")
     parser.add_argument(
+        "--symbols",
+        nargs="+",
+        default=[],
+        help="Optional symbols to scan. Use this when a focused data refresh only updated part of the playbook.",
+    )
+    parser.add_argument(
         "--trade-filter",
         choices=["none", "weakness_v1"],
-        default="weakness_v1",
-        help="Research filter used to mark paper candidates versus watch-only signals.",
+        default=DEFAULT_PAPER_TRADE_FILTER,
+        help=(
+            "Optional research filter used to mark paper candidates versus watch-only signals. "
+            "Ship-mode default is none; weakness_v1 is experimental and must be requested explicitly."
+        ),
     )
     parser.add_argument("--market-regime-symbol", default="SPY", help="Market symbol for market-confirmed variants.")
     return parser.parse_args()
 
 
-def selected_signal_column(entry: PlaybookEntry) -> str:
-    """Return the playbook signal column used for this entry."""
+def playbook_entries_for_scan(mode: str, symbols: list[str] | None = None) -> list[PlaybookEntry]:
+    """Return playbook entries for the requested mode and optional symbols."""
 
-    if is_setup_b_short_variant(entry.variant):
-        return "short_signal" if use_baseline_candidate_metrics(entry.variant) else signal_column_for_variant(entry.variant)
-    return "long_signal" if use_baseline_candidate_metrics(entry.variant) else signal_column_for_variant(entry.variant)
+    allowed_symbols = {symbol.upper() for symbol in symbols or []}
+    return [
+        entry
+        for entry in PLAYBOOKS[mode]
+        if not allowed_symbols or entry.symbol.upper() in allowed_symbols
+    ]
 
 
 def format_et(timestamp: pd.Timestamp) -> str:
@@ -97,7 +112,7 @@ def scanner_freshness_frame(scanner: pd.DataFrame, now: datetime | None = None) 
 
     if not latest:
         status = "missing"
-        action = "Run the daily workflow after Webull data exists."
+        action = "Run the daily workflow after market-data candles exist."
     elif latest == str(now.date()) and market_is_open:
         status = "fresh_for_today"
         action = "Current-candle candidates can be reviewed for paper trading."
@@ -106,7 +121,7 @@ def scanner_freshness_frame(scanner: pd.DataFrame, now: datetime | None = None) 
         action = "Today's data exists, but do not import or size a new paper trade outside regular hours."
     else:
         status = "stale_or_prep_only"
-        action = f"Do not import paper trades until Webull data is refreshed on {next_session.session_date}."
+        action = f"Do not import paper trades until market data is refreshed on {next_session.session_date}."
 
     return pd.DataFrame(
         [
@@ -123,119 +138,52 @@ def scanner_freshness_frame(scanner: pd.DataFrame, now: datetime | None = None) 
     )
 
 
-def long_condition_checks(row: pd.Series, entry: PlaybookEntry, signal_column: str) -> list[tuple[str, bool]]:
-    """Return the current long-setup rule checks for dashboard explanations."""
-
-    checks = [
-        ("regular session", row.get("regular_session", False)),
-        ("inside entry window", row.get("entry_window", False)),
-        ("price above 200 EMA", row.get("bullish_regime", False)),
-        ("9 EMA above 21 EMA", row.get("bullish_ema_stack", False)),
-        ("close above VWAP", row.get("buyers_control_vwap", False)),
-        ("1H bullish thesis", row.get("htf_bullish_bias", False)),
-        ("above opening range high", row.get("above_opening_range", False)),
-        ("pulled back to VWAP/EMA value", row.get("pullback_to_value", False)),
-        ("bullish reclaim candle", row.get("bullish_reclaim", False)),
-    ]
-    if signal_column in {"elite_long_signal", "quality_entry_signal"}:
-        checks.extend(
-            [
-                ("strong relative volume", row.get("strong_relative_volume", False)),
-                ("clean bull trend", row.get("clean_bull_trend", False)),
-                ("trend-day regime", row.get("trend_day_regime", False)),
-                ("room to target", row.get("has_room_to_target", False)),
-            ]
-        )
-    if entry.variant in MARKET_CONFIRMED_VARIANTS:
-        checks.append(("SPY market confirmation", row.get("market_bullish_bias", False)))
-
-    return [(label, bool(passed)) for label, passed in checks]
-
-
-def missing_long_reasons(row: pd.Series, entry: PlaybookEntry, signal_column: str) -> list[str]:
-    """Explain why a long setup is not ready on the latest candle."""
-
-    return [label for label, passed in long_condition_checks(row, entry, signal_column) if not passed]
-
-
-def short_condition_checks(row: pd.Series, signal_column: str) -> list[tuple[str, bool]]:
-    """Return the current short-setup rule checks for dashboard explanations."""
-
-    checks = [
-        ("regular session", row.get("regular_session", False)),
-        ("inside entry window", row.get("entry_window", False)),
-        ("price below 200 EMA", row.get("bearish_regime", False)),
-        ("9 EMA below 21 EMA", row.get("bearish_ema_stack", False)),
-        ("close below VWAP", row.get("sellers_control_vwap", False)),
-        ("1H bearish thesis", row.get("htf_bearish_bias", False)),
-        ("below opening range low", row.get("below_opening_range", False)),
-        ("pulled back into VWAP/EMA value", row.get("short_pullback_to_value", False)),
-        ("bearish rejection candle", row.get("bearish_reject", False)),
-    ]
-    if signal_column == "quality_short_signal":
-        checks.extend(
-            [
-                ("strong relative volume", row.get("strong_relative_volume", False)),
-                ("clean bear trend", row.get("clean_bear_trend", False)),
-                ("bear trend-day regime", row.get("bear_trend_day_regime", False)),
-                ("room to short target", row.get("has_room_to_short_target", False)),
-            ]
-        )
-    return [(label, bool(passed)) for label, passed in checks]
-
-
-def missing_short_reasons(row: pd.Series, signal_column: str) -> list[str]:
-    """Explain why a short setup is not ready on the latest candle."""
-
-    return [label for label, passed in short_condition_checks(row, signal_column) if not passed]
-
-
-def plan_for_signal(row: pd.Series, entry: PlaybookEntry, exit_profile: ExitProfile) -> dict:
-    """Build planned entry, stop, target, and risk for a valid signal."""
-
-    settings = settings_for_variant(entry.variant)
-    reward_multiple = exit_profile.reward_multiple
-    if reward_multiple is None:
-        reward_multiple = settings.reward_multiple
-
-    if is_setup_b_short_variant(entry.variant):
-        stop_reference = max(row["vwap"], row[f"ema_{settings.fast_ema_length}"], row[f"ema_{settings.slow_ema_length}"])
-        trade_risk = build_short_risk(
-            entry=float(row["close"]),
-            stop_reference=float(stop_reference),
-            stop_buffer_pct=settings.stop_buffer_pct,
-            reward_multiple=reward_multiple,
-        )
-    else:
-        stop_reference = min(row["vwap"], row[f"ema_{settings.fast_ema_length}"], row[f"ema_{settings.slow_ema_length}"])
-        trade_risk = build_long_risk(
-            entry=float(row["close"]),
-            stop_reference=float(stop_reference),
-            stop_buffer_pct=settings.stop_buffer_pct,
-            reward_multiple=reward_multiple,
-        )
-
-    return {
-        "planned_entry": round(trade_risk.entry, 4),
-        "planned_stop": round(trade_risk.stop, 4),
-        "planned_target": round(trade_risk.target, 4),
-        "risk_per_share": round(trade_risk.risk_per_share, 4),
-    }
-
-
 def scanner_block_reason(row: pd.Series, entry: PlaybookEntry) -> str:
     """Return the weakness_v1 block reason for a scanner signal."""
+
+    relative_volume, room_to_target = scanner_adapter_for_entry(entry).block_metrics(row, entry)
 
     journal_style_row = pd.Series(
         {
             "symbol": entry.symbol,
             "playbook_setup": entry.setup_name,
             "entry_hour_et": row.name.tz_convert("America/New_York").hour,
-            "relative_volume": row.get("relative_volume", 0),
-            "room_to_resistance_r": row.get("room_to_resistance_r", row.get("room_to_support_r", 0)),
+            "relative_volume": relative_volume,
+            "room_to_resistance_r": room_to_target,
         }
     )
     return weakness_v1_block_reason(journal_style_row)
+
+
+def plan_for_signal(row: pd.Series, entry: PlaybookEntry, exit_profile: ExitProfile) -> dict:
+    """Build planned entry, stop, target, and risk through the strategy adapter."""
+
+    return scanner_adapter_for_entry(entry).plan_for_signal(row, entry, exit_profile)
+
+
+def signal_freshness_for_session(session: pd.DataFrame, signal_time: pd.Timestamp, latest_time: pd.Timestamp) -> str:
+    """Return the paper-validation freshness lane for a signal.
+
+    A-tier remains the latest/current M30 candle. B-tier grace is exactly one
+    M30 candle later. Anything older remains study/shadow context.
+    """
+
+    if pd.isna(signal_time):
+        return ""
+    if signal_time == latest_time:
+        return "current_candle"
+
+    try:
+        latest_position = list(session.index).index(latest_time)
+    except ValueError:
+        return "earlier_today"
+    if latest_position <= 0:
+        return "earlier_today"
+
+    previous_time = session.index[latest_position - 1]
+    if signal_time == previous_time and latest_time - signal_time <= pd.Timedelta(minutes=45):
+        return "grace_candle"
+    return "earlier_today"
 
 
 def latest_session_slice(candles: pd.DataFrame, scan_date: str | None) -> pd.DataFrame:
@@ -256,11 +204,11 @@ def load_enriched_candles(entry: PlaybookEntry, data_dir: Path, market_regime_sy
     """Load candles and add all strategy columns needed by the scanner."""
 
     settings = settings_for_variant(entry.variant)
-    entry_csv = data_dir / f"webull_{entry.symbol}_M30_candles.csv"
-    exit_csv = data_dir / f"webull_{entry.symbol}_M5_candles.csv"
+    entry_csv = preferred_candle_path(data_dir, entry.symbol, "M30")
+    exit_csv = preferred_candle_path(data_dir, entry.symbol, "M5")
     market_candles = None
     if entry.variant in MARKET_CONFIRMED_VARIANTS:
-        market_csv = data_dir / f"webull_{market_regime_symbol.upper()}_M30_candles.csv"
+        market_csv = preferred_candle_path(data_dir, market_regime_symbol.upper(), "M30")
         market_candles = load_candles_from_csv(market_csv, market_regime_symbol.upper())
 
     entry_candles = load_candles_from_csv(entry_csv, entry.symbol)
@@ -272,6 +220,7 @@ def load_enriched_candles(entry: PlaybookEntry, data_dir: Path, market_regime_sy
         market_candles=market_candles,
         market_symbol=market_regime_symbol.upper(),
     )
+    enriched = scanner_adapter_for_entry(entry).add_columns(enriched, entry)
     if entry.variant in MARKET_CONFIRMED_VARIANTS:
         enriched = apply_market_confirmation(enriched)
     return enriched
@@ -282,6 +231,7 @@ def scan_entry(entry: PlaybookEntry, data_dir: Path, scan_date: str | None, trad
 
     signal_column = selected_signal_column(entry)
     exit_profile = EXIT_PROFILES[entry.exit_profile]
+    adapter = scanner_adapter_for_entry(entry)
 
     try:
         candles = load_enriched_candles(entry, data_dir, market_symbol)
@@ -303,35 +253,54 @@ def scan_entry(entry: PlaybookEntry, data_dir: Path, scan_date: str | None, trad
         scanner_status = "not_ready"
         action = "wait"
         signal_freshness = ""
+        source_signal_time = signal_time
+        candidate_time = pd.NaT
+        plan_row = signal_row
+        plan_source = ""
         if has_signal:
-            signal_freshness = "current_candle" if signal_time == latest_time else "earlier_today"
+            signal_freshness = signal_freshness_for_session(session, signal_time, latest_time)
+            if signal_freshness == "grace_candle":
+                candidate_time = latest_time
+                plan_row = latest_row
+                plan_source = "latest_grace_candle"
+            elif signal_freshness == "current_candle":
+                candidate_time = signal_time
+                plan_row = signal_row
+                plan_source = "current_signal_candle"
+            else:
+                candidate_time = signal_time
+                plan_row = signal_row
+                plan_source = "historical_signal_candle"
             if trade_filter == "weakness_v1":
                 block_reason = scanner_block_reason(signal_row, entry)
             if block_reason:
                 scanner_status = "blocked_watch_only"
-                action = "log_watch_only" if signal_freshness == "current_candle" else "review_watch_only_signal"
+                action = (
+                    "log_watch_only"
+                    if signal_freshness == "current_candle"
+                    else "manual_grace_watch_only"
+                    if signal_freshness == "grace_candle"
+                    else "review_watch_only_signal"
+                )
             else:
                 scanner_status = "allowed"
-                action = "paper_trade_candidate" if signal_freshness == "current_candle" else "review_allowed_signal"
+                action = (
+                    "paper_trade_candidate"
+                    if signal_freshness == "current_candle"
+                    else "manual_b_tier_grace_review"
+                    if signal_freshness == "grace_candle"
+                    else "review_allowed_signal"
+                )
 
-        if is_setup_b_short_variant(entry.variant):
-            condition_checks = short_condition_checks(latest_row, signal_column)
-            direction = "short"
-            score = int(latest_row.get("short_quality_score", 0))
-            grade = str(latest_row.get("short_quality_grade", ""))
-            room = float(latest_row.get("room_to_support_r", 0))
-        else:
-            condition_checks = long_condition_checks(latest_row, entry, signal_column)
-            direction = "long"
-            score = int(latest_row.get("quality_score", 0))
-            grade = str(latest_row.get("quality_grade", ""))
-            room = float(latest_row.get("room_to_resistance_r", 0))
+        condition_checks = adapter.condition_checks(latest_row, entry, signal_column)
+        direction = adapter.direction(entry)
+        fields = adapter.scanner_fields(latest_row, entry)
         passed = [label for label, is_met in condition_checks if is_met]
         missing = [label for label, is_met in condition_checks if not is_met]
 
         plan = {"planned_entry": "", "planned_stop": "", "planned_target": "", "risk_per_share": ""}
         if has_signal:
-            plan = plan_for_signal(signal_row, entry, exit_profile)
+            plan = adapter.plan_for_signal(plan_row, entry, exit_profile)
 
         if not missing:
             latest_notes = "ready on latest candle"
@@ -340,10 +309,18 @@ def scan_entry(entry: PlaybookEntry, data_dir: Path, scan_date: str | None, trad
         else:
             latest_notes = "; ".join(missing)
 
+        if signal_freshness == "grace_candle":
+            validation_lane = "B"
+        elif signal_freshness == "current_candle":
+            validation_lane = "A"
+        else:
+            validation_lane = "study"
+
         return {
             "symbol": entry.symbol,
             "setup": entry.setup_name,
             "direction": direction,
+            "strategy_id": adapter.strategy_id,
             "variant": entry.variant,
             "exit_profile": entry.exit_profile,
             "scanner_status": scanner_status,
@@ -352,7 +329,13 @@ def scan_entry(entry: PlaybookEntry, data_dir: Path, scan_date: str | None, trad
             "scan_date": str(session["session_date"].iloc[-1]),
             "latest_candle_et": format_et(latest_time),
             "latest_signal_et": "" if pd.isna(signal_time) else format_et(signal_time),
+            "source_signal_et": "" if pd.isna(source_signal_time) else format_et(source_signal_time),
+            "candidate_entry_et": "" if pd.isna(candidate_time) else format_et(candidate_time),
             "signal_freshness": signal_freshness,
+            "validation_lane": validation_lane,
+            "manual_review_required": bool(signal_freshness in {"current_candle", "grace_candle"}),
+            "fresh_plan_source": plan_source,
+            "grace_candle_minutes": 30 if signal_freshness == "grace_candle" else 0,
             "block_reason": block_reason,
             "latest_candle_notes": latest_notes,
             "passed_conditions": "; ".join(passed),
@@ -361,17 +344,18 @@ def scan_entry(entry: PlaybookEntry, data_dir: Path, scan_date: str | None, trad
             "condition_count": len(condition_checks),
             "close": round(float(latest_row["close"]), 4),
             **plan,
-            "quality_score": score,
-            "quality_grade": grade,
-            "relative_volume": round(float(latest_row.get("relative_volume", 0)), 4),
-            "room_to_target_r": round(room, 4),
+            "quality_score": fields.quality_score,
+            "quality_grade": fields.quality_grade,
+            "relative_volume": round(fields.relative_volume, 4),
+            "room_to_target_r": round(fields.room_to_target_r, 4),
             "notes": entry.notes,
         }
     except Exception as error:
         return {
             "symbol": entry.symbol,
             "setup": entry.setup_name,
-            "direction": "short" if is_setup_b_short_variant(entry.variant) else "long",
+            "direction": entry_direction(entry),
+            "strategy_id": scanner_adapter_for_entry(entry).strategy_id,
             "variant": entry.variant,
             "exit_profile": entry.exit_profile,
             "scanner_status": "data_error",
@@ -380,7 +364,13 @@ def scan_entry(entry: PlaybookEntry, data_dir: Path, scan_date: str | None, trad
             "scan_date": scan_date or "",
             "latest_candle_et": "",
             "latest_signal_et": "",
+            "source_signal_et": "",
+            "candidate_entry_et": "",
             "signal_freshness": "",
+            "validation_lane": "study",
+            "manual_review_required": False,
+            "fresh_plan_source": "",
+            "grace_candle_minutes": 0,
             "block_reason": "",
             "latest_candle_notes": str(error),
             "passed_conditions": "",
@@ -469,12 +459,12 @@ def write_report(path: Path, scanner: pd.DataFrame, mode: str, trade_filter: str
         candidate_note = "These candidates are from today's scanner output."
     else:
         candidate_heading = "Historical Candidates And Watch-Only Signals"
-        candidate_note = "Prep only. Do not import, size, or paper trade these rows until Webull data is refreshed during the next open session."
+        candidate_note = "Prep only. Do not import, size, or paper trade these rows until market data is refreshed during the next open session."
 
     path.write_text(
         f"""# Daily Paper Signal Scanner
 
-This scanner checks the current local Webull candle files against the Project
+This scanner checks the current local market-data candle files against the Project
 Gwala playbook.
 
 Important: this is research/paper workflow only. It does not fetch data, place
@@ -523,9 +513,10 @@ def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
+    entries = playbook_entries_for_scan(args.mode, args.symbols)
     rows = [
         scan_entry(entry, args.data_dir, args.scan_date, args.trade_filter, args.market_regime_symbol)
-        for entry in PLAYBOOKS[args.mode]
+        for entry in entries
     ]
     scanner = pd.DataFrame(rows)
     scanner = scanner.sort_values(["scanner_status", "symbol", "setup"])

@@ -44,6 +44,36 @@ def require_env(name: str) -> str:
     return value
 
 
+def disable_sdk_default_logging(api_client: Any) -> None:
+    """Prevent Webull SDK default stdout/file logging.
+
+    The SDK's DataClient creates `webull_data_sdk.log` in the current working
+    directory unless it sees that logging was already configured. That file can
+    include signed request/response diagnostics, so Gwala disables the default
+    SDK log handlers instead of making the application source directory
+    writable.
+    """
+
+    null_logger = logging.getLogger("webull.gwala.disabled")
+    null_logger.handlers = [handler for handler in null_logger.handlers if isinstance(handler, logging.NullHandler)]
+    if not any(isinstance(handler, logging.NullHandler) for handler in null_logger.handlers):
+        null_logger.addHandler(logging.NullHandler())
+    null_logger.propagate = False
+
+    set_logger = getattr(api_client, "set_logger", None)
+    if callable(set_logger):
+        set_logger(null_logger)
+
+    setattr(api_client, "_stream_logger_set", True)
+    setattr(api_client, "_file_logger_set", True)
+    for logger_name in ("webull.core", "webull.data"):
+        logger = logging.getLogger(logger_name)
+        logger.handlers = [handler for handler in logger.handlers if isinstance(handler, logging.NullHandler)]
+        if not any(isinstance(handler, logging.NullHandler) for handler in logger.handlers):
+            logger.addHandler(logging.NullHandler())
+        logger.propagate = False
+
+
 def build_data_client() -> Any:
     """Create a Webull data client from local `.env` credentials."""
 
@@ -73,6 +103,7 @@ def build_data_client() -> Any:
 
     api_client = ApiClient(app_key, app_secret, region_id)
     api_client.set_token_dir(str(TOKEN_DIR))
+    disable_sdk_default_logging(api_client)
 
     if optional_endpoint:
         api_client.add_endpoint(region_id, optional_endpoint)

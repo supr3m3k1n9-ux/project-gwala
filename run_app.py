@@ -11,24 +11,49 @@ alerts, or connect to broker execution.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 from pathlib import Path
+import socketserver
 import subprocess
 import sys
 import threading
+import uuid
 from urllib.parse import parse_qs, unquote, urlparse
 
 import pandas as pd
 
 from config.settings import STRATEGY
+from config.market_calendar import MARKET_TZ
 from config.investment_narratives import INVESTMENT_NARRATIVES
 from config.symbol_playbook import playbook_symbols, setup_labels_for_symbol
+from config.strategy_registry import chart_marker_label_for_setup, strategy_vault_trade_logs
+from data.candle_cache import preferred_candle_path
 from data.market_data import load_candles_from_csv
+from data.market_data_sources import latest_source_for
 from indicators.session import add_opening_range, add_session_columns
 from indicators.trend import add_core_indicators
+from execution.paper_trader import (
+    PAPER_ORDER_COLUMNS,
+    filter_new_orders,
+    orders_to_open_paper_trades,
+    read_orders,
+    write_open_paper_trades,
+)
 from run_near_miss_analytics import build_near_miss_payload, read_observations
+from run_options_contract_gate import (
+    CONTRACT_AUDIT_COLUMNS,
+    CONTRACT_AUDIT_CSV,
+    build_gate as build_options_contract_gate,
+    contract_key,
+    read_csv_or_empty as read_contract_csv_or_empty,
+    sample_template_row,
+)
+from run_paper_gate_v2 import build_payload as build_paper_gate_payload
 from run_paper_import import read_existing
+from run_paper_validation_sample_import import build_import as build_validation_sample_import
 from run_update_paper_trade import open_rows as open_paper_rows
 from run_update_paper_trade import update_trade as update_paper_trade
 
@@ -37,9 +62,35 @@ PROJECT_DIR = Path(__file__).resolve().parent
 APP_DIR = PROJECT_DIR / "app"
 LOGS_DIR = PROJECT_DIR / "logs"
 PAPER_CSV = PROJECT_DIR / "data" / "paper_trades.csv"
+PAPER_ORDERS_CSV = PROJECT_DIR / "data" / "paper_orders.csv"
+COMMAND_CENTER_APPROVALS_CSV = PROJECT_DIR / "data" / "paper_command_center_approvals.csv"
 STATUS_ACTION_LOCK = threading.Lock()
+LIGHTWEIGHT_STATE_COMMANDS = [
+    [sys.executable, "run_refresh_status.py"],
+]
 DEFAULT_BACKTEST_STARTING_EQUITY = 5_000.0
 DEFAULT_BACKTEST_RISK_PER_TRADE_PCT = 0.005
+STRATEGY_VAULT_TRADE_LOGS = strategy_vault_trade_logs()
+SIMULATION_BUCKET_LABELS = {
+    "Approved Playbook": {
+        "source_category": "approved_historical_simulation",
+        "evidence_tier": "approved_historical",
+        "display_label": "Approved Historical",
+        "disclaimer": "Approved playbook backtest rows. Research context only; not official paper trades.",
+    },
+    "Promotion Review": {
+        "source_category": "promoted_research_simulation",
+        "evidence_tier": "promoted_research",
+        "display_label": "Promoted Research",
+        "disclaimer": "Promotion-review backtest rows. Useful context; paper validation remains separate.",
+    },
+    "Strategy Vault Research": {
+        "source_category": "strategy_vault_research_simulation",
+        "evidence_tier": "research_backtest",
+        "display_label": "Strategy Vault Research",
+        "disclaimer": "Broad strategy-vault research backtest rows. Not paper-approved by itself.",
+    },
+}
 TRADING_WORKSPACE_TIMEFRAMES = {
     "M1": "M1",
     "M5": "M5",
@@ -62,11 +113,20 @@ ALLOWED_REPORTS = {
     "refresh_audit": "market_refresh_audit.md",
     "setup_health": "setup_health.md",
     "paper_session": "paper_session_cycle.md",
+    "current_candle_capture": "current_candle_capture.md",
+    "paper_entry_packet": "paper_entry_packet.md",
+    "paper_gate_v2": "paper_gate_v2.md",
+    "options_contract_gate": "options_contract_gate.md",
+    "paper_validation_sample_import": "paper_validation_sample_import.md",
+    "daily_ship_report": "DAILY_SHIP_REPORT.md",
+    "filter_rejection_report": "filter_rejection_report.md",
     "pre_entry_review": "pre_entry_review.md",
     "paper_execution": "local_paper_execution_simulator.md",
     "candidate_alerts": "paper_candidate_alerts.md",
     "forward_sample_queue": "forward_sample_queue.md",
     "almost_ready_breakout": "almost_ready_breakout.md",
+    "market_sprint_mode": "market_sprint_mode.md",
+    "probation_watch": "probation_watch.md",
     "post_scan_digest": "post_scan_digest.md",
     "forward_evidence": "forward_evidence.md",
     "candidate_aging": "candidate_aging.md",
@@ -77,25 +137,57 @@ ALLOWED_REPORTS = {
     "readiness": "readiness_check.md",
     "checkpoint": "paper_validation_checkpoint.md",
     "refresh_status": "refresh_status.md",
+    "provider_stability_audit": "provider_stability_audit.md",
+    "provider_acceptance": "provider_acceptance.md",
+    "accelerated_paper_validation": "accelerated_paper_validation.md",
     "morning_watchdog": "morning_run_watchdog.md",
     "automation_timeline": "daily_automation_timeline.md",
+    "after_close_evidence_maturity": "after_close_evidence_maturity.md",
+    "phase_milestones": "phase_milestones.md",
+    "historical_bucket_sync": "historical_bucket_sync.md",
     "premarket": "premarket_verification.md",
     "setup_replay": "setup_replay.md",
     "strategy_vault": "strategy_vault.md",
+    "market_regime_router": "market_regime_router.md",
+    "controlled_universe_expansion": "controlled_universe_expansion.md",
     "vwap_mean_reversion": "vwap_mean_reversion.md",
     "vwap_mean_reversion_walk_forward": "vwap_mean_reversion_walk_forward.md",
     "vwap_mean_reversion_shadow_samples": "vwap_mean_reversion_shadow_samples.md",
     "vwap_mean_reversion_forward_observations": "vwap_mean_reversion_forward_observations.md",
     "vwap_mean_reversion_paper_watch_gate": "vwap_mean_reversion_paper_watch_gate.md",
     "gap_fill_fade": "gap_fill_fade.md",
+    "gap_fill_fade_tightened_review": "gap_fill_fade_tightened_review.md",
+    "gap_fill_fade_shadow_samples": "gap_fill_fade_shadow_samples.md",
+    "gap_fill_fade_forward_observations": "gap_fill_fade_forward_observations.md",
+    "gap_fill_fade_paper_watch_gate": "gap_fill_fade_paper_watch_gate.md",
     "vwap_reclaim_reject": "vwap_reclaim_reject.md",
     "vwap_reclaim_reject_walk_forward": "vwap_reclaim_reject_walk_forward.md",
     "vwap_reclaim_reject_shadow_samples": "vwap_reclaim_reject_shadow_samples.md",
+    "vwap_reclaim_reject_evidence_maturity": "vwap_reclaim_reject_evidence_maturity.md",
     "opening_range_breakout": "opening_range_breakout.md",
+    "opening_range_breakout_tightened_review": "opening_range_breakout_tightened_review.md",
+    "opening_range_breakout_walk_forward_deepening": "opening_range_breakout_walk_forward_deepening.md",
+    "opening_range_breakout_shadow_samples": "opening_range_breakout_shadow_samples.md",
+    "opening_range_breakout_forward_observations": "opening_range_breakout_forward_observations.md",
+    "opening_range_breakout_paper_watch_gate": "opening_range_breakout_paper_watch_gate.md",
     "trend_pullback_continuation": "trend_pullback_continuation.md",
+    "trend_pullback_continuation_tightened_review": "trend_pullback_continuation_tightened_review.md",
+    "trend_pullback_continuation_shadow_samples": "trend_pullback_continuation_shadow_samples.md",
+    "trend_pullback_continuation_forward_observations": "trend_pullback_continuation_forward_observations.md",
+    "trend_pullback_continuation_paper_watch_gate": "trend_pullback_continuation_paper_watch_gate.md",
     "opening_range_failure": "opening_range_failure.md",
+    "opening_range_failure_tightened_review": "opening_range_failure_tightened_review.md",
+    "opening_range_failure_walk_forward_deepening": "opening_range_failure_walk_forward_deepening.md",
+    "opening_range_failure_shadow_samples": "opening_range_failure_shadow_samples.md",
+    "opening_range_failure_forward_observations": "opening_range_failure_forward_observations.md",
+    "opening_range_failure_paper_watch_gate": "opening_range_failure_paper_watch_gate.md",
     "strategy_evidence_accumulator": "strategy_evidence_accumulator.md",
     "paper_activation_rules": "paper_activation_rules.md",
+    "strategy_walk_forward_matrix": "strategy_walk_forward_matrix.md",
+    "research_strategy_tightened_review": "research_strategy_tightened_review.md",
+    "strategy_backtest_coverage": "strategy_backtest_coverage.md",
+    "validation_deepening_queue": "validation_deepening_queue.md",
+    "strategy_triage": "strategy_triage.md",
     "strategy_improvement_plan": "strategy_improvement_plan.md",
     "feature_wiring_audit": "feature_wiring_audit.md",
     "research_confidence": "universe_expansion/research_confidence.md",
@@ -111,15 +203,315 @@ ALLOWED_REPORTS = {
     "deep_walk_forward_review": "deeper_research/walk_forward_review.md",
     "deep_regime_review": "deeper_research/regime_review.md",
     "system_state": "system_state.md",
+    "dashboard_data_preflight": "dashboard_data_preflight.md",
 }
 
 
+def json_safe(value):
+    """Return a JSON-safe copy of app data.
+
+    Python's JSON encoder can emit Infinity/NaN by default, but browsers reject
+    those values with JSON.parse. Keep the dashboard strict so one unusual
+    metric cannot block every widget from loading.
+    """
+
+    if isinstance(value, dict):
+        return {str(key): json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [json_safe(item) for item in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    return value
+
+
+def command_center_sample_key(row: dict | pd.Series) -> str:
+    """Return the stable key used across chart approval, contract review, and entry."""
+
+    template = sample_template_row(row)
+    return "|".join(contract_key(template))
+
+
+def read_command_center_approvals() -> pd.DataFrame:
+    """Read local operator chart approvals."""
+
+    columns = [
+        "sample_key",
+        "approved_at_et",
+        "decision",
+        "symbol",
+        "setup",
+        "direction",
+        "sample_tier",
+        "candidate_entry_et",
+        "notes",
+    ]
+    if not COMMAND_CENTER_APPROVALS_CSV.exists():
+        return pd.DataFrame(columns=columns)
+    try:
+        approvals = pd.read_csv(COMMAND_CENTER_APPROVALS_CSV)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame(columns=columns)
+    for column in columns:
+        if column not in approvals.columns:
+            approvals[column] = ""
+    return approvals[columns]
+
+
+def latest_command_center_approval(sample_key: str) -> dict:
+    """Return the latest chart-review decision for one sample."""
+
+    approvals = read_command_center_approvals()
+    if approvals.empty:
+        return {}
+    matches = approvals[approvals["sample_key"].astype(str) == sample_key]
+    if matches.empty:
+        return {}
+    return matches.iloc[-1].fillna("").to_dict()
+
+
+def append_command_center_approval(sample: dict, decision: str, notes: str = "") -> dict:
+    """Record an operator chart approval or rejection without changing gates."""
+
+    key = command_center_sample_key(sample)
+    row = {
+        "sample_key": key,
+        "approved_at_et": datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "decision": decision,
+        "symbol": str(sample.get("symbol", "")).upper(),
+        "setup": str(sample.get("setup", "")),
+        "direction": str(sample.get("direction", "")).lower(),
+        "sample_tier": str(sample.get("sample_tier", "")),
+        "candidate_entry_et": str(sample.get("candidate_entry_et", sample.get("latest_signal_et", ""))),
+        "notes": notes,
+    }
+    existing = read_command_center_approvals()
+    COMMAND_CENTER_APPROVALS_CSV.parent.mkdir(parents=True, exist_ok=True)
+    pd.concat([existing, pd.DataFrame([row])], ignore_index=True).to_csv(COMMAND_CENTER_APPROVALS_CSV, index=False)
+    return row
+
+
+def command_center_ready_samples() -> list[dict]:
+    """Return current Paper Gate survivor rows using the existing Paper Gate."""
+
+    payload = build_paper_gate_payload(
+        output_dir=LOGS_DIR,
+        scanner_csv=LOGS_DIR / "daily_paper_signal_scanner.csv",
+        samples_csv=PROJECT_DIR / "data" / "paper_validation_samples.csv",
+    )
+    samples = payload.get("ready_samples", [])
+    return samples if isinstance(samples, list) else []
+
+
+def command_center_sample_by_key(sample_key: str) -> dict:
+    """Find one current Paper Gate survivor by key."""
+
+    for sample in command_center_ready_samples():
+        if command_center_sample_key(sample) == sample_key:
+            return sample
+    raise ValueError("That Paper Gate survivor is no longer ready. Refresh the workflow and review the current candidate.")
+
+
+def command_center_contract_row(sample_key: str) -> dict:
+    """Return the current Contract Gate row for a sample key."""
+
+    gate = build_options_contract_gate(output_dir=LOGS_DIR, contract_audit_csv=CONTRACT_AUDIT_CSV)
+    for row in gate.get("rows", []):
+        if command_center_sample_key(row) == sample_key:
+            return row
+    return {}
+
+
+def command_center_option_chain_state(sample: dict) -> dict:
+    """Return the expected local option-chain CSV state for one sample."""
+
+    symbol = str(sample.get("symbol", "")).strip().upper()
+    path = PROJECT_DIR / "data" / "options_chains" / f"{symbol}.csv"
+    exists = path.exists() and path.stat().st_size > 0
+    return {
+        "symbol": symbol,
+        "path": str(path.relative_to(PROJECT_DIR)),
+        "exists": exists,
+        "status": "available" if exists else "missing",
+        "message": (
+            f"Option-chain CSV available: {path.relative_to(PROJECT_DIR)}"
+            if exists
+            else f"Missing {symbol} option-chain CSV: {path.relative_to(PROJECT_DIR)}"
+        ),
+    }
+
+
+def command_center_payload() -> dict:
+    """Build the four-decision Paper Trade Command Center payload."""
+
+    samples = command_center_ready_samples()
+    gate = build_options_contract_gate(output_dir=LOGS_DIR, contract_audit_csv=CONTRACT_AUDIT_CSV)
+    gate_rows = {command_center_sample_key(row): row for row in gate.get("rows", [])}
+    approvals = read_command_center_approvals()
+    latest_approvals = {}
+    if not approvals.empty:
+        for _, row in approvals.iterrows():
+            latest_approvals[str(row.get("sample_key", ""))] = row.fillna("").to_dict()
+
+    candidates = []
+    for sample in samples:
+        key = command_center_sample_key(sample)
+        contract = gate_rows.get(key, {})
+        approval = latest_approvals.get(key, {})
+        option_chain = command_center_option_chain_state(sample)
+        chart_approved = approval.get("decision") == "approved"
+        contract_passed = bool(contract.get("contract_gate_pass", False))
+        if not chart_approved:
+            status = "waiting_for_chart_review"
+            next_action = "Approve or reject the chart plan."
+        elif not contract:
+            status = "waiting_for_contract_review"
+            next_action = "Enter contract details and run Contract Gate."
+        elif not contract_passed:
+            status = "waiting_for_contract_review"
+            next_action = contract.get("contract_gate_reason") or "Contract has not passed."
+        else:
+            status = "ready_for_paper_entry"
+            next_action = "Confirm official paper trade."
+        candidates.append(
+            {
+                "sample_key": key,
+                "status": status,
+                "next_action": next_action,
+                "chart_approval": approval,
+                "contract": contract,
+                "option_chain_csv": option_chain,
+                **sample,
+            }
+        )
+
+    trades = read_existing(PAPER_CSV)
+    open_trades = open_paper_rows(trades)
+    return {
+        "generated_at_et": datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "candidate_count": len(candidates),
+        "candidates": candidates,
+        "open_trade_count": int(len(open_trades)),
+        "open_trades": open_trades.fillna("").to_dict("records"),
+        "contract_gate_status": gate.get("status", "missing"),
+        "guardrail": (
+            "Workflow consolidation only. Paper Gate, chart approval, Contract Gate, paper entry confirmation, "
+            "and exit confirmation remain required. No broker orders are placed."
+        ),
+    }
+
+
+def append_contract_audit_row(sample: dict, payload: dict) -> dict:
+    """Write one operator-selected contract row, then let Contract Gate judge it."""
+
+    template = sample_template_row(sample)
+    allowed_fields = set(CONTRACT_AUDIT_COLUMNS)
+    contract_values = {column: payload.get(column, template.get(column, "")) for column in CONTRACT_AUDIT_COLUMNS}
+    for key in CONTRACT_AUDIT_COLUMNS[:7]:
+        value = template.get(key, "")
+        contract_values[key] = value
+    for key, value in payload.items():
+        if key in allowed_fields and key not in template:
+            contract_values[key] = value
+    audit = read_contract_csv_or_empty(CONTRACT_AUDIT_CSV, CONTRACT_AUDIT_COLUMNS)
+    CONTRACT_AUDIT_CSV.parent.mkdir(parents=True, exist_ok=True)
+    pd.concat([audit, pd.DataFrame([contract_values], columns=CONTRACT_AUDIT_COLUMNS)], ignore_index=True).to_csv(
+        CONTRACT_AUDIT_CSV,
+        index=False,
+    )
+    return contract_values
+
+
+def paper_order_from_contract_sample(sample: dict, contract: dict) -> pd.DataFrame:
+    """Convert a Contract Gate-passed sample into one local paper order row."""
+
+    now = datetime.now(MARKET_TZ)
+    candidate_time = pd.to_datetime(sample.get("candidate_entry_et") or sample.get("latest_signal_et"), errors="coerce")
+    if pd.isna(candidate_time):
+        raise ValueError("Candidate entry time is missing; cannot create a paper order.")
+    if candidate_time.tzinfo is None:
+        candidate_time = candidate_time.tz_localize(MARKET_TZ)
+    else:
+        candidate_time = candidate_time.tz_convert(MARKET_TZ)
+
+    row = {
+        "paper_order_id": f"PG-PAPER-{now.strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}",
+        "created_at_et": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "trade_date": candidate_time.date().isoformat(),
+        "entry_time_et": candidate_time.strftime("%H:%M"),
+        "symbol": str(sample.get("symbol", "")).upper(),
+        "setup": sample.get("setup", ""),
+        "direction": str(sample.get("direction", "")).lower(),
+        "side": "BUY" if str(sample.get("direction", "")).lower() == "long" else "SELL_SHORT",
+        "order_type": "LOCAL_LIMIT_SIM",
+        "limit_price": sample.get("planned_entry", ""),
+        "stop_price": sample.get("planned_stop", ""),
+        "target_price": sample.get("planned_target", ""),
+        "shares": int(float(sample.get("suggested_shares", 0) or 0)),
+        "vehicle": "options",
+        "risk_tier": str(sample.get("sample_tier", "")).upper(),
+        "planned_option_premium": contract.get("premium", ""),
+        "status": "local_paper_filled",
+        "source": "paper_command_center_contract_pass",
+        "notes": (
+            f"Official paper workflow; contract={contract.get('contract_symbol', '')}; "
+            "local paper simulation only; no broker order was sent."
+        ),
+    }
+    return pd.DataFrame([row], columns=PAPER_ORDER_COLUMNS)
+
+
 def workflow_python() -> str:
-    """Use the Webull environment for market-data refreshes when it exists."""
+    """Use the provider SDK environment for market-data refreshes when it exists."""
 
     if WEBULL_PYTHON.exists():
         return str(WEBULL_PYTHON)
     return sys.executable
+
+
+def lightweight_state_commands() -> list[list[str]]:
+    """Return the local-only commands needed for one coherent dashboard state."""
+
+    commands = list(LIGHTWEIGHT_STATE_COMMANDS)
+    research_dir = LOGS_DIR / "universe_expansion"
+    research_inputs = [
+        research_dir / "best_plus_market_watchlist_backtest_summary.csv",
+        research_dir / "setup_b_watchlist_backtest_summary.csv",
+    ]
+    if research_dir.exists() and any(path.exists() for path in research_inputs):
+        commands.extend(
+            [
+                [sys.executable, "run_research_confidence.py", "--output-dir", str(research_dir)],
+                [sys.executable, "run_promotion_review.py", "--output-dir", str(LOGS_DIR), "--research-dir", str(research_dir)],
+            ]
+        )
+    commands.append([sys.executable, "run_phase_milestones.py"])
+    commands.append([sys.executable, "run_historical_bucket_sync.py"])
+    commands.append([sys.executable, "run_system_state.py"])
+    commands.append([sys.executable, "run_provider_stability_audit.py"])
+    commands.append([sys.executable, "run_paper_entry_packet.py"])
+    commands.append([sys.executable, "run_paper_gate_v2.py"])
+    commands.append([sys.executable, "run_options_chain_review.py", "--tier", "A", "--write-audit"])
+    commands.append([sys.executable, "run_options_contract_gate.py"])
+    commands.append([sys.executable, "run_paper_validation_sample_import.py"])
+    commands.append([sys.executable, "run_daily_ship_report.py"])
+    commands.append([sys.executable, "run_system_state.py"])
+    commands.append([sys.executable, "run_dashboard_data_preflight.py"])
+    commands.append([sys.executable, "run_data_flow_sentinel.py"])
+    commands.append([sys.executable, "run_controlled_universe_expansion.py"])
+    commands.append([sys.executable, "run_probation_watch.py"])
+    commands.append([sys.executable, "run_market_sprint_mode.py"])
+    commands.append([sys.executable, "run_system_state.py"])
+    return commands
+
+
+def saved_candle_source_label(logs_dir: Path, symbol: str, timeframe: str, context: str) -> str:
+    """Return a user-facing source label for saved candle files."""
+
+    source = latest_source_for(logs_dir / "market_data_sources.csv", symbol, timeframe)
+    provider = str(source.get("provider", "market-data")).strip() or "market-data"
+    return f"Saved {provider.title()} {timeframe} {context} candles"
 
 
 def app_number(value: object) -> float | None:
@@ -142,6 +534,24 @@ def app_positive_float(value: object, default: float, maximum: float | None = No
     if maximum is not None:
         return min(number, maximum)
     return number
+
+
+def trade_sort_millis(trades: pd.DataFrame) -> pd.Series:
+    """Return stable UTC millisecond timestamps for browser-side sorting."""
+
+    if trades.empty:
+        return pd.Series(dtype="Int64")
+
+    if "entry_time" in trades.columns:
+        timestamps = pd.to_datetime(trades["entry_time"], errors="coerce", utc=True)
+    else:
+        timestamps = pd.Series([pd.NaT] * len(trades), index=trades.index)
+
+    if "exit_time" in trades.columns:
+        exit_timestamps = pd.to_datetime(trades["exit_time"], errors="coerce", utc=True)
+        timestamps = timestamps.fillna(exit_timestamps)
+
+    return timestamps.map(lambda value: int(value.timestamp() * 1000) if pd.notna(value) else 0).astype("Int64")
 
 
 def add_retro_account_simulation(
@@ -226,6 +636,39 @@ def add_retro_account_simulation(
     return simulated, summary
 
 
+def source_bucket_timelines(trades: pd.DataFrame) -> dict[str, dict[str, object]]:
+    """Return freshness timelines for each historical simulation source lane."""
+
+    if trades.empty or "entry_time" not in trades.columns or "source_bucket" not in trades.columns:
+        return {}
+
+    working = trades.copy()
+    working["_entry_dt"] = pd.to_datetime(working["entry_time"], errors="coerce", utc=True)
+    working = working.dropna(subset=["_entry_dt"])
+    if working.empty:
+        return {}
+
+    timelines: dict[str, dict[str, object]] = {}
+    for bucket in SIMULATION_BUCKET_LABELS:
+        subset = working[working["source_bucket"].eq(bucket)].copy()
+        if subset.empty:
+            continue
+        latest = subset.sort_values("_entry_dt").iloc[-1]
+        dates = subset["_entry_dt"]
+        timelines[bucket] = {
+            "row_count": int(len(subset)),
+            "first_entry": dates.min().date().isoformat(),
+            "last_entry": dates.max().date().isoformat(),
+            "active_trade_dates": int(dates.dt.date.nunique()),
+            "active_months": int(dates.dt.strftime("%Y-%m").nunique()),
+            "latest_symbol": str(latest.get("symbol", "") or ""),
+            "latest_setup": str(latest.get("source_setup", "") or ""),
+            "latest_candidate": str(latest.get("source_candidate", "") or ""),
+            "latest_trade_log": str(latest.get("source_trade_log", "") or ""),
+        }
+    return timelines
+
+
 def promotion_risk_tier(row: pd.Series, base_risk_pct: float) -> tuple[str, float, str]:
     """Assign conservative research risk tiers from objective promotion evidence."""
 
@@ -241,33 +684,42 @@ def promotion_risk_tier(row: pd.Series, base_risk_pct: float) -> tuple[str, floa
     return "standard", base_risk_pct, "Standard promoted setup risk."
 
 
-def build_backtest_portfolio_simulation(
+def read_trade_log(path: Path) -> pd.DataFrame:
+    """Read one historical trade log if it exists and has R results."""
+
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        trades = pd.read_csv(path)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+    if trades.empty or "r_result" not in trades.columns:
+        return pd.DataFrame()
+    return trades.copy()
+
+
+def apply_simulation_source_labels(trades: pd.DataFrame, source_bucket: str) -> pd.DataFrame:
+    """Add explicit evidence labels to historical simulator rows."""
+
+    labels = SIMULATION_BUCKET_LABELS[source_bucket]
+    result = trades.copy()
+    result["source_bucket"] = source_bucket
+    result["source_category"] = labels["source_category"]
+    result["evidence_tier"] = labels["evidence_tier"]
+    result["source_display_label"] = labels["display_label"]
+    result["source_disclaimer"] = labels["disclaimer"]
+    return result
+
+
+def promoted_research_frames(
     logs_dir: Path,
-    starting_equity: float = DEFAULT_BACKTEST_STARTING_EQUITY,
-    risk_per_trade_pct: float = DEFAULT_BACKTEST_RISK_PER_TRADE_PCT,
-    risk_model: str = "fixed",
-) -> tuple[pd.DataFrame, dict]:
-    """Build a deduped research-account simulation from promoted backtest rows."""
+    selected: pd.DataFrame,
+    risk_per_trade_pct: float,
+    risk_model: str,
+) -> tuple[list[pd.DataFrame], int]:
+    """Load trade logs promoted by the broad research promotion review."""
 
-    promotion_path = logs_dir / "promotion_review.csv"
-    if not promotion_path.exists():
-        raise FileNotFoundError("logs/promotion_review.csv was not found. Run promotion review first.")
-
-    promotion = pd.read_csv(promotion_path)
-    if promotion.empty or "trade_log" not in promotion.columns:
-        empty, account = add_retro_account_simulation(pd.DataFrame(), starting_equity, risk_per_trade_pct)
-        account.update({"source_candidates": 0, "source_files": 0, "duplicates_collapsed": 0})
-        return empty, account
-
-    if "promotion_decision" in promotion.columns:
-        selected = promotion[promotion["promotion_decision"].eq("paper_watch_candidate")].copy()
-    else:
-        selected = promotion.copy()
-    if selected.empty:
-        empty, account = add_retro_account_simulation(pd.DataFrame(), starting_equity, risk_per_trade_pct)
-        account.update({"source_candidates": 0, "source_files": 0, "duplicates_collapsed": 0})
-        return empty, account
-
+    logs_dir = logs_dir.resolve()
     frames: list[pd.DataFrame] = []
     source_files = 0
     for _, row in selected.iterrows():
@@ -275,19 +727,15 @@ def build_backtest_portfolio_simulation(
         if not trade_log:
             continue
         trade_path = PROJECT_DIR / trade_log
+        trade_path = trade_path.resolve()
         if not (trade_path.exists() and logs_dir in trade_path.parents):
             trade_path = logs_dir / Path(trade_log).name
-        if not trade_path.exists():
+        trades = read_trade_log(trade_path)
+        if trades.empty:
             continue
-        try:
-            trades = pd.read_csv(trade_path)
-        except pd.errors.EmptyDataError:
-            continue
-        if trades.empty or "r_result" not in trades.columns:
-            continue
-        trades = trades.copy()
         trades["source_candidate"] = row.get("candidate", "")
         trades["source_setup"] = row.get("setup", "")
+        trades = apply_simulation_source_labels(trades, "Promotion Review")
         trades["source_trade_log"] = trade_path.name
         tier, tier_risk_pct, tier_reason = promotion_risk_tier(row, risk_per_trade_pct)
         trades["research_risk_tier"] = tier if risk_model == "tiered" else "fixed"
@@ -295,10 +743,98 @@ def build_backtest_portfolio_simulation(
         trades["research_risk_pct"] = tier_risk_pct if risk_model == "tiered" else risk_per_trade_pct
         frames.append(trades)
         source_files += 1
+    return frames, source_files
+
+
+def strategy_vault_frames(logs_dir: Path, risk_per_trade_pct: float) -> tuple[list[pd.DataFrame], int]:
+    """Load Strategy Vault research trade logs into the unified simulator."""
+
+    logs_dir = logs_dir.resolve()
+    frames: list[pd.DataFrame] = []
+    source_files = 0
+    for strategy_id, strategy_name, filename in STRATEGY_VAULT_TRADE_LOGS:
+        trade_path = logs_dir / filename
+        trades = read_trade_log(trade_path)
+        if trades.empty:
+            continue
+        trades["source_candidate"] = strategy_name
+        trades["source_setup"] = "Strategy Vault"
+        trades = apply_simulation_source_labels(trades, "Strategy Vault Research")
+        trades["source_strategy_id"] = strategy_id
+        trades["source_trade_log"] = trade_path.name
+        trades["research_risk_tier"] = "strategy_research"
+        trades["research_risk_reason"] = "Fixed risk for Strategy Vault research simulation; not paper-approved sizing."
+        trades["research_risk_pct"] = risk_per_trade_pct
+        frames.append(trades)
+        source_files += 1
+    return frames, source_files
+
+
+def approved_playbook_frames(logs_dir: Path, risk_per_trade_pct: float) -> tuple[list[pd.DataFrame], int]:
+    """Load the current approved playbook into the unified simulator."""
+
+    logs_dir = logs_dir.resolve()
+    trade_path = logs_dir / "playbook_approved_trades.csv"
+    trades = read_trade_log(trade_path)
+    if trades.empty:
+        return [], 0
+    result = trades.copy()
+    variant = result.get("playbook_variant", pd.Series("", index=result.index)).fillna("").astype(str)
+    exit_profile = result.get("playbook_exit_profile", pd.Series("", index=result.index)).fillna("").astype(str)
+    result["source_candidate"] = (variant + " + " + exit_profile).str.strip(" +")
+    result["source_setup"] = result.get("playbook_setup", pd.Series("Approved Playbook", index=result.index))
+    result = apply_simulation_source_labels(result, "Approved Playbook")
+    result["source_trade_log"] = trade_path.name
+    result["research_risk_tier"] = "approved_playbook"
+    result["research_risk_reason"] = "Fixed risk for the current approved playbook simulation; paper entries still require manual review."
+    result["research_risk_pct"] = risk_per_trade_pct
+    return [result], 1
+
+
+def build_backtest_portfolio_simulation(
+    logs_dir: Path,
+    starting_equity: float = DEFAULT_BACKTEST_STARTING_EQUITY,
+    risk_per_trade_pct: float = DEFAULT_BACKTEST_RISK_PER_TRADE_PCT,
+    risk_model: str = "fixed",
+) -> tuple[pd.DataFrame, dict]:
+    """Build a deduped account simulation from promoted and Vault research rows."""
+
+    logs_dir = logs_dir.resolve()
+    promotion_path = logs_dir / "promotion_review.csv"
+    if not promotion_path.exists():
+        raise FileNotFoundError("logs/promotion_review.csv was not found. Run promotion review first.")
+
+    promotion = pd.read_csv(promotion_path)
+    if not promotion.empty and "trade_log" in promotion.columns and "promotion_decision" in promotion.columns:
+        selected = promotion[promotion["promotion_decision"].eq("paper_watch_candidate")].copy()
+    elif not promotion.empty and "trade_log" in promotion.columns:
+        selected = promotion.copy()
+    else:
+        selected = pd.DataFrame()
+
+    playbook_frames, playbook_source_files = approved_playbook_frames(logs_dir, risk_per_trade_pct)
+    promoted_frames, promoted_source_files = promoted_research_frames(logs_dir, selected, risk_per_trade_pct, risk_model)
+    vault_frames, vault_source_files = strategy_vault_frames(logs_dir, risk_per_trade_pct)
+    frames = [*playbook_frames, *promoted_frames, *vault_frames]
+    source_files = playbook_source_files + promoted_source_files + vault_source_files
 
     if not frames:
         empty, account = add_retro_account_simulation(pd.DataFrame(), starting_equity, risk_per_trade_pct)
-        account.update({"source_candidates": int(len(selected)), "source_files": 0, "duplicates_collapsed": 0})
+        account.update(
+            {
+                "source_candidates": int(len(selected)),
+                "source_files": 0,
+                "approved_playbook_source_files": 0,
+                "promotion_source_files": 0,
+                "strategy_vault_source_files": 0,
+                "duplicates_collapsed": 0,
+                "source_bucket_counts": {},
+                "evidence_tier_counts": {},
+                "source_bucket_timelines": {},
+                "simulation_scope": "approved_plus_promoted_plus_strategy_vault",
+                "simulation_guardrail": "Historical simulation only. Official paper progress is counted from manually logged paper trades.",
+            }
+        )
         return empty, account
 
     combined = pd.concat(frames, ignore_index=True)
@@ -320,8 +856,22 @@ def build_backtest_portfolio_simulation(
         {
             "source_candidates": int(len(selected)),
             "source_files": int(source_files),
+            "approved_playbook_source_files": int(playbook_source_files),
+            "promotion_source_files": int(promoted_source_files),
+            "strategy_vault_source_files": int(vault_source_files),
             "duplicates_collapsed": int(before_dedupe - len(combined)),
             "risk_model": risk_model,
+            "source_bucket_counts": {
+                str(key): int(value)
+                for key, value in combined.get("source_bucket", pd.Series(dtype=str)).value_counts().to_dict().items()
+            },
+            "evidence_tier_counts": {
+                str(key): int(value)
+                for key, value in combined.get("evidence_tier", pd.Series(dtype=str)).value_counts().to_dict().items()
+            },
+            "source_bucket_timelines": source_bucket_timelines(combined),
+            "simulation_scope": "approved_plus_promoted_plus_strategy_vault",
+            "simulation_guardrail": "Historical simulation only. Official paper progress is counted from manually logged paper trades.",
         }
     )
     return combined, account
@@ -338,7 +888,7 @@ def build_trading_workspace_data(
     symbol: str = "SPY",
     timeframe: str = "M5",
 ) -> dict:
-    """Build a read-only chart snapshot from locally saved Webull candles."""
+    """Build a read-only chart snapshot from locally saved market-data candles."""
 
     symbol = symbol.upper()
     timeframe = timeframe.upper()
@@ -348,10 +898,10 @@ def build_trading_workspace_data(
         supported = ", ".join(TRADING_WORKSPACE_TIMEFRAMES)
         raise ValueError(f"Supported chart timeframes are {supported}.")
 
-    candle_path = logs_dir / f"webull_{symbol}_{TRADING_WORKSPACE_TIMEFRAMES[timeframe]}_candles.csv"
-    opening_range_path = logs_dir / f"webull_{symbol}_M5_candles.csv"
+    candle_path = preferred_candle_path(logs_dir, symbol, TRADING_WORKSPACE_TIMEFRAMES[timeframe])
+    opening_range_path = preferred_candle_path(logs_dir, symbol, "M5")
     if not candle_path.exists() or not opening_range_path.exists():
-        raise FileNotFoundError(f"Saved Webull candles are missing for {symbol}.")
+        raise FileNotFoundError(f"Saved market-data candles are missing for {symbol}.")
 
     candles = load_candles_from_csv(candle_path, symbol)
     lower_candles = load_candles_from_csv(opening_range_path, symbol)
@@ -409,7 +959,7 @@ def build_trading_workspace_data(
     return {
         "symbol": symbol,
         "timeframe": timeframe,
-        "source": f"Saved Webull {timeframe} market-data candles",
+        "source": saved_candle_source_label(logs_dir, symbol, timeframe, "market-data"),
         "timeframe_role": "strategy signal timeframe" if timeframe in TRADING_SIGNAL_TIMEFRAMES else "chart-only review timeframe",
         "latest_session": str(latest_session),
         "latest_bar_et": latest["local_time"].strftime("%Y-%m-%d %H:%M %Z"),
@@ -433,7 +983,7 @@ def build_trading_workspace_data(
             {
                 "timeframe": label,
                 "label": "1h" if label == "M60" else "Daily" if label == "D" else label.replace("M", "") + "m",
-                "exists": (logs_dir / f"webull_{symbol}_{saved}_candles.csv").exists(),
+                "exists": preferred_candle_path(logs_dir, symbol, saved).exists(),
                 "role": "signal" if label in TRADING_SIGNAL_TIMEFRAMES else "chart_only",
             }
             for label, saved in TRADING_WORKSPACE_TIMEFRAMES.items()
@@ -473,10 +1023,10 @@ def build_replay_chart_data(
     session_date = entry_time.tz_convert(STRATEGY.market_timezone).date()
 
     def load_timeframe(timeframe: str) -> pd.DataFrame:
-        candle_path = logs_dir / f"webull_{symbol}_{timeframe}_candles.csv"
-        opening_range_path = logs_dir / f"webull_{symbol}_M5_candles.csv"
+        candle_path = preferred_candle_path(logs_dir, symbol, timeframe)
+        opening_range_path = preferred_candle_path(logs_dir, symbol, "M5")
         if not candle_path.exists() or not opening_range_path.exists():
-            raise FileNotFoundError(f"Saved Webull candles are missing for {symbol}.")
+            raise FileNotFoundError(f"Saved market-data candles are missing for {symbol}.")
 
         candles = load_candles_from_csv(candle_path, symbol)
         lower_candles = load_candles_from_csv(opening_range_path, symbol)
@@ -571,7 +1121,7 @@ def build_replay_chart_data(
         "management_complete": management_active and visible_step >= available_steps,
         "current_price": app_number(current_price) if current_price is not None else None,
         "current_r": current_r,
-        "source": f"Saved Webull {timeframe} historical candles",
+        "source": saved_candle_source_label(logs_dir, symbol, timeframe, "historical"),
         "chart_note": (
             f"Outcome shown through exit on the {timeframe} chart."
             if revealed
@@ -679,8 +1229,14 @@ def build_setup_readiness_data(logs_dir: Path, symbol: str = "SPY") -> dict:
         if scanner_status == "allowed" and signal_freshness == "current_candle":
             status_label = "Current Signal"
             status_tone = "healthy"
+        elif scanner_status == "allowed" and signal_freshness == "grace_candle":
+            status_label = "B Grace Review"
+            status_tone = "review_only"
         elif scanner_status == "blocked_watch_only" and signal_freshness == "current_candle":
             status_label = "Watch Only"
+            status_tone = "watch"
+        elif scanner_status == "blocked_watch_only" and signal_freshness == "grace_candle":
+            status_label = "B Grace Watch"
             status_tone = "watch"
         elif scanner_status == "allowed" and signal_freshness == "earlier_today":
             status_label = "Triggered Earlier"
@@ -727,7 +1283,7 @@ def build_setup_readiness_data(logs_dir: Path, symbol: str = "SPY") -> dict:
                 {
                     "time_et": pd.to_datetime(signal_time).strftime("%m/%d %H:%M"),
                     "setup": str(row["setup"]),
-                    "label": "A" if "Setup A" in str(row["setup"]) else "B",
+                    "label": chart_marker_label_for_setup(str(row["setup"]), str(row.get("variant", ""))),
                     "direction": str(row["direction"]),
                     "scanner_status": scanner_status,
                     "signal_freshness": signal_freshness,
@@ -789,6 +1345,9 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/open-paper-trades":
             self.serve_open_paper_trades()
             return
+        if parsed.path == "/api/paper-command-center":
+            self.serve_paper_command_center()
+            return
         if parsed.path == "/api/report":
             self.serve_report(parsed.query)
             return
@@ -817,6 +1376,21 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/actions/paper-session-confirm-exits":
             self.run_paper_session_action("confirm_exits")
             return
+        if parsed.path == "/api/actions/paper-command-center/chart-approval":
+            self.run_command_center_chart_approval()
+            return
+        if parsed.path == "/api/actions/paper-command-center/contract-approval":
+            self.run_command_center_contract_approval()
+            return
+        if parsed.path == "/api/actions/paper-command-center/auto-select-contract":
+            self.run_command_center_auto_select_contract()
+            return
+        if parsed.path == "/api/actions/paper-command-center/confirm-entry":
+            self.run_command_center_confirm_entry()
+            return
+        if parsed.path == "/api/actions/paper-command-center/confirm-exit":
+            self.run_command_center_confirm_exit()
+            return
         if parsed.path == "/api/actions/update-paper-trade":
             self.run_update_paper_trade_action()
             return
@@ -825,7 +1399,7 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
     def send_json(self, payload: dict, status: int = 200) -> None:
         """Write a JSON API response without browser caching."""
 
-        body = json.dumps(payload).encode("utf-8")
+        body = json.dumps(json_safe(payload), allow_nan=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
@@ -845,6 +1419,7 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
     def serve_system_state(self) -> None:
         """Return the current app-ready system state JSON."""
 
+        self.rebuild_lightweight_system_state()
         path = LOGS_DIR / "system_state.json"
         if not path.exists():
             self.send_error(404, "logs/system_state.json not found. Run python run_system_state.py first.")
@@ -856,6 +1431,30 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
             self.send_error(500, "logs/system_state.json is invalid. Run python run_system_state.py again.")
             return
         self.send_json(state)
+
+    def rebuild_lightweight_system_state(self) -> None:
+        """Refresh local status files before serving app state.
+
+        This keeps the dashboard timestamp current without fetching market data,
+        importing paper trades, placing orders, or creating broker alerts.
+        """
+
+        if not STATUS_ACTION_LOCK.acquire(blocking=False):
+            return
+        try:
+            for command in lightweight_state_commands():
+                subprocess.run(
+                    command,
+                    cwd=PROJECT_DIR,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+        except (OSError, subprocess.SubprocessError) as error:
+            print(f"Lightweight app-state refresh failed: {error}")
+        finally:
+            STATUS_ACTION_LOCK.release()
 
     def serve_trading_workspace(self, query: str) -> None:
         """Return read-only chart data derived from locally saved Webull bars."""
@@ -974,9 +1573,13 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
             trades = pd.DataFrame()
 
         trades, account = add_retro_account_simulation(trades, starting_equity, risk_per_trade_pct)
+        if not trades.empty:
+            trades = trades.copy()
+            trades["entry_sort_ms"] = trade_sort_millis(trades)
         columns = [
             "symbol",
             "entry_time",
+            "entry_sort_ms",
             "exit_time",
             "quality_grade",
             "quality_score",
@@ -1030,12 +1633,22 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": str(error)}, status=404)
             return
 
+        if not trades.empty:
+            trades = trades.copy()
+            trades["entry_sort_ms"] = trade_sort_millis(trades)
+
         columns = [
             "symbol",
             "entry_time",
+            "entry_sort_ms",
             "exit_time",
             "source_setup",
             "source_candidate",
+            "source_bucket",
+            "source_category",
+            "evidence_tier",
+            "source_display_label",
+            "source_strategy_id",
             "quality_grade",
             "quality_score",
             "entry",
@@ -1052,13 +1665,14 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
             "relative_volume",
             "research_risk_reason",
             "source_trade_log",
+            "source_disclaimer",
         ]
         available = [column for column in columns if column in trades.columns]
         payload = {
             "row_count": int(len(trades)),
             "account": account,
             "columns": available,
-            "rows": trades[available].head(500).fillna("").to_dict("records") if available else [],
+            "rows": trades[available].fillna("").to_dict("records") if available else [],
             "guardrail": "Promoted historical backtest simulation only. This is not the live paper log or broker execution.",
         }
         self.send_json(payload)
@@ -1075,6 +1689,223 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
                 "guardrail": "Local paper log only. This endpoint does not place broker orders.",
             }
         )
+
+    def serve_paper_command_center(self) -> None:
+        """Return the four-decision paper workflow state."""
+
+        try:
+            self.send_json(command_center_payload())
+        except (OSError, ValueError, pd.errors.EmptyDataError) as error:
+            self.send_json({"error": f"Paper Trade Command Center unavailable: {error}"}, status=500)
+
+    def run_command_center_chart_approval(self) -> None:
+        """Record the required operator chart-review decision."""
+
+        if not STATUS_ACTION_LOCK.acquire(blocking=False):
+            self.send_json({"error": "A command-center action is already running."}, status=409)
+            return
+        try:
+            payload = self.read_json_body()
+            sample = command_center_sample_by_key(str(payload.get("sample_key", "")))
+            decision = str(payload.get("decision", "approved")).strip().lower()
+            if decision not in {"approved", "rejected"}:
+                raise ValueError("decision must be approved or rejected")
+            approval = append_command_center_approval(sample, decision, str(payload.get("notes", "")).strip())
+            self.send_json(
+                {
+                    "action": "chart_approval",
+                    "message": f"Chart review recorded as {decision}. No gates or trading rules were changed.",
+                    "approval": approval,
+                    "command_center": command_center_payload(),
+                }
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            self.send_json({"error": f"Chart approval rejected: {error}"}, status=400)
+        finally:
+            STATUS_ACTION_LOCK.release()
+
+    def run_command_center_contract_approval(self) -> None:
+        """Write the selected contract row and rerun the existing Contract Gate."""
+
+        if not STATUS_ACTION_LOCK.acquire(blocking=False):
+            self.send_json({"error": "A command-center action is already running."}, status=409)
+            return
+        try:
+            payload = self.read_json_body()
+            sample = command_center_sample_by_key(str(payload.get("sample_key", "")))
+            append_contract_audit_row(sample, payload)
+            for command in [
+                [sys.executable, "run_options_contract_gate.py"],
+                [sys.executable, "run_paper_validation_sample_import.py"],
+                [sys.executable, "run_system_state.py"],
+            ]:
+                subprocess.run(command, cwd=PROJECT_DIR, check=True, capture_output=True, text=True, timeout=120)
+            row = command_center_contract_row(command_center_sample_key(sample))
+            self.send_json(
+                {
+                    "action": "contract_approval",
+                    "message": (
+                        "Contract details saved and checked by the existing Contract Gate. "
+                        f"Result: {row.get('contract_gate_status', 'missing')}."
+                    ),
+                    "contract": row,
+                    "command_center": command_center_payload(),
+                }
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError, subprocess.SubprocessError) as error:
+            self.send_json({"error": f"Contract approval rejected: {error}"}, status=400)
+        finally:
+            STATUS_ACTION_LOCK.release()
+
+    def run_command_center_auto_select_contract(self) -> None:
+        """Select an A-tier contract from local chain CSVs, then rerun existing gates."""
+
+        if not STATUS_ACTION_LOCK.acquire(blocking=False):
+            self.send_json({"error": "A command-center action is already running."}, status=409)
+            return
+        try:
+            payload = self.read_json_body()
+            sample = command_center_sample_by_key(str(payload.get("sample_key", "")))
+            sample_tier = str(sample.get("sample_tier", "")).strip().upper()
+            if sample_tier != "A":
+                raise ValueError("Automatic contract selection is limited to A-tier Paper Gate survivors.")
+            symbol = str(sample.get("symbol", "")).strip().upper()
+            for command in [
+                [
+                    sys.executable,
+                    "run_options_chain_review.py",
+                    "--output-dir",
+                    str(LOGS_DIR),
+                    "--symbol",
+                    symbol,
+                    "--tier",
+                    "A",
+                    "--write-audit",
+                ],
+                [sys.executable, "run_options_contract_gate.py"],
+                [sys.executable, "run_paper_validation_sample_import.py"],
+                [sys.executable, "run_system_state.py"],
+            ]:
+                subprocess.run(command, cwd=PROJECT_DIR, check=True, capture_output=True, text=True, timeout=120)
+            chain_review_path = LOGS_DIR / "options_chain_review.json"
+            chain_review = json.loads(chain_review_path.read_text(encoding="utf-8")) if chain_review_path.exists() else {}
+            if int(chain_review.get("selected_contract_count", 0) or 0) < 1:
+                status = chain_review.get("status", "missing_chain")
+                raise ValueError(
+                    f"No eligible A-tier contract was selected ({status}). "
+                    f"Add a local option-chain CSV at data/options_chains/{symbol}.csv."
+                )
+            row = command_center_contract_row(command_center_sample_key(sample))
+            if not row:
+                raise ValueError(
+                    f"No eligible contract was selected. Add a local option-chain CSV at data/options_chains/{symbol}.csv."
+                )
+            self.send_json(
+                {
+                    "action": "auto_select_contract",
+                    "message": (
+                        "Auto-selected the best A-tier contract that passed the existing Contract Gate. "
+                        f"Result: {row.get('contract_gate_status', 'missing')}. No broker order was placed."
+                    ),
+                    "contract": row,
+                    "command_center": command_center_payload(),
+                }
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError, subprocess.SubprocessError) as error:
+            self.send_json({"error": f"Automatic contract selection rejected: {error}"}, status=400)
+        finally:
+            STATUS_ACTION_LOCK.release()
+
+    def run_command_center_confirm_entry(self) -> None:
+        """Confirm one Contract Gate-passed candidate as an official local paper trade."""
+
+        if not STATUS_ACTION_LOCK.acquire(blocking=False):
+            self.send_json({"error": "A command-center action is already running."}, status=409)
+            return
+        try:
+            payload = self.read_json_body()
+            sample_key = str(payload.get("sample_key", ""))
+            sample = command_center_sample_by_key(sample_key)
+            approval = latest_command_center_approval(sample_key)
+            if approval.get("decision") != "approved":
+                raise ValueError("Chart approval is required before confirming an official paper trade.")
+            contract = command_center_contract_row(sample_key)
+            if not bool(contract.get("contract_gate_pass", False)):
+                raise ValueError(contract.get("contract_gate_reason") or "Contract Gate has not passed for this sample.")
+
+            build_validation_sample_import(
+                output_dir=LOGS_DIR,
+                samples_csv=PROJECT_DIR / "data" / "paper_validation_samples.csv",
+                contract_audit_csv=CONTRACT_AUDIT_CSV,
+                confirm_samples=True,
+            )
+            order = paper_order_from_contract_sample(sample, contract)
+            existing_orders = read_orders(PAPER_ORDERS_CSV)
+            new_orders = filter_new_orders(existing_orders, order)
+            PAPER_ORDERS_CSV.parent.mkdir(parents=True, exist_ok=True)
+            pd.concat([existing_orders, new_orders], ignore_index=True).to_csv(PAPER_ORDERS_CSV, index=False)
+            open_trades = orders_to_open_paper_trades(new_orders)
+            written_trades = write_open_paper_trades(PAPER_CSV, open_trades)
+
+            for command in [
+                [sys.executable, "run_paper_review.py"],
+                [sys.executable, "run_open_paper_monitor.py"],
+                [sys.executable, "run_daily_ship_report.py"],
+                [sys.executable, "run_system_state.py"],
+            ]:
+                subprocess.run(command, cwd=PROJECT_DIR, check=True, capture_output=True, text=True, timeout=120)
+            state = json.loads((LOGS_DIR / "system_state.json").read_text(encoding="utf-8"))
+            self.send_json(
+                {
+                    "action": "confirm_official_paper_trade",
+                    "message": (
+                        f"Official local paper trade confirmed. Orders written: {len(new_orders)}; "
+                        f"open paper trades written: {len(written_trades)}. No broker orders were placed."
+                    ),
+                    "state": state,
+                    "command_center": command_center_payload(),
+                }
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError, subprocess.SubprocessError) as error:
+            self.send_json({"error": f"Official paper entry rejected: {error}"}, status=400)
+        finally:
+            STATUS_ACTION_LOCK.release()
+
+    def run_command_center_confirm_exit(self) -> None:
+        """Confirm exit-ready local paper rows using the existing exit monitor."""
+
+        if not STATUS_ACTION_LOCK.acquire(blocking=False):
+            self.send_json({"error": "A command-center action is already running."}, status=409)
+            return
+        try:
+            subprocess.run(
+                [sys.executable, "run_open_paper_monitor.py", "--confirm-updates"],
+                cwd=PROJECT_DIR,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            for command in [
+                [sys.executable, "run_exit_audit.py"],
+                [sys.executable, "run_paper_review.py"],
+                [sys.executable, "run_daily_ship_report.py"],
+                [sys.executable, "run_system_state.py"],
+            ]:
+                subprocess.run(command, cwd=PROJECT_DIR, check=True, capture_output=True, text=True, timeout=120)
+            state = json.loads((LOGS_DIR / "system_state.json").read_text(encoding="utf-8"))
+            self.send_json(
+                {
+                    "action": "confirm_paper_exit",
+                    "message": "Exit confirmation completed through the existing open-paper monitor. No broker orders were placed.",
+                    "state": state,
+                    "command_center": command_center_payload(),
+                }
+            )
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as error:
+            self.send_json({"error": f"Exit confirmation failed: {error}"}, status=500)
+        finally:
+            STATUS_ACTION_LOCK.release()
 
     def run_update_paper_trade_action(self) -> None:
         """Update one local paper row from the dashboard logger."""
@@ -1108,11 +1939,7 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
             PAPER_CSV.parent.mkdir(parents=True, exist_ok=True)
             updated.to_csv(PAPER_CSV, index=False)
 
-            for command in [
-                [sys.executable, "run_paper_review.py"],
-                [sys.executable, "run_refresh_status.py"],
-                [sys.executable, "run_system_state.py"],
-            ]:
+            for command in [[sys.executable, "run_paper_review.py"], *lightweight_state_commands()]:
                 subprocess.run(
                     command,
                     cwd=PROJECT_DIR,
@@ -1153,11 +1980,7 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
             return
 
         try:
-            commands = [
-                [sys.executable, "run_refresh_status.py"],
-                [sys.executable, "run_system_state.py"],
-            ]
-            for command in commands:
+            for command in lightweight_state_commands():
                 subprocess.run(
                     command,
                     cwd=PROJECT_DIR,
@@ -1185,15 +2008,15 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
             STATUS_ACTION_LOCK.release()
 
     def run_refresh_webull_data_action(self) -> None:
-        """Refresh Webull market-data CSVs and rebuild reports; never trade."""
+        """Refresh market-data CSVs and rebuild reports; never trade."""
 
         if not STATUS_ACTION_LOCK.acquire(blocking=False):
-            self.send_json({"error": "A Webull data refresh is already running."}, status=409)
+            self.send_json({"error": "A market-data refresh is already running."}, status=409)
             return
 
         try:
-            subprocess.run(
-                [workflow_python(), "run_daily_workflow.py", "--refresh-data"],
+            result = subprocess.run(
+                [workflow_python(), "run_current_candle_capture.py"],
                 cwd=PROJECT_DIR,
                 check=True,
                 capture_output=True,
@@ -1203,18 +2026,29 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
             state = json.loads((LOGS_DIR / "system_state.json").read_text(encoding="utf-8"))
             self.send_json(
                 {
-                    "action": "refresh_webull_data",
+                    "action": "refresh_market_data",
                     "message": (
                         "Webull market-data refresh completed. Reports were rebuilt, paper import stayed manual, "
                         "and no broker orders or real trades were placed."
                     ),
+                    "output_tail": (result.stdout or "")[-2000:],
                     "state": state,
                 }
             )
-        except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as error:
-            print(f"Webull data refresh action failed: {error}")
+        except subprocess.CalledProcessError as error:
+            detail = "\n".join(part for part in [error.stdout, error.stderr] if part).strip()
+            print(f"Market-data refresh action failed: {detail or error}")
             self.send_json(
-                {"error": "Webull data refresh failed. Review terminal output or logs, then retry."},
+                {
+                    "error": "Webull market-data refresh failed.",
+                    "detail": (detail or str(error))[-3000:],
+                },
+                status=500,
+            )
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as error:
+            print(f"Market-data refresh action failed: {error}")
+            self.send_json(
+                {"error": "Webull market-data refresh failed.", "detail": str(error)},
                 status=500,
             )
         finally:
@@ -1333,6 +2167,21 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
         print(f"{self.address_string()} - {format % args}")
 
 
+class LocalDashboardHTTPServer(ThreadingHTTPServer):
+    """Bind the local dashboard without reverse-DNS lookup.
+
+    Python's default HTTPServer asks macOS for a fully-qualified host name
+    during startup. On this machine that lookup can hang for 127.0.0.1, which
+    prevents the LaunchAgent from reaching the listen step.
+    """
+
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = int(port)
+
+
 def main() -> None:
     args = parse_args()
     if not APP_DIR.exists():
@@ -1343,7 +2192,7 @@ def main() -> None:
         directory=str(APP_DIR),
         **handler_kwargs,
     )
-    server = ThreadingHTTPServer((args.host, args.port), handler)
+    server = LocalDashboardHTTPServer((args.host, args.port), handler)
     print(f"Project Gwala app: http://{args.host}:{args.port}")
     print("Press Ctrl+C to stop.")
     try:

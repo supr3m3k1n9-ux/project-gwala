@@ -1,4 +1,4 @@
-"""Append one audit entry per symbol after a requested Webull data refresh.
+"""Append one audit entry per symbol after a requested market-data refresh.
 
 This command records local-file evidence after a refresh workflow completes.
 It is data audit only and never fetches data, imports paper trades, or places
@@ -14,12 +14,15 @@ from pathlib import Path
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from data.candle_cache import preferred_candle_path
+from data.market_data_sources import append_sources, source_row
 from run_data_integrity import inspect_file
 from run_playbook import markdown_table
 
 
 AUDIT_COLUMNS = [
     "refresh_run_at_et",
+    "provider",
     "symbol",
     "m30_status",
     "m30_latest_session",
@@ -35,6 +38,7 @@ AUDIT_COLUMNS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Record the outcome evidence of a requested market-data refresh.")
     parser.add_argument("--symbols", nargs="+", default=[], help="Symbols requested by the refresh workflow.")
+    parser.add_argument("--provider", default="webull", help="Market-data provider used by the refresh workflow.")
     parser.add_argument("--record", action="store_true", help="Append a new audit event for the provided symbols.")
     parser.add_argument("--data-dir", type=Path, default=Path("logs"), help="Where refreshed candle CSVs live.")
     parser.add_argument("--audit-csv", type=Path, default=Path("data/market_refresh_audit.csv"))
@@ -47,17 +51,21 @@ def read_existing(path: Path) -> pd.DataFrame:
 
     if not path.exists():
         return pd.DataFrame(columns=AUDIT_COLUMNS)
-    return pd.read_csv(path)
+    frame = pd.read_csv(path)
+    for column in AUDIT_COLUMNS:
+        if column not in frame.columns:
+            frame[column] = "webull" if column == "provider" else ""
+    return frame[AUDIT_COLUMNS]
 
 
-def audit_rows(symbols: list[str], data_dir: Path, run_at: str | None = None) -> pd.DataFrame:
+def audit_rows(symbols: list[str], data_dir: Path, provider: str = "webull", run_at: str | None = None) -> pd.DataFrame:
     """Build audit evidence rows for one completed refresh request."""
 
     run_at = run_at or datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
     rows = []
     for symbol in [value.upper() for value in symbols]:
-        m30 = inspect_file(symbol, "M30", data_dir / f"webull_{symbol}_M30_candles.csv")
-        m5 = inspect_file(symbol, "M5", data_dir / f"webull_{symbol}_M5_candles.csv")
+        m30 = inspect_file(symbol, "M30", preferred_candle_path(data_dir, symbol, "M30"))
+        m5 = inspect_file(symbol, "M5", preferred_candle_path(data_dir, symbol, "M5"))
         if m30["status"] not in {"ok", "warning"} or m5["status"] not in {"ok", "warning"}:
             evidence_status = "failed_or_missing_file"
         elif m30["latest_session"] != m5["latest_session"]:
@@ -73,6 +81,7 @@ def audit_rows(symbols: list[str], data_dir: Path, run_at: str | None = None) ->
         rows.append(
             {
                 "refresh_run_at_et": run_at,
+                "provider": provider,
                 "symbol": symbol,
                 "m30_status": m30["status"],
                 "m30_latest_session": m30["latest_session"],
@@ -87,6 +96,71 @@ def audit_rows(symbols: list[str], data_dir: Path, run_at: str | None = None) ->
     return pd.DataFrame(rows, columns=AUDIT_COLUMNS)
 
 
+def source_metadata_rows(
+    symbols: list[str],
+    data_dir: Path,
+    provider: str = "webull",
+    run_at: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Build provider metadata rows from the refreshed M5/M30 candle files."""
+
+    refreshed_at = run_at or datetime.now(MARKET_TZ)
+    rows: list[dict[str, object]] = []
+    for symbol in [value.upper() for value in symbols]:
+        for timeframe in ["M30", "M5"]:
+            candle_path = preferred_candle_path(data_dir, symbol, timeframe)
+            if not candle_path.exists():
+                rows.append(
+                    source_row(
+                        provider=provider,
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        candle_path=candle_path,
+                        candles=None,
+                        start_date="",
+                        end_date="",
+                        status="missing",
+                        message="Candle file was not found during refresh audit.",
+                        refreshed_at=refreshed_at,
+                    )
+                )
+                continue
+            try:
+                candles = pd.read_csv(candle_path)
+            except pd.errors.EmptyDataError:
+                candles = pd.DataFrame()
+            start_date = ""
+            end_date = ""
+            status = "ok"
+            message = ""
+            if candles.empty or "datetime" not in candles.columns:
+                status = "empty"
+                message = "Candle file did not contain usable rows during refresh audit."
+            else:
+                dates = pd.to_datetime(candles["datetime"], utc=True, errors="coerce").dropna()
+                if dates.empty:
+                    status = "invalid_datetime"
+                    message = "Candle timestamps could not be parsed during refresh audit."
+                else:
+                    start_date = str(dates.iloc[0].tz_convert(MARKET_TZ).date())
+                    end_date = str(dates.iloc[-1].tz_convert(MARKET_TZ).date())
+            rows.append(
+                source_row(
+                    provider=provider,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    candle_path=candle_path,
+                    candles=candles if status == "ok" else None,
+                    start_date=start_date,
+                    end_date=end_date,
+                    status=status,
+                    message=message,
+                    refreshed_at=refreshed_at,
+                )
+            )
+    return rows
+
+
 def write_report(path: Path, audit: pd.DataFrame) -> None:
     """Write refresh audit report."""
 
@@ -96,7 +170,7 @@ def write_report(path: Path, audit: pd.DataFrame) -> None:
         f"""# Market Data Refresh Audit
 
 This append-only audit records local candle-file evidence after deliberate
-Webull refresh workflow runs.
+market-data refresh workflow runs.
 
 Important: this report does not fetch data, create signals, import paper
 trades, or connect to broker execution.
@@ -126,11 +200,14 @@ def main() -> None:
     existing = read_existing(args.audit_csv)
     if args.record and not args.symbols:
         raise ValueError("Use --symbols when recording a refresh audit event.")
-    new_rows = audit_rows(args.symbols, args.data_dir) if args.record else pd.DataFrame(columns=AUDIT_COLUMNS)
+    new_rows = audit_rows(args.symbols, args.data_dir, provider=args.provider) if args.record else pd.DataFrame(columns=AUDIT_COLUMNS)
     combined = pd.concat([existing, new_rows], ignore_index=True)
     if args.record or not args.audit_csv.exists():
         args.audit_csv.parent.mkdir(parents=True, exist_ok=True)
         combined.to_csv(args.audit_csv, index=False)
+    if args.record:
+        source_rows = source_metadata_rows(args.symbols, args.data_dir, provider=args.provider)
+        append_sources(args.output_dir / "market_data_sources.csv", source_rows)
     report_path = args.output_dir / "market_refresh_audit.md"
     write_report(report_path, combined)
     print(f"Refresh audit rows appended: {len(new_rows)}")

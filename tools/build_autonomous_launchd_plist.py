@@ -14,8 +14,10 @@ from __future__ import annotations
 import plistlib
 from pathlib import Path
 
+from config.runtime_paths import project_log_dir, project_python, project_root
 
-PROJECT_DIR = Path("/Users/roy/Documents/New project")
+PROJECT_DIR = project_root()
+LAUNCHD_LOG_DIR = project_log_dir()
 LABEL = "com.project-gwala.autonomous-paper"
 OUTPUT_PATH = PROJECT_DIR / "launchd" / f"{LABEL}.plist"
 
@@ -45,7 +47,7 @@ def build_plist() -> dict:
     return {
         "Label": LABEL,
         "ProgramArguments": [
-            str(PROJECT_DIR / ".venv-webull" / "bin" / "python"),
+            str(project_python()),
             str(PROJECT_DIR / "run_autonomous_paper_workflow.py"),
             "--interval-minutes",
             "5",
@@ -54,8 +56,8 @@ def build_plist() -> dict:
         ],
         "WorkingDirectory": str(PROJECT_DIR),
         "StartCalendarInterval": calendar_entries(),
-        "StandardOutPath": str(PROJECT_DIR / "logs" / "autonomous_paper_workflow.launchd.out.log"),
-        "StandardErrorPath": str(PROJECT_DIR / "logs" / "autonomous_paper_workflow.launchd.err.log"),
+        "StandardOutPath": str(LAUNCHD_LOG_DIR / "autonomous_paper_workflow.launchd.out.log"),
+        "StandardErrorPath": str(LAUNCHD_LOG_DIR / "autonomous_paper_workflow.launchd.err.log"),
         "EnvironmentVariables": {"PYTHONUNBUFFERED": "1"},
     }
 
