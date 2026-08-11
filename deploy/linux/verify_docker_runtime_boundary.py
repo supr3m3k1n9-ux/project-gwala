@@ -102,6 +102,15 @@ def normalized(path: Path) -> Path:
     return path.expanduser().resolve()
 
 
+def resolve_compose_path(value: str, stack_dir: Path) -> Path:
+    """Resolve a rendered Compose path relative to STACK_DIR when needed."""
+
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+    return (stack_dir / path).resolve()
+
+
 def volume_source_and_target(volume: object) -> tuple[str, str]:
     if isinstance(volume, dict):
         return str(volume.get("source", "")), str(volume.get("target", ""))
@@ -131,7 +140,7 @@ def validate_deployment_roots(payload: dict[str, Any], app_dir: Path, stack_dir:
     env_files = service.get("env_file") or []
     env_text = [str(item.get("path", item)) if isinstance(item, dict) else str(item) for item in env_files]
     expected_env = stack / "config" / "gwala.env"
-    if not any(normalized(Path(value)) == expected_env for value in env_text):
+    if not any(resolve_compose_path(value, stack) == expected_env for value in env_text):
         errors.append(f"Compose env_file must use STACK_DIR config/gwala.env ({expected_env}).")
 
     expected_sources = {
@@ -146,7 +155,7 @@ def validate_deployment_roots(payload: dict[str, Any], app_dir: Path, stack_dir:
         if not matching:
             errors.append(f"Compose must bind {expected_source} to {target}.")
             continue
-        if normalized(Path(matching[0])) != normalized(expected_source):
+        if resolve_compose_path(matching[0], stack) != normalized(expected_source):
             errors.append(f"Compose {target} source must be {expected_source}, not {matching[0]}.")
     return errors
 

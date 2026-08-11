@@ -135,6 +135,7 @@ class RuntimePathTests(unittest.TestCase):
         text = (Path(__file__).resolve().parents[1] / "compose.yaml").read_text(encoding="utf-8")
 
         self.assertIn("${GWALA_APP_DIR:-.}", text)
+        self.assertIn("${GWALA_STACK_DIR:-.}/config/gwala.env", text)
         self.assertIn("${GWALA_STACK_DIR:-.}/data:/app/runtime_data", text)
         self.assertNotIn(":/app/data", text)
         self.assertNotIn(":/app/config", text)
@@ -200,6 +201,27 @@ class RuntimePathTests(unittest.TestCase):
                         {"source": "/srv/projects/gwala/logs", "target": "/app/logs"},
                         {"source": "/srv/projects/gwala/backups", "target": "/app/backups"},
                         {"source": "/srv/projects/gwala/config/webull_tokens", "target": "/app/.webull_tokens"},
+                    ],
+                }
+            }
+        }
+
+        errors = validate_deployment_roots(payload, Path("/srv/projects/gwala/app"), Path("/srv/projects/gwala"))
+
+        self.assertEqual(errors, [])
+
+    def test_deploy_verifier_resolves_relative_env_file_against_stack_root(self) -> None:
+        payload = {
+            "services": {
+                "gwala": {
+                    "build": {"context": "/srv/projects/gwala/app", "dockerfile": "Dockerfile"},
+                    "env_file": ["config/gwala.env"],
+                    "environment": {"GWALA_DATA_DIR": "/app/runtime_data"},
+                    "volumes": [
+                        {"source": "data", "target": "/app/runtime_data"},
+                        {"source": "logs", "target": "/app/logs"},
+                        {"source": "backups", "target": "/app/backups"},
+                        {"source": "config/webull_tokens", "target": "/app/.webull_tokens"},
                     ],
                 }
             }
