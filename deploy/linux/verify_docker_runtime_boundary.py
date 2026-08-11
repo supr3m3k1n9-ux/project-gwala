@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -219,6 +220,16 @@ def source_checksum(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def extract_sha256_line(text: str) -> str:
+    """Extract the checksum printed by the container probe."""
+
+    for line in reversed(text.splitlines()):
+        candidate = line.strip().split()[0] if line.strip() else ""
+        if re.fullmatch(r"[0-9a-f]{64}", candidate):
+            return candidate
+    return ""
+
+
 def runtime_source_check(compose_file: Path, app_dir: Path, stack_dir: Path) -> None:
     expected = source_checksum(app_dir / SOURCE_PROBE)
     code, text = run_command(
@@ -248,9 +259,14 @@ def runtime_source_check(compose_file: Path, app_dir: Path, stack_dir: Path) -> 
         if permission:
             raise RuntimeError(permission)
         raise RuntimeError(f"Compose runtime source import/checksum failed: {text[-800:]}")
-    actual = text.splitlines()[-1].strip()
+    actual = extract_sha256_line(text)
+    if not actual:
+        raise RuntimeError(f"Compose runtime source checksum probe did not return a SHA256 checksum. Output: {text[-800:]}")
     if actual != expected:
-        raise RuntimeError("Compose runtime source checksum does not match Git checkout; source may be shadowed.")
+        raise RuntimeError(
+            "Compose runtime source checksum does not match Git checkout; source may be shadowed. "
+            f"expected={expected} actual={actual} probe_output={text[-800:]}"
+        )
 
 
 def main() -> None:

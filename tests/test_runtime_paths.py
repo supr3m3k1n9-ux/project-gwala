@@ -11,6 +11,7 @@ from unittest.mock import patch
 from config import runtime_paths
 from deploy.linux.verify_docker_runtime_boundary import (
     docker_permission_message,
+    extract_sha256_line,
     load_compose_config,
     validate_compose_boundary,
     validate_compose_template_env_file,
@@ -312,6 +313,12 @@ class RuntimePathTests(unittest.TestCase):
 
         self.assertIsNotNone(message)
         self.assertIn("sudo", message or "")
+
+    def test_checksum_probe_extracts_hash_from_noisy_compose_output(self) -> None:
+        checksum = "a" * 64
+        text = f"Container gwala Creating\n{checksum} /app/data/webull_data.py\nContainer gwala Removing"
+
+        self.assertEqual(extract_sha256_line(text), checksum)
 
     def test_vps_readiness_docker_permission_denial_is_actionable(self) -> None:
         with patch(
