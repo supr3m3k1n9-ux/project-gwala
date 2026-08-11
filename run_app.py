@@ -27,6 +27,7 @@ import pandas as pd
 
 from config.settings import STRATEGY
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_root
 from config.investment_narratives import INVESTMENT_NARRATIVES
 from config.symbol_playbook import playbook_symbols, setup_labels_for_symbol
 from config.strategy_registry import chart_marker_label_for_setup, strategy_vault_trade_logs
@@ -61,9 +62,10 @@ from run_update_paper_trade import update_trade as update_paper_trade
 PROJECT_DIR = Path(__file__).resolve().parent
 APP_DIR = PROJECT_DIR / "app"
 LOGS_DIR = PROJECT_DIR / "logs"
-PAPER_CSV = PROJECT_DIR / "data" / "paper_trades.csv"
-PAPER_ORDERS_CSV = PROJECT_DIR / "data" / "paper_orders.csv"
-COMMAND_CENTER_APPROVALS_CSV = PROJECT_DIR / "data" / "paper_command_center_approvals.csv"
+RUNTIME_DATA_DIR = runtime_data_root()
+PAPER_CSV = RUNTIME_DATA_DIR / "paper_trades.csv"
+PAPER_ORDERS_CSV = RUNTIME_DATA_DIR / "paper_orders.csv"
+COMMAND_CENTER_APPROVALS_CSV = RUNTIME_DATA_DIR / "paper_command_center_approvals.csv"
 STATUS_ACTION_LOCK = threading.Lock()
 LIGHTWEIGHT_STATE_COMMANDS = [
     [sys.executable, "run_refresh_status.py"],
@@ -298,7 +300,7 @@ def command_center_ready_samples() -> list[dict]:
     payload = build_paper_gate_payload(
         output_dir=LOGS_DIR,
         scanner_csv=LOGS_DIR / "daily_paper_signal_scanner.csv",
-        samples_csv=PROJECT_DIR / "data" / "paper_validation_samples.csv",
+        samples_csv=RUNTIME_DATA_DIR / "paper_validation_samples.csv",
     )
     samples = payload.get("ready_samples", [])
     return samples if isinstance(samples, list) else []
@@ -327,7 +329,7 @@ def command_center_option_chain_state(sample: dict) -> dict:
     """Return the expected local option-chain CSV state for one sample."""
 
     symbol = str(sample.get("symbol", "")).strip().upper()
-    path = PROJECT_DIR / "data" / "options_chains" / f"{symbol}.csv"
+    path = RUNTIME_DATA_DIR / "options_chains" / f"{symbol}.csv"
     exists = path.exists() and path.stat().st_size > 0
     return {
         "symbol": symbol,
@@ -1515,7 +1517,7 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": "Run the local daily scanner to populate near-miss analytics."}, status=404)
             return
         scanner = pd.read_csv(scanner_path)
-        observations = read_observations(PROJECT_DIR / "data" / "near_miss_observations.csv")
+        observations = read_observations(RUNTIME_DATA_DIR / "near_miss_observations.csv")
         results_path = LOGS_DIR / "forward_observation_results.csv"
         results = pd.read_csv(results_path) if results_path.exists() else pd.DataFrame()
         self.send_json(build_near_miss_payload(scanner, observations, results))
@@ -1835,7 +1837,7 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
 
             build_validation_sample_import(
                 output_dir=LOGS_DIR,
-                samples_csv=PROJECT_DIR / "data" / "paper_validation_samples.csv",
+                samples_csv=RUNTIME_DATA_DIR / "paper_validation_samples.csv",
                 contract_audit_csv=CONTRACT_AUDIT_CSV,
                 confirm_samples=True,
             )

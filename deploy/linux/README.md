@@ -12,6 +12,9 @@ shadow mode. It does not replace or disable the current macOS LaunchAgents.
 - Dashboard: Python `http.server` through `run_app.py`
 - Trading posture: local paper-validation shadow mode only
 - Host systemd health artifact: `/opt/project-gwala/logs/host_systemd_health.json`
+- Runtime data: host evidence remains under `/srv/projects/gwala/data`; inside
+  Docker it is mounted at `/app/runtime_data` so `/app/data` remains the Python
+  source package.
 - Docker security: root `compose.yaml` runs the Gwala service as UID/GID
   `1000:1000` with `security_opt: no-new-privileges:true`.
 
@@ -70,9 +73,9 @@ sudo systemctl enable --now project-gwala-eod-executive-report.timer
 cd /opt/project-gwala
 .venv-webull/bin/python run_app.py --host 127.0.0.1 --port 8765
 .venv-webull/bin/python run_autonomous_paper_workflow.py --interval-minutes 5 --auto-confirm-paper-exits --once
-.venv-webull/bin/python run_production_alert.py --output-dir logs --data-dir data --interval-minutes 5 --cooldown-minutes 30 --recheck-seconds 25 --outage-threshold-minutes 5 --down-confirmation-failures 2
-.venv-webull/bin/python run_executive_report.py --report-type opening --output-dir logs --data-dir data --reports-dir logs/executive_reports --deliver
-.venv-webull/bin/python run_executive_report.py --report-type eod --output-dir logs --data-dir data --reports-dir logs/executive_reports --deliver
+.venv-webull/bin/python run_production_alert.py --output-dir logs --data-dir "${GWALA_DATA_DIR:-data}" --interval-minutes 5 --cooldown-minutes 30 --recheck-seconds 25 --outage-threshold-minutes 5 --down-confirmation-failures 2
+.venv-webull/bin/python run_executive_report.py --report-type opening --output-dir logs --data-dir "${GWALA_DATA_DIR:-data}" --reports-dir logs/executive_reports --deliver
+.venv-webull/bin/python run_executive_report.py --report-type eod --output-dir logs --data-dir "${GWALA_DATA_DIR:-data}" --reports-dir logs/executive_reports --deliver
 ```
 
 ## Docker Host Systemd Health
@@ -86,7 +89,7 @@ wrapper should refresh the host health artifact:
 ```bash
 cd /srv/projects/gwala
 python3 deploy/linux/write_host_systemd_health.py --output logs/host_systemd_health.json
-/srv/projects/gwala/run_in_docker.sh .venv-webull/bin/python run_production_alert.py --output-dir logs --data-dir data --interval-minutes 5 --cooldown-minutes 30 --recheck-seconds 25 --outage-threshold-minutes 5 --down-confirmation-failures 2
+/srv/projects/gwala/run_in_docker.sh python run_production_alert.py --output-dir logs --data-dir /app/runtime_data --interval-minutes 5 --cooldown-minutes 30 --recheck-seconds 25 --outage-threshold-minutes 5 --down-confirmation-failures 2
 ```
 
 Inside Docker, `run_production_heartbeat.py` reads

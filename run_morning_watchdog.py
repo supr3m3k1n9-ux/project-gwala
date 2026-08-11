@@ -16,13 +16,14 @@ from typing import Any
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ, market_session_for_date
+from config.runtime_paths import runtime_data_root
 from config.settings import STRATEGY
 from run_autonomous_paper_workflow import parse_clock
 from run_playbook import markdown_table
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-DATA_DIR = PROJECT_DIR / "data"
+DATA_DIR = runtime_data_root()
 
 
 def parse_args() -> argparse.Namespace:

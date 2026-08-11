@@ -7,6 +7,6 @@ Wants=network-online.target
 Type=oneshot
 EnvironmentFile=/etc/project-gwala/gwala.env
 WorkingDirectory=/opt/project-gwala
-ExecStart=/bin/bash -lc 'cd "$GWALA_PROJECT_ROOT" && exec "$GWALA_PYTHON" run_executive_report.py --report-type opening --output-dir logs --data-dir data --reports-dir logs/executive_reports --deliver'
+ExecStart=/bin/bash -lc 'cd "$GWALA_PROJECT_ROOT" && exec "$GWALA_PYTHON" run_executive_report.py --report-type opening --output-dir logs --data-dir "${GWALA_DATA_DIR:-data}" --reports-dir logs/executive_reports --deliver'
 NoNewPrivileges=true
 PrivateTmp=true

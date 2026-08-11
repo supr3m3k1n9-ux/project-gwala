@@ -23,6 +23,7 @@ from typing import Any, Callable, Iterable
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_root
 from config.settings import STRATEGY
 from indicators.session import add_session_columns, parse_clock
 from notification_format import executive_report_notification
@@ -66,7 +67,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate Project Gwala executive reports.")
     parser.add_argument("--report-type", choices=["opening", "eod"], required=True)
     parser.add_argument("--output-dir", type=Path, default=Path("logs"))
-    parser.add_argument("--data-dir", type=Path, default=Path("data"))
+    parser.add_argument("--data-dir", type=Path, default=runtime_data_root())
     parser.add_argument("--reports-dir", type=Path, default=REPORTS_DIR)
     parser.add_argument("--trading-date", default="", help="YYYY-MM-DD. Defaults to today's market date.")
     parser.add_argument("--deliver", action="store_true", help="Send the report through the configured local delivery path.")

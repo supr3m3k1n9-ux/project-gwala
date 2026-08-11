@@ -93,9 +93,10 @@ def check_safety_env() -> tuple[str, bool, str]:
 
 
 def check_directories() -> tuple[str, bool, str]:
+    data_root = Path(os.environ.get("GWALA_DATA_DIR", str(PROJECT_ROOT / "data")))
     project_missing = not PROJECT_ROOT.exists()
     project_unreadable = PROJECT_ROOT.exists() and not os.access(PROJECT_ROOT, os.R_OK | os.X_OK)
-    writable_paths = [PROJECT_ROOT / "logs", PROJECT_ROOT / "data"]
+    writable_paths = [PROJECT_ROOT / "logs", data_root]
     missing = [str(path) for path in writable_paths if not path.exists()]
     unwritable = [str(path) for path in writable_paths if path.exists() and not os.access(path, os.W_OK)]
     ok = not project_missing and not project_unreadable and not missing and not unwritable

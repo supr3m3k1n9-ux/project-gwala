@@ -7,6 +7,6 @@ Wants=network-online.target
 Type=oneshot
 EnvironmentFile=/etc/project-gwala/gwala.env
 WorkingDirectory=/opt/project-gwala
-ExecStart=/bin/bash -lc 'cd "$GWALA_PROJECT_ROOT" && exec "$GWALA_PYTHON" run_production_alert.py --output-dir logs --data-dir data --interval-minutes 5 --cooldown-minutes 30 --recheck-seconds 25 --outage-threshold-minutes 5 --down-confirmation-failures 2'
+ExecStart=/bin/bash -lc 'cd "$GWALA_PROJECT_ROOT" && exec "$GWALA_PYTHON" run_production_alert.py --output-dir logs --data-dir "${GWALA_DATA_DIR:-data}" --interval-minutes 5 --cooldown-minutes 30 --recheck-seconds 25 --outage-threshold-minutes 5 --down-confirmation-failures 2'
 NoNewPrivileges=true
 PrivateTmp=true

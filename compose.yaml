@@ -2,7 +2,10 @@ name: gwala
 
 services:
   gwala:
-    image: project-gwala:latest
+    image: project-gwala:shadow
+    build:
+      context: .
+      dockerfile: Dockerfile
     user: "1000:1000"
     working_dir: /app
     env_file:
@@ -14,6 +17,8 @@ services:
       GWALA_LIVE_TRADING_ENABLED: "false"
       GWALA_BROKER_ORDER_EXECUTION_ENABLED: "false"
       GWALA_REAL_MONEY_READY: "false"
+      GWALA_PROJECT_ROOT: /app
+      GWALA_DATA_DIR: /app/runtime_data
       GWALA_DASHBOARD_HOST: 127.0.0.1
       GWALA_DASHBOARD_PORT: "8765"
       GWALA_HOST_SYSTEMD_HEALTH_JSON: /app/logs/host_systemd_health.json
@@ -22,7 +27,7 @@ services:
     ports:
       - "127.0.0.1:8765:8765"
     volumes:
-      - ./data:/app/data
+      - ./data:/app/runtime_data
       - ./logs:/app/logs
       - ./config:/app/config
       - ./backups:/app/backups

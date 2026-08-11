@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_root
+
 from config.market_calendar import MARKET_TZ
 from config.symbol_playbook import playbook_symbols
 from run_playbook import markdown_table
@@ -279,7 +281,7 @@ def write_summary(output_dir: Path, refreshed: bool, appended: bool) -> Path:
     scanner = read_csv_or_empty(output_dir / "daily_paper_signal_scanner.csv")
     sizing = read_csv_or_empty(output_dir / "position_sizing.csv")
     paper_review = read_csv_or_empty(output_dir / "paper_review_clean_trades.csv")
-    observations = read_csv_or_empty(Path("data") / "forward_signal_observations.csv")
+    observations = read_csv_or_empty(runtime_data_root() / "forward_signal_observations.csv")
 
     if scanner.empty:
         scanner_counts = pd.DataFrame()

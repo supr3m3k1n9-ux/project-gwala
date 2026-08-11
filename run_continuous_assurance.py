@@ -26,6 +26,7 @@ from typing import Any
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_root
 from config.runtime_paths import project_root
 from run_data_flow_sentinel import build_data_flow_sentinel
 from run_dashboard_data_preflight import build_checks as build_dashboard_preflight
@@ -568,7 +569,7 @@ def build_runtime_smoke(args: argparse.Namespace) -> dict[str, Any]:
     checks = [
         check_docker_runtime(host_docker_health_path=args.host_docker_health_json, moment=current_time),
         check_production_heartbeat_artifact(args.production_heartbeat_json, current_time),
-        check_path_writable(Path("data"), "Persistent data path"),
+        check_path_writable(runtime_data_root(), "Persistent data path"),
         check_path_writable(Path("logs"), "Persistent log path"),
         check_disk_capacity(Path(".")),
         check_memory_pressure(),
