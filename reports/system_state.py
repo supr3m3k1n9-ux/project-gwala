@@ -21,6 +21,7 @@ from data.market_data_sources import read_sources
 from run_data_integrity import coverage_is_issue
 
 from config.market_calendar import MARKET_TZ, market_session_for_date, next_market_session
+from config.runtime_paths import runtime_data_root
 from config.settings import STRATEGY
 from run_forward_sample_queue import build_queue as build_forward_sample_queue
 from run_forward_sample_queue import queue_payload as forward_sample_queue_payload
@@ -1469,7 +1470,7 @@ def build_system_state(
     integrity_csv = output_dir / "candle_data_integrity.csv"
     integrity_md = output_dir / "candle_data_integrity.md"
     market_data_sources_csv = output_dir / "market_data_sources.csv"
-    refresh_audit_csv = Path("data/market_refresh_audit.csv")
+    refresh_audit_csv = runtime_data_root() / "market_refresh_audit.csv"
     refresh_audit_md = output_dir / "market_refresh_audit.md"
     paper_review_csv = output_dir / "paper_review_clean_trades.csv"
     pre_entry_review_json = output_dir / "pre_entry_review.json"

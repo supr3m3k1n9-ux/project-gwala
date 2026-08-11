@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from config import runtime_paths
 from deploy.linux.verify_docker_runtime_boundary import validate_compose_boundary
+from run_refresh_audit import default_audit_csv, parse_args as parse_refresh_audit_args
 
 
 class RuntimePathTests(unittest.TestCase):
@@ -36,6 +37,71 @@ class RuntimePathTests(unittest.TestCase):
 
                 self.assertEqual(path, runtime_root / "paper_validation_samples.csv")
                 self.assertTrue(path.exists())
+
+    def test_refresh_audit_docker_default_uses_runtime_data_root(self) -> None:
+        with patch.dict(os.environ, {}, clear=True), patch.object(runtime_paths, "running_in_docker", return_value=True):
+            self.assertEqual(default_audit_csv(), Path("/app/runtime_data/market_refresh_audit.csv"))
+
+    def test_refresh_audit_local_default_uses_project_data_dir(self) -> None:
+        with patch.dict(os.environ, {}, clear=True), patch.object(runtime_paths, "running_in_docker", return_value=False), patch(
+            "platform.system",
+            return_value="Darwin",
+        ):
+            self.assertEqual(default_audit_csv(), runtime_paths.MACOS_PROJECT_ROOT / "data" / "market_refresh_audit.csv")
+
+    def test_refresh_audit_explicit_audit_csv_override_wins(self) -> None:
+        with TemporaryDirectory() as raw:
+            override = Path(raw) / "custom_refresh_audit.csv"
+            with patch("sys.argv", ["run_refresh_audit.py", "--audit-csv", str(override)]):
+                args = parse_refresh_audit_args()
+
+            self.assertEqual(args.audit_csv, override)
+
+    def test_refresh_audit_default_never_targets_app_data_in_docker(self) -> None:
+        with patch.dict(os.environ, {}, clear=True), patch.object(runtime_paths, "running_in_docker", return_value=True):
+            self.assertNotEqual(default_audit_csv().parent, Path("/app/data"))
+
+    def test_refresh_audit_related_defaults_use_runtime_data_in_docker(self) -> None:
+        from reports.refresh_status import build_refresh_status
+        from run_morning_index_orb_manual_paper_watch import default_refresh_audit_csv as orb_audit_csv
+        from run_paper_import import parse_args as parse_paper_import_args
+        from run_position_sizer import parse_args as parse_position_sizer_args
+        from run_pre_entry_review import parse_args as parse_pre_entry_args
+        from run_provider_stability_audit import (
+            build_provider_stability_audit,
+            default_refresh_audit_csv as provider_audit_csv,
+            parse_args as parse_provider_args,
+        )
+
+        with patch.dict(os.environ, {}, clear=True), patch.object(runtime_paths, "running_in_docker", return_value=True):
+            expected = Path("/app/runtime_data/market_refresh_audit.csv")
+
+            with patch("sys.argv", ["run_paper_import.py"]):
+                self.assertEqual(parse_paper_import_args().refresh_audit_csv, expected)
+            with patch("sys.argv", ["run_position_sizer.py"]):
+                self.assertEqual(parse_position_sizer_args().refresh_audit_csv, expected)
+            with patch("sys.argv", ["run_pre_entry_review.py"]):
+                self.assertEqual(parse_pre_entry_args().refresh_audit_csv, expected)
+            with patch("sys.argv", ["run_provider_stability_audit.py"]):
+                self.assertEqual(parse_provider_args().audit_csv, expected)
+
+            self.assertEqual(provider_audit_csv(), expected)
+            self.assertEqual(orb_audit_csv(), expected)
+
+            with patch(
+                "reports.refresh_status.market_refresh_state",
+                return_value={
+                    "today": "2026-08-11",
+                    "market_is_open": False,
+                    "market_status_reason": "test session closed",
+                    "next_market_session": "2026-08-12",
+                },
+            ):
+                status = build_refresh_status(audit_csv=None)
+            self.assertIn("paper_import_blocked", status)
+
+            payload = build_provider_stability_audit(audit_csv=None, symbols=[])
+            self.assertEqual(payload["status"], "not_recorded")
 
     def test_repository_compose_mounts_runtime_data_not_source_package(self) -> None:
         text = (Path(__file__).resolve().parents[1] / "compose.yaml").read_text(encoding="utf-8")

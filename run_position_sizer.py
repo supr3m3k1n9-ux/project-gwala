@@ -16,12 +16,20 @@ import pandas as pd
 
 from config.filter_policy import PAPER_GATE_THRESHOLDS
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_root
 from config.settings import ACCOUNT
 from reports.refresh_status import market_refresh_state
 from run_playbook import markdown_table
 
 VALID_REFRESH_EVIDENCE = {"files_present_and_complete", "current_session_in_progress"}
 PAPER_VALIDATION_FRESHNESS = {"current_candle", "grace_candle"}
+
+
+def default_refresh_audit_csv() -> Path:
+    """Return the durable refresh-audit CSV path."""
+
+    return runtime_data_root() / "market_refresh_audit.csv"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Size Project Gwala paper-trade candidates.")
@@ -60,7 +68,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--refresh-audit-csv",
         type=Path,
-        default=Path("data/market_refresh_audit.csv"),
+        default=default_refresh_audit_csv(),
         help="Refresh evidence required before an actionable paper size.",
     )
     parser.add_argument("--daily-realized-r", type=float, default=None, help="Optional override for today's realized paper R.")

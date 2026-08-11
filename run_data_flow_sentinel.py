@@ -17,6 +17,7 @@ from typing import Any
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_root
 from run_playbook import markdown_table
 
 
@@ -153,7 +154,7 @@ def latest_refresh_audit(output_dir: Path) -> pd.DataFrame:
     local_path = output_dir / "market_refresh_audit.csv"
     audit_path = local_path
     if not audit_path.exists() and output_dir.name == "logs":
-        audit_path = Path("data/market_refresh_audit.csv")
+        audit_path = runtime_data_root() / "market_refresh_audit.csv"
     audit = read_csv_or_empty(audit_path)
     if audit.empty or "refresh_run_at_et" not in audit.columns:
         return pd.DataFrame()

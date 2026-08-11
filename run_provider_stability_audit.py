@@ -16,6 +16,7 @@ from typing import Any
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_root
 from config.symbol_playbook import playbook_symbols
 from data.market_data_sources import read_sources
 from run_playbook import markdown_table
@@ -24,12 +25,18 @@ from run_playbook import markdown_table
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit provider/session stability after refresh.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where workflow outputs live.")
-    parser.add_argument("--audit-csv", type=Path, default=Path("data/market_refresh_audit.csv"))
+    parser.add_argument("--audit-csv", type=Path, default=default_refresh_audit_csv())
     parser.add_argument("--provider", default="webull", help="Provider used by the refresh workflow.")
     parser.add_argument("--symbols", nargs="+", default=playbook_symbols("approved_plus_watch"))
     parser.add_argument("--refresh-started-at", default="", help="Refresh start timestamp in ET.")
     parser.add_argument("--refresh-ended-at", default="", help="Refresh end timestamp in ET.")
     return parser.parse_args()
+
+
+def default_refresh_audit_csv() -> Path:
+    """Return the durable refresh-audit CSV path."""
+
+    return runtime_data_root() / "market_refresh_audit.csv"
 
 
 def read_csv_or_empty(path: Path) -> pd.DataFrame:
@@ -125,7 +132,7 @@ def source_summary(output_dir: Path, symbols: list[str]) -> dict[str, Any]:
 def build_provider_stability_audit(
     *,
     output_dir: Path = Path("logs"),
-    audit_csv: Path = Path("data/market_refresh_audit.csv"),
+    audit_csv: Path | None = None,
     provider: str = "webull",
     symbols: list[str] | None = None,
     refresh_started_at: str = "",
@@ -133,6 +140,7 @@ def build_provider_stability_audit(
 ) -> dict[str, Any]:
     """Build a compact stability payload from existing refresh evidence."""
 
+    audit_csv = audit_csv or default_refresh_audit_csv()
     requested_symbols = [value.upper() for value in (symbols or playbook_symbols("approved_plus_watch"))]
     audit = latest_audit_run(read_csv_or_empty(audit_csv))
     repair = repair_summary(output_dir)

@@ -21,6 +21,7 @@ from typing import Any
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_root
 from config.settings import ACCOUNT
 from reports.refresh_status import market_refresh_state
 from run_options_contract_gate import (
@@ -147,6 +148,12 @@ EXCEPTION_COLUMNS = [
 ]
 
 
+def default_refresh_audit_csv() -> Path:
+    """Return the durable refresh-audit CSV path."""
+
+    return runtime_data_root() / "market_refresh_audit.csv"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build Morning Index ORB Manual Paper-Watch lane.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"))
@@ -155,7 +162,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--review-csv", type=Path, default=REVIEW_CSV)
     parser.add_argument("--contract-audit-csv", type=Path, default=CONTRACT_AUDIT_CSV)
     parser.add_argument("--ledger-csv", type=Path, default=LEDGER_CSV)
-    parser.add_argument("--refresh-audit-csv", type=Path, default=Path("data/market_refresh_audit.csv"))
+    parser.add_argument("--refresh-audit-csv", type=Path, default=default_refresh_audit_csv())
     parser.add_argument("--account-size", type=float, default=ACCOUNT.starting_equity)
     parser.add_argument("--risk-per-trade-pct", type=float, default=ACCOUNT.risk_per_trade_pct)
     parser.set_defaults(confirm_paper_entry=True)
@@ -748,13 +755,14 @@ def build_payload(
     review_csv: Path = REVIEW_CSV,
     contract_audit_csv: Path = CONTRACT_AUDIT_CSV,
     ledger_csv: Path = LEDGER_CSV,
-    refresh_audit_csv: Path = Path("data/market_refresh_audit.csv"),
+    refresh_audit_csv: Path | None = None,
     account_size: float = ACCOUNT.starting_equity,
     risk_per_trade_pct: float = ACCOUNT.risk_per_trade_pct,
     confirm_paper_entry: bool = True,
     market: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     market = market or market_refresh_state()
+    refresh_audit_csv = refresh_audit_csv or default_refresh_audit_csv()
     observations = read_csv_or_empty(observations_csv)
     reviews = read_csv_or_empty(review_csv, REVIEW_COLUMNS)
     refresh_audit = read_csv_or_empty(refresh_audit_csv)

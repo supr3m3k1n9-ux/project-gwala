@@ -15,6 +15,7 @@ from typing import Any
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ, market_session_for_date, next_market_session
+from config.runtime_paths import runtime_data_root
 from config.settings import STRATEGY
 from config.symbol_playbook import playbook_symbols
 from data.candle_cache import preferred_candle_path
@@ -287,11 +288,12 @@ def scanner_refresh_state(output_dir: Path) -> dict[str, Any]:
 
 def build_refresh_status(
     output_dir: Path = Path("logs"),
-    audit_csv: Path = Path("data/market_refresh_audit.csv"),
+    audit_csv: Path | None = None,
     source_csv: Path | None = None,
 ) -> dict[str, Any]:
     """Build refresh and paper-import readiness state."""
 
+    audit_csv = audit_csv or runtime_data_root() / "market_refresh_audit.csv"
     market = market_refresh_state()
     scanner = scanner_refresh_state(output_dir)
     csv_states = webull_csv_states(output_dir)

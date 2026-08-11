@@ -302,7 +302,7 @@ logs/morning_run_watchdog.json
 logs/morning_run_watchdog.md
 logs/autonomous_paper_workflow_status.json
 logs/daily_workflow_summary.md
-data/market_refresh_audit.csv
+runtime data/market_refresh_audit.csv
 logs/daily_paper_signal_scanner.csv
 ```
 """,

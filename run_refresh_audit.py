@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_root
 from data.candle_cache import preferred_candle_path
 from data.market_data_sources import append_sources, source_row
 from run_data_integrity import inspect_file
@@ -35,13 +36,19 @@ AUDIT_COLUMNS = [
 ]
 
 
+def default_audit_csv() -> Path:
+    """Return the durable refresh-audit CSV path."""
+
+    return runtime_data_root() / "market_refresh_audit.csv"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Record the outcome evidence of a requested market-data refresh.")
     parser.add_argument("--symbols", nargs="+", default=[], help="Symbols requested by the refresh workflow.")
     parser.add_argument("--provider", default="webull", help="Market-data provider used by the refresh workflow.")
     parser.add_argument("--record", action="store_true", help="Append a new audit event for the provided symbols.")
     parser.add_argument("--data-dir", type=Path, default=Path("logs"), help="Where refreshed candle CSVs live.")
-    parser.add_argument("--audit-csv", type=Path, default=Path("data/market_refresh_audit.csv"))
+    parser.add_argument("--audit-csv", type=Path, default=default_audit_csv())
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where the report is saved.")
     return parser.parse_args()
 
@@ -186,7 +193,7 @@ trades, or connect to broker execution.
 ## Files
 
 ```text
-data/market_refresh_audit.csv
+{path}
 logs/market_refresh_audit.md
 ```
 """,

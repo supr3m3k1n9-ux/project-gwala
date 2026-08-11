@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_root
 from reports.refresh_status import market_refresh_state
 
 
@@ -46,6 +47,12 @@ PAPER_COLUMNS = [
 VALID_REFRESH_EVIDENCE = {"files_present_and_complete", "current_session_in_progress"}
 
 
+def default_refresh_audit_csv() -> Path:
+    """Return the durable refresh-audit CSV path."""
+
+    return runtime_data_root() / "market_refresh_audit.csv"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Append daily scanner candidates to the paper log.")
     parser.add_argument(
@@ -63,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--refresh-audit-csv",
         type=Path,
-        default=Path("data/market_refresh_audit.csv"),
+        default=default_refresh_audit_csv(),
         help="Refresh evidence required before a real paper import.",
     )
     parser.add_argument(

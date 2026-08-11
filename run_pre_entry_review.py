@@ -17,12 +17,19 @@ from typing import Any
 
 import pandas as pd
 
+from config.runtime_paths import runtime_data_root
 from reports.refresh_status import market_refresh_state
 from reports.system_state import data_freshness_state, market_state, paper_state, risk_guard_state
 from run_paper_import import paper_import_is_allowed
 from run_playbook import markdown_table
 
 PAPER_VALIDATION_FRESHNESS = {"current_candle", "grace_candle"}
+
+
+def default_refresh_audit_csv() -> Path:
+    """Return the durable refresh-audit CSV path."""
+
+    return runtime_data_root() / "market_refresh_audit.csv"
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--refresh-audit-csv",
         type=Path,
-        default=Path("data/market_refresh_audit.csv"),
+        default=default_refresh_audit_csv(),
         help="Refresh evidence required before paper review.",
     )
     return parser.parse_args()
