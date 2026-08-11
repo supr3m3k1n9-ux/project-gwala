@@ -442,7 +442,14 @@ def scheduler_check(
     return launch_agent_check(launchctl_output if launchctl_output is not None else launchctl_text())
 
 
-def scanner_check(output_dir: Path, expected_session_date: object, moment: datetime, max_age_minutes: int) -> dict[str, Any]:
+def scanner_check(
+    output_dir: Path,
+    expected_session_date: object,
+    moment: datetime,
+    max_age_minutes: int,
+    *,
+    requires_recency: bool = True,
+) -> dict[str, Any]:
     """Verify scanner rows belong to the expected session and are recent when market-hours scans are active."""
 
     path = output_dir / "daily_paper_signal_scanner.csv"
@@ -453,7 +460,7 @@ def scanner_check(output_dir: Path, expected_session_date: object, moment: datet
     dates = pd.to_datetime(scanner["scan_date"], errors="coerce").dropna()
     if dates.empty or dates.dt.date.max() != expected_session_date:
         return {"status": "RED", "component": "Scanner", "reason": "Scanner session date is stale."}
-    if market_scan_recency_required(moment) and not recent_enough(mtime, moment, max_age_minutes):
+    if requires_recency and not recent_enough(mtime, moment, max_age_minutes):
         if within_transient_tolerance(mtime, moment, max_age_minutes, SCANNER_TRANSIENT_TOLERANCE_SECONDS):
             return {
                 "status": "YELLOW",
@@ -511,6 +518,7 @@ def json_artifact_check(
     max_age_minutes: int,
     required_status: str | None = None,
     missing_status: str = "RED",
+    requires_recency: bool = True,
 ) -> dict[str, Any]:
     """Verify a JSON artifact exists, belongs to the expected session, and is recent when required."""
 
@@ -528,7 +536,7 @@ def json_artifact_check(
         }
     if not is_today(artifact_time, expected_session_date):
         return {"status": missing_status, "component": component, "reason": f"{component} artifact is stale."}
-    if market_scan_recency_required(moment) and not recent_enough(mtime, moment, max_age_minutes):
+    if requires_recency and not recent_enough(mtime, moment, max_age_minutes):
         return {"status": missing_status, "component": component, "reason": f"{component} artifact is not recent."}
     return {
         "status": "GREEN",
@@ -600,6 +608,7 @@ def build_heartbeat(
     today = current_time.date()
     context = session_context(current_time)
     expected_session_date = context["expected_artifact_date"]
+    requires_recency = bool(context["requires_recency"])
     max_age_minutes = max(interval_minutes * 2 + 2, 12)
     system_name = platform_name or platform.system()
     containerized = running_in_docker() if in_docker is None else in_docker
@@ -615,13 +624,20 @@ def build_heartbeat(
             max_age_minutes=max_age_minutes,
         ),
         webull_check(data_dir, expected_session_date, current_time, max_age_minutes),
-        scanner_check(output_dir, expected_session_date, current_time, max_age_minutes),
+        scanner_check(
+            output_dir,
+            expected_session_date,
+            current_time,
+            max_age_minutes,
+            requires_recency=requires_recency,
+        ),
         json_artifact_check(
             output_dir / "current_candle_capture.json",
             component="Current-candle capture",
             expected_session_date=expected_session_date,
             moment=current_time,
             max_age_minutes=max_age_minutes,
+            requires_recency=requires_recency,
         ),
         json_artifact_check(
             output_dir / "candidate_window_ledger.json",
@@ -630,6 +646,7 @@ def build_heartbeat(
             moment=current_time,
             max_age_minutes=max_age_minutes,
             missing_status="YELLOW",
+            requires_recency=requires_recency,
         ),
         json_artifact_check(
             output_dir / "dashboard_data_preflight.json",
@@ -638,6 +655,7 @@ def build_heartbeat(
             moment=current_time,
             max_age_minutes=max_age_minutes,
             required_status="pass",
+            requires_recency=requires_recency,
         ),
     ]
     if context["phase"] == "after_close":
@@ -680,6 +698,7 @@ def build_heartbeat(
             "host_systemd_health_path": str(resolved_host_systemd_health_path),
             "market_phase": str(context["phase"]),
             "expected_artifact_date": str(expected_session_date),
+            "requires_recency": requires_recency,
         },
     }
 

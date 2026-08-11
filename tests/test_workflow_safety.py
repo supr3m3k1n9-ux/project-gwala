@@ -78,6 +78,7 @@ from run_market_sprint_mode import build_payload as build_market_sprint_payload
 from run_morning_watchdog import build_watchdog as build_morning_watchdog
 from run_production_alert import build_alert as build_production_alert
 from run_production_alert import internal_severity, notification_title
+import run_production_heartbeat
 from run_production_heartbeat import build_heartbeat as build_production_heartbeat
 from run_executive_report import DeliveryResult, build_eod_payload, deliver_report, eod_markdown, rows_from_csv, save_report
 from notification_format import executive_report_notification, production_alert_notification
@@ -3463,6 +3464,30 @@ class MarketCalendarTests(unittest.TestCase):
         self.assertEqual(heartbeat["status"], "RED")
         self.assertEqual(heartbeat["red_component"], "Current-candle capture")
 
+    def test_production_heartbeat_open_session_stale_candidate_ledger_remains_yellow(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs_dir = root / "logs"
+            data_dir = root / "data"
+            logs_dir.mkdir()
+            data_dir.mkdir()
+            moment = datetime(2026, 5, 26, 10, 0, tzinfo=MARKET_TZ)
+            write_healthy_heartbeat_artifacts(logs_dir, data_dir, moment)
+            stale_time = moment - timedelta(minutes=20)
+            set_artifact_times([logs_dir / "candidate_window_ledger.json"], stale_time)
+
+            heartbeat = build_production_heartbeat(
+                logs_dir,
+                data_dir=data_dir,
+                moment=moment,
+                launchctl_output="state = not running\nlast exit code = 0\n",
+                **MACOS_NATIVE_RUNTIME,
+            )
+
+        ledger = next(check for check in heartbeat["checks"] if check["component"] == "Candidate ledger")
+        self.assertEqual(heartbeat["status"], "YELLOW")
+        self.assertEqual(ledger["status"], "YELLOW")
+
     def test_production_heartbeat_after_close_completed_session_artifacts_are_not_red_for_age(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -3500,6 +3525,7 @@ class MarketCalendarTests(unittest.TestCase):
         self.assertEqual(checks["After-close supervisor"]["status"], "GREEN")
         self.assertEqual(heartbeat["status"], "GREEN")
         self.assertEqual(heartbeat["runtime"]["market_phase"], "after_close")
+        self.assertFalse(heartbeat["runtime"]["requires_recency"])
 
     def test_production_heartbeat_after_close_prior_trading_day_scanner_is_red(self) -> None:
         with TemporaryDirectory() as temporary:
@@ -3527,6 +3553,134 @@ class MarketCalendarTests(unittest.TestCase):
 
         self.assertEqual(heartbeat["status"], "RED")
         self.assertEqual(heartbeat["red_component"], "Scanner")
+
+    def test_production_heartbeat_after_close_prior_session_current_candle_is_red(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs_dir = root / "logs"
+            data_dir = root / "data"
+            logs_dir.mkdir()
+            data_dir.mkdir()
+            close_time = datetime(2026, 5, 26, 15, 55, tzinfo=MARKET_TZ)
+            moment = datetime(2026, 5, 26, 16, 20, tzinfo=MARKET_TZ)
+            prior_time = datetime(2026, 5, 22, 15, 55, tzinfo=MARKET_TZ)
+            write_healthy_heartbeat_artifacts(logs_dir, data_dir, close_time)
+            write_after_close_supervisor_artifact(logs_dir, moment)
+            (logs_dir / "current_candle_capture.json").write_text(
+                json.dumps({"generated_at_et": prior_time.strftime("%Y-%m-%d %H:%M:%S %Z"), "scanner_rows": 1}),
+                encoding="utf-8",
+            )
+
+            heartbeat = build_production_heartbeat(
+                logs_dir,
+                data_dir=data_dir,
+                moment=moment,
+                launchctl_output="state = not running\nlast exit code = 0\n",
+                **MACOS_NATIVE_RUNTIME,
+            )
+
+        self.assertEqual(heartbeat["status"], "RED")
+        self.assertEqual(heartbeat["red_component"], "Current-candle capture")
+
+    def test_production_heartbeat_after_close_missing_or_malformed_artifacts_are_not_green(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs_dir = root / "logs"
+            data_dir = root / "data"
+            logs_dir.mkdir()
+            data_dir.mkdir()
+            close_time = datetime(2026, 5, 26, 15, 55, tzinfo=MARKET_TZ)
+            moment = datetime(2026, 5, 26, 16, 20, tzinfo=MARKET_TZ)
+            write_healthy_heartbeat_artifacts(logs_dir, data_dir, close_time)
+            write_after_close_supervisor_artifact(logs_dir, moment)
+            (logs_dir / "current_candle_capture.json").write_text("{not-json", encoding="utf-8")
+            (logs_dir / "candidate_window_ledger.json").unlink()
+
+            heartbeat = build_production_heartbeat(
+                logs_dir,
+                data_dir=data_dir,
+                moment=moment,
+                launchctl_output="state = not running\nlast exit code = 0\n",
+                **MACOS_NATIVE_RUNTIME,
+            )
+
+        checks = {check["component"]: check for check in heartbeat["checks"]}
+        self.assertEqual(checks["Current-candle capture"]["status"], "RED")
+        self.assertEqual(checks["Candidate ledger"]["status"], "YELLOW")
+        self.assertEqual(heartbeat["status"], "RED")
+
+    def test_production_heartbeat_after_close_supervisor_check_remains_required(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs_dir = root / "logs"
+            data_dir = root / "data"
+            logs_dir.mkdir()
+            data_dir.mkdir()
+            close_time = datetime(2026, 5, 26, 15, 55, tzinfo=MARKET_TZ)
+            moment = datetime(2026, 5, 26, 16, 20, tzinfo=MARKET_TZ)
+            write_healthy_heartbeat_artifacts(logs_dir, data_dir, close_time)
+
+            heartbeat = build_production_heartbeat(
+                logs_dir,
+                data_dir=data_dir,
+                moment=moment,
+                launchctl_output="state = not running\nlast exit code = 0\n",
+                **MACOS_NATIVE_RUNTIME,
+            )
+
+        supervisor = next(check for check in heartbeat["checks"] if check["component"] == "After-close supervisor")
+        self.assertEqual(heartbeat["status"], "YELLOW")
+        self.assertEqual(supervisor["status"], "YELLOW")
+
+    def test_production_heartbeat_build_threads_after_close_recency_flag_into_artifact_checks(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs_dir = root / "logs"
+            data_dir = root / "data"
+            logs_dir.mkdir()
+            data_dir.mkdir()
+            moment = datetime(2026, 5, 26, 16, 43, tzinfo=MARKET_TZ)
+            write_healthy_heartbeat_artifacts(logs_dir, data_dir, moment)
+            write_after_close_supervisor_artifact(logs_dir, moment)
+            scanner_flags: list[bool] = []
+            json_flags: dict[str, bool] = {}
+
+            def fake_scanner_check(*args: object, **kwargs: object) -> dict[str, object]:
+                scanner_flags.append(bool(kwargs["requires_recency"]))
+                return {"status": "GREEN", "component": "Scanner", "reason": "test scanner"}
+
+            def fake_json_artifact_check(path: Path, **kwargs: object) -> dict[str, object]:
+                component = str(kwargs["component"])
+                json_flags[component] = bool(kwargs["requires_recency"])
+                return {"status": "GREEN", "component": component, "reason": "test json"}
+
+            with patch.object(
+                run_production_heartbeat,
+                "session_context",
+                return_value={
+                    "phase": "after_close",
+                    "expected_artifact_date": moment.date(),
+                    "requires_recency": False,
+                    "reason": "Regular session has closed.",
+                },
+            ), patch.object(run_production_heartbeat, "scanner_check", side_effect=fake_scanner_check), patch.object(
+                run_production_heartbeat,
+                "json_artifact_check",
+                side_effect=fake_json_artifact_check,
+            ):
+                heartbeat = build_production_heartbeat(
+                    logs_dir,
+                    data_dir=data_dir,
+                    moment=moment,
+                    launchctl_output="state = not running\nlast exit code = 0\n",
+                    **MACOS_NATIVE_RUNTIME,
+                )
+
+        self.assertEqual(heartbeat["runtime"]["market_phase"], "after_close")
+        self.assertFalse(heartbeat["runtime"]["requires_recency"])
+        self.assertEqual(scanner_flags, [False])
+        self.assertFalse(json_flags["Current-candle capture"])
+        self.assertFalse(json_flags["Candidate ledger"])
 
     def test_production_heartbeat_premarket_prior_day_scanner_does_not_count_as_current(self) -> None:
         with TemporaryDirectory() as temporary:
