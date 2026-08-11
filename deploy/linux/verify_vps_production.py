@@ -52,9 +52,32 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(command: list[str], cwd: Path | None = None, timeout: int = 60) -> tuple[int, str]:
+def compose_environment(app_dir: Path, stack_dir: Path) -> dict[str, str]:
+    """Return explicit roots for Docker Compose commands."""
+
+    env = os.environ.copy()
+    env["GWALA_APP_DIR"] = str(app_dir.expanduser().resolve())
+    env["GWALA_STACK_DIR"] = str(stack_dir.expanduser().resolve())
+    return env
+
+
+def docker_permission_message(text: str) -> str | None:
+    lowered = text.lower()
+    if "permission denied" in lowered and ("docker.sock" in lowered or "docker daemon socket" in lowered):
+        return "Docker permission denied. Re-run with sudo: sudo /srv/projects/gwala/deploy_latest.sh"
+    if "permission denied" in lowered and "docker" in lowered:
+        return "Docker permission denied. Re-run the VPS readiness/deploy command with sudo."
+    return None
+
+
+def run(
+    command: list[str],
+    cwd: Path | None = None,
+    timeout: int = 60,
+    env: dict[str, str] | None = None,
+) -> tuple[int, str]:
     try:
-        completed = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False, timeout=timeout)
+        completed = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False, timeout=timeout, env=env)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 127, f"{type(exc).__name__}: {exc}"
     return completed.returncode, ((completed.stdout or "") + (completed.stderr or "")).strip()
@@ -109,8 +132,12 @@ def docker_boundary_check(app_dir: Path, stack_dir: Path) -> Check:
         ],
         cwd=app_dir,
         timeout=90,
+        env=compose_environment(app_dir, stack_dir),
     )
-    return Check("Docker boundary", "PASS" if code == 0 else "FAIL", "source/runtime separation ok" if code == 0 else redact(text))
+    if code == 0:
+        return Check("Docker boundary", "PASS", "source/runtime separation ok")
+    permission = docker_permission_message(text)
+    return Check("Docker boundary", "FAIL", permission if permission else redact(text))
 
 
 def persistence_checks(stack_dir: Path) -> list[Check]:
@@ -125,6 +152,26 @@ def persistence_checks(stack_dir: Path) -> list[Check]:
         path = stack_dir / relative
         checks.append(Check("Persistence write", "PASS" if os.access(path, os.W_OK) else "FAIL", f"{path} writable={os.access(path, os.W_OK)}"))
     return checks
+
+
+def next_market_session_text(app_dir: Path) -> str:
+    """Return the next market session using Project Gwala's calendar utilities."""
+
+    sys.path.insert(0, str(app_dir))
+    try:
+        from config.market_calendar import MARKET_TZ, next_market_session
+        from config.settings import STRATEGY
+
+        opened = datetime.strptime(STRATEGY.market_open, "%H:%M").time().replace(tzinfo=MARKET_TZ)
+        closed = datetime.strptime(STRATEGY.market_close, "%H:%M").time().replace(tzinfo=MARKET_TZ)
+        return str(next_market_session(datetime.now(MARKET_TZ), opened, closed).session_date)
+    except Exception as exc:  # pragma: no cover - defensive reporting path.
+        return f"unknown ({type(exc).__name__})"
+    finally:
+        try:
+            sys.path.remove(str(app_dir))
+        except ValueError:
+            pass
 
 
 def load_json(path: Path) -> dict[str, Any] | None:
@@ -161,26 +208,44 @@ def artifact_check(path: Path, label: str, stale_minutes: int) -> Check:
 def host_artifact_checks(stack_dir: Path, stale_minutes: int) -> list[Check]:
     logs = stack_dir / "logs"
     return [
-        artifact_check(logs / "host_systemd_health.json", "Host systemd health", stale_minutes),
+        artifact_check(logs / "host_systemd_health.json", "Systemd", stale_minutes),
         artifact_check(logs / "host_docker_health.json", "Host Docker health", stale_minutes),
         artifact_check(logs / "host_security_health.json", "Host security health", stale_minutes),
     ]
 
 
-def container_check(stack_dir: Path, snippet: str, label: str, timeout: int = 120) -> Check:
+def container_check(app_dir: Path, stack_dir: Path, snippet: str, label: str, timeout: int = 120) -> Check:
     wrapper = stack_dir / "run_in_docker.sh"
     if not wrapper.exists():
         return Check(label, "FAIL", f"missing wrapper: {wrapper}")
-    code, text = run([str(wrapper), "python", "-c", snippet], cwd=stack_dir, timeout=timeout)
-    return Check(label, "PASS" if code == 0 else "FAIL", "ok" if code == 0 else redact(text))
+    code, text = run(
+        [str(wrapper), "python", "-c", snippet],
+        cwd=stack_dir,
+        timeout=timeout,
+        env=compose_environment(app_dir, stack_dir),
+    )
+    if code == 0:
+        return Check(label, "PASS", "ok")
+    permission = docker_permission_message(text)
+    return Check(label, "FAIL", permission if permission else redact(text))
 
 
-def container_checks(stack_dir: Path) -> list[Check]:
-    import_snippet = (
+def container_checks(app_dir: Path, stack_dir: Path) -> list[Check]:
+    runtime_snippet = (
         "from config.runtime_paths import runtime_data_root; "
         "import config.filter_policy, config.strategy_registry, config.symbol_playbook; "
         "import data.webull_data; "
         "assert str(runtime_data_root()) == '/app/runtime_data'; "
+        "assert __import__('pathlib').Path('/app/data/webull_data.py').exists(); "
+        "assert __import__('pathlib').Path('/app/config/runtime_paths.py').exists(); "
+        "print('ok')"
+    )
+    webull_snippet = (
+        "from pathlib import Path; "
+        "from data.webull_data import build_data_client; "
+        "client = build_data_client(); "
+        "assert client is not None; "
+        "assert not Path('/app/webull_data_sdk.log').exists(); "
         "print('ok')"
     )
     safety_snippet = (
@@ -197,18 +262,38 @@ def container_checks(stack_dir: Path) -> list[Check]:
         "assert not Path('/app/webull_data_sdk.log').exists(); "
         "print('ok')"
     )
+    heartbeat_snippet = (
+        "from pathlib import Path; "
+        "from run_production_heartbeat import build_heartbeat; "
+        "payload = build_heartbeat(Path('/app/logs'), data_dir=Path('/app/runtime_data'), platform_name='Linux', in_docker=True); "
+        "status = payload.get('status'); "
+        "print(status); "
+        "raise SystemExit(0 if status == 'GREEN' else 1)"
+    )
     return [
-        container_check(stack_dir, import_snippet, "Container source imports"),
-        container_check(stack_dir, safety_snippet, "Paper-only safety env"),
-        container_check(stack_dir, boundary_snippet, "Container filesystem boundary"),
+        container_check(app_dir, stack_dir, runtime_snippet, "Runtime paths"),
+        container_check(app_dir, stack_dir, webull_snippet, "Webull"),
+        container_check(app_dir, stack_dir, boundary_snippet, "Container filesystem boundary"),
+        container_check(app_dir, stack_dir, heartbeat_snippet, "Heartbeat"),
+        container_check(app_dir, stack_dir, safety_snippet, "Safety boundary"),
     ]
 
 
-def print_report(checks: list[Check]) -> None:
+def print_report(checks: list[Check], next_session: str) -> None:
     verdict = aggregate(checks)
+    ready = verdict == "PASS"
     print(f"VPS PRODUCTION READINESS: {verdict}")
     for check in checks:
         print(f"{check.status:<5} {check.area}: {check.reason}")
+    print(f"Next market session: {next_session}")
+    print(f"Ready unattended: {'YES' if ready else 'NO'}")
+    if not ready:
+        blocker = next((check for check in checks if check.status == "FAIL"), None) or next(
+            (check for check in checks if check.status == "WATCH"),
+            None,
+        )
+        if blocker:
+            print(f"Exact blocker: {blocker.area}: {blocker.reason}")
 
 
 def main() -> None:
@@ -223,8 +308,8 @@ def main() -> None:
     if args.skip_container_checks:
         checks.append(Check("Container runtime", "WATCH", "container checks skipped by operator flag"))
     else:
-        checks.extend(container_checks(stack_dir))
-    print_report(checks)
+        checks.extend(container_checks(app_dir, stack_dir))
+    print_report(checks, next_market_session_text(app_dir))
     raise SystemExit(1 if aggregate(checks) == "FAIL" else 0)
 
 

@@ -9,7 +9,13 @@ import unittest
 from unittest.mock import patch
 
 from config import runtime_paths
-from deploy.linux.verify_docker_runtime_boundary import validate_compose_boundary, validate_deployment_roots
+from deploy.linux.verify_docker_runtime_boundary import (
+    docker_permission_message,
+    load_compose_config,
+    validate_compose_boundary,
+    validate_deployment_roots,
+)
+from deploy.linux.verify_vps_production import docker_boundary_check
 from run_refresh_audit import default_audit_csv, parse_args as parse_refresh_audit_args
 
 
@@ -230,6 +236,64 @@ class RuntimePathTests(unittest.TestCase):
         errors = validate_deployment_roots(payload, Path("/srv/projects/gwala/app"), Path("/srv/projects/gwala"))
 
         self.assertEqual(errors, [])
+
+    def test_compose_render_sets_app_and_stack_roots_independent_of_cwd(self) -> None:
+        rendered = {
+            "services": {
+                "gwala": {
+                    "build": {"context": "/srv/projects/gwala/app"},
+                    "env_file": ["/srv/projects/gwala/config/gwala.env"],
+                    "environment": {"GWALA_DATA_DIR": "/app/runtime_data"},
+                    "volumes": [
+                        {"source": "/srv/projects/gwala/data", "target": "/app/runtime_data"},
+                        {"source": "/srv/projects/gwala/logs", "target": "/app/logs"},
+                        {"source": "/srv/projects/gwala/backups", "target": "/app/backups"},
+                        {"source": "/srv/projects/gwala/config/webull_tokens", "target": "/app/.webull_tokens"},
+                    ],
+                }
+            }
+        }
+
+        def fake_run(command, check, capture_output, text, timeout, env):
+            self.assertEqual(env["GWALA_APP_DIR"], "/srv/projects/gwala/app")
+            self.assertEqual(env["GWALA_STACK_DIR"], "/srv/projects/gwala")
+
+            class Completed:
+                returncode = 0
+                stdout = __import__("json").dumps(rendered)
+                stderr = ""
+
+            return Completed()
+
+        with patch("deploy.linux.verify_docker_runtime_boundary.subprocess.run", side_effect=fake_run), patch(
+            "os.getcwd",
+            return_value="/tmp/not-the-stack",
+        ):
+            payload = load_compose_config(
+                Path("/srv/projects/gwala/compose.yaml"),
+                app_dir=Path("/srv/projects/gwala/app"),
+                stack_dir=Path("/srv/projects/gwala"),
+            )
+
+        self.assertEqual(payload["services"]["gwala"]["build"]["context"], "/srv/projects/gwala/app")
+
+    def test_docker_permission_denial_message_is_actionable(self) -> None:
+        text = "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock"
+
+        message = docker_permission_message(text)
+
+        self.assertIsNotNone(message)
+        self.assertIn("sudo", message or "")
+
+    def test_vps_readiness_docker_permission_denial_is_actionable(self) -> None:
+        with patch(
+            "deploy.linux.verify_vps_production.run",
+            return_value=(1, "permission denied while trying to connect to /var/run/docker.sock"),
+        ):
+            check = docker_boundary_check(Path("/srv/projects/gwala/app"), Path("/srv/projects/gwala"))
+
+        self.assertEqual(check.status, "FAIL")
+        self.assertIn("sudo", check.reason)
 
     def test_deploy_verifier_rejects_build_context_from_stack_runtime_root(self) -> None:
         payload = {

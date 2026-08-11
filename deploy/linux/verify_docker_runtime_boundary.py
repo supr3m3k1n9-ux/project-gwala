@@ -44,19 +44,52 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run_command(command: list[str], timeout: int = 60) -> tuple[int, str]:
+def compose_environment(app_dir: Path, stack_dir: Path) -> dict[str, str]:
+    """Return the explicit environment used for every Docker Compose render/run."""
+
+    env = os.environ.copy()
+    env["GWALA_APP_DIR"] = str(app_dir.expanduser().resolve())
+    env["GWALA_STACK_DIR"] = str(stack_dir.expanduser().resolve())
+    return env
+
+
+def docker_permission_message(text: str) -> str | None:
+    """Return an actionable Docker permission message when stderr shows one."""
+
+    lowered = text.lower()
+    if "permission denied" in lowered and ("docker.sock" in lowered or "docker daemon socket" in lowered):
+        return "Docker permission denied. Re-run the VPS deploy/readiness command with sudo so Docker can read the daemon socket."
+    if "permission denied" in lowered and "docker" in lowered:
+        return "Docker permission denied. Re-run the VPS deploy/readiness command with sudo."
+    return None
+
+
+def run_command(command: list[str], timeout: int = 60, env: dict[str, str] | None = None) -> tuple[int, str]:
     try:
-        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=timeout)
+        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=timeout, env=env)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 127, f"{type(exc).__name__}: {exc}"
     return completed.returncode, ((completed.stdout or "") + (completed.stderr or "")).strip()
 
 
-def load_compose_config(compose_file: Path, compose_json: Path | None = None) -> dict[str, Any]:
+def load_compose_config(
+    compose_file: Path,
+    compose_json: Path | None = None,
+    *,
+    app_dir: Path = DEFAULT_APP_DIR,
+    stack_dir: Path = DEFAULT_STACK_DIR,
+) -> dict[str, Any]:
     if compose_json is not None:
         return json.loads(compose_json.read_text(encoding="utf-8"))
-    code, text = run_command(["docker", "compose", "-f", str(compose_file), "config", "--format", "json"], 60)
+    code, text = run_command(
+        ["docker", "compose", "-f", str(compose_file), "config", "--format", "json"],
+        60,
+        env=compose_environment(app_dir, stack_dir),
+    )
     if code != 0:
+        permission = docker_permission_message(text)
+        if permission:
+            raise RuntimeError(permission)
         raise RuntimeError(f"docker compose config failed: {text[-500:]}")
     return json.loads(text)
 
@@ -164,7 +197,7 @@ def source_checksum(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def runtime_source_check(compose_file: Path, app_dir: Path) -> None:
+def runtime_source_check(compose_file: Path, app_dir: Path, stack_dir: Path) -> None:
     expected = source_checksum(app_dir / SOURCE_PROBE)
     code, text = run_command(
         [
@@ -186,8 +219,12 @@ def runtime_source_check(compose_file: Path, app_dir: Path) -> None:
             ),
         ],
         120,
+        env=compose_environment(app_dir, stack_dir),
     )
     if code != 0:
+        permission = docker_permission_message(text)
+        if permission:
+            raise RuntimeError(permission)
         raise RuntimeError(f"Compose runtime source import/checksum failed: {text[-800:]}")
     actual = text.splitlines()[-1].strip()
     if actual != expected:
@@ -196,7 +233,7 @@ def runtime_source_check(compose_file: Path, app_dir: Path) -> None:
 
 def main() -> None:
     args = parse_args()
-    payload = load_compose_config(args.compose_file, args.compose_json)
+    payload = load_compose_config(args.compose_file, args.compose_json, app_dir=args.app_dir, stack_dir=args.stack_dir)
     errors = validate_compose_boundary(payload)
     errors.extend(validate_deployment_roots(payload, args.app_dir, args.stack_dir))
     if errors:
@@ -206,7 +243,7 @@ def main() -> None:
         raise SystemExit(1)
     print("source_package_shadowing=PASS")
     if args.runtime_check:
-        runtime_source_check(args.compose_file, args.app_dir)
+        runtime_source_check(args.compose_file, args.app_dir, args.stack_dir)
     print("Docker runtime boundary: PASS")
 
 
