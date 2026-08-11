@@ -2,7 +2,7 @@
 """Verify Docker source/runtime-data separation for Project Gwala.
 
 This verifier is read-only. It fails if Docker Compose would bind-mount host
-runtime data over `/app/data`, because `/app/data` is the Python source package.
+runtime data over Python source packages such as `/app/data` or `/app/config`.
 """
 
 from __future__ import annotations
@@ -19,6 +19,16 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_COMPOSE = PROJECT_ROOT / "compose.yaml"
 SOURCE_PROBE = Path("data/webull_data.py")
+SOURCE_PACKAGE_TARGETS = {
+    "/app/data": "data",
+    "/app/config": "config",
+}
+APPROVED_RUNTIME_TARGETS = {
+    "/app/runtime_data",
+    "/app/logs",
+    "/app/.webull_tokens",
+    "/app/backups",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -63,10 +73,19 @@ def validate_compose_boundary(payload: dict[str, Any]) -> list[str]:
     if not isinstance(service, dict):
         return ["Compose gwala service is not inspectable."]
     targets = [volume_target(volume) for volume in service.get("volumes") or []]
-    if "/app/data" in targets:
-        errors.append("/app/data must not be a bind mount; it is the Python source package.")
+    shadowed = [target for target in targets if target in SOURCE_PACKAGE_TARGETS]
+    if shadowed:
+        for target in shadowed:
+            errors.append(f"{target} must not be a bind mount; it is the {SOURCE_PACKAGE_TARGETS[target]} Python source package.")
     if "/app/runtime_data" not in targets:
         errors.append("Host runtime data must mount to /app/runtime_data.")
+    unexpected = [
+        target
+        for target in targets
+        if target.startswith("/app/") and target not in APPROVED_RUNTIME_TARGETS and target not in SOURCE_PACKAGE_TARGETS
+    ]
+    if unexpected:
+        errors.append("Unexpected /app bind mount target(s): " + ", ".join(sorted(unexpected)))
     environment = service.get("environment") or {}
     env_items = environment if isinstance(environment, dict) else {}
     if str(env_items.get("GWALA_DATA_DIR", "")) != "/app/runtime_data":
@@ -93,6 +112,8 @@ def runtime_source_check(compose_file: Path) -> None:
             "-c",
             (
                 "import hashlib, pathlib; "
+                "from config.runtime_paths import runtime_data_root; "
+                "import config.filter_policy, config.strategy_registry, config.symbol_playbook; "
                 "from data.webull_data import disable_sdk_default_logging; "
                 "print(hashlib.sha256(pathlib.Path('/app/data/webull_data.py').read_bytes()).hexdigest())"
             ),
@@ -111,9 +132,11 @@ def main() -> None:
     payload = load_compose_config(args.compose_file, args.compose_json)
     errors = validate_compose_boundary(payload)
     if errors:
+        print("source_package_shadowing=FAIL", file=sys.stderr)
         for error in errors:
             print(f"[FAIL] {error}", file=sys.stderr)
         raise SystemExit(1)
+    print("source_package_shadowing=PASS")
     if args.runtime_check:
         runtime_source_check(args.compose_file)
     print("Docker runtime boundary: PASS")

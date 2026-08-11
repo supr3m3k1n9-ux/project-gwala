@@ -14,7 +14,9 @@ shadow mode. It does not replace or disable the current macOS LaunchAgents.
 - Host systemd health artifact: `/opt/project-gwala/logs/host_systemd_health.json`
 - Runtime data: host evidence remains under `/srv/projects/gwala/data`; inside
   Docker it is mounted at `/app/runtime_data` so `/app/data` remains the Python
-  source package.
+  source package. Host config is not mounted over `/app/config`; secrets still
+  enter through Compose `env_file`, and Webull tokens mount directly to
+  `/app/.webull_tokens`.
 - Docker security: root `compose.yaml` runs the Gwala service as UID/GID
   `1000:1000` with `security_opt: no-new-privileges:true`.
 

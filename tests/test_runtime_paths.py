@@ -42,6 +42,8 @@ class RuntimePathTests(unittest.TestCase):
 
         self.assertIn("./data:/app/runtime_data", text)
         self.assertNotIn("./data:/app/data", text)
+        self.assertNotIn("./config:/app/config", text)
+        self.assertIn("./config/webull_tokens:/app/.webull_tokens", text)
         self.assertIn("GWALA_DATA_DIR: /app/runtime_data", text)
 
     def test_deploy_verifier_rejects_data_source_shadowing(self) -> None:
@@ -58,12 +60,33 @@ class RuntimePathTests(unittest.TestCase):
 
         self.assertTrue(any("/app/data must not be a bind mount" in error for error in errors))
 
+    def test_deploy_verifier_rejects_config_source_shadowing(self) -> None:
+        payload = {
+            "services": {
+                "gwala": {
+                    "environment": {"GWALA_DATA_DIR": "/app/runtime_data"},
+                    "volumes": [
+                        {"source": "/srv/projects/gwala/data", "target": "/app/runtime_data"},
+                        {"source": "/srv/projects/gwala/config", "target": "/app/config"},
+                    ],
+                }
+            }
+        }
+
+        errors = validate_compose_boundary(payload)
+
+        self.assertTrue(any("/app/config must not be a bind mount" in error for error in errors))
+
     def test_deploy_verifier_accepts_runtime_data_mount(self) -> None:
         payload = {
             "services": {
                 "gwala": {
                     "environment": {"GWALA_DATA_DIR": "/app/runtime_data"},
-                    "volumes": [{"source": "/srv/projects/gwala/data", "target": "/app/runtime_data"}],
+                    "volumes": [
+                        {"source": "/srv/projects/gwala/data", "target": "/app/runtime_data"},
+                        {"source": "/srv/projects/gwala/logs", "target": "/app/logs"},
+                        {"source": "/srv/projects/gwala/config/webull_tokens", "target": "/app/.webull_tokens"},
+                    ],
                 }
             }
         }
@@ -74,6 +97,17 @@ class RuntimePathTests(unittest.TestCase):
         from data.webull_data import disable_sdk_default_logging
 
         self.assertTrue(callable(disable_sdk_default_logging))
+
+    def test_config_source_package_imports_remain_available(self) -> None:
+        from config.runtime_paths import runtime_data_root
+        import config.filter_policy
+        import config.strategy_registry
+        import config.symbol_playbook
+
+        self.assertTrue(callable(runtime_data_root))
+        self.assertIsNotNone(config.filter_policy)
+        self.assertIsNotNone(config.strategy_registry)
+        self.assertIsNotNone(config.symbol_playbook)
 
 
 if __name__ == "__main__":

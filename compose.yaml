@@ -29,7 +29,6 @@ services:
     volumes:
       - ./data:/app/runtime_data
       - ./logs:/app/logs
-      - ./config:/app/config
       - ./backups:/app/backups
       - ./config/webull_tokens:/app/.webull_tokens
     security_opt:
