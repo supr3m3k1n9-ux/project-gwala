@@ -1,0 +1,32 @@
+name: gwala
+
+services:
+  gwala:
+    image: project-gwala:latest
+    user: "1000:1000"
+    working_dir: /app
+    env_file:
+      - ./config/gwala.env
+    environment:
+      GWALA_DEPLOYMENT_MODE: shadow
+      GWALA_SHADOW_MODE: "true"
+      GWALA_DISABLE_BROKER_EXECUTION: "true"
+      GWALA_LIVE_TRADING_ENABLED: "false"
+      GWALA_BROKER_ORDER_EXECUTION_ENABLED: "false"
+      GWALA_REAL_MONEY_READY: "false"
+      GWALA_DASHBOARD_HOST: 127.0.0.1
+      GWALA_DASHBOARD_PORT: "8765"
+      GWALA_HOST_SYSTEMD_HEALTH_JSON: /app/logs/host_systemd_health.json
+      GWALA_HOST_DOCKER_HEALTH_JSON: /app/logs/host_docker_health.json
+      GWALA_HOST_SECURITY_HEALTH_JSON: /app/logs/host_security_health.json
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+      - ./backups:/app/backups
+      - ./config/webull_tokens:/app/.webull_tokens
+    security_opt:
+      - no-new-privileges:true
+    command: ["python", "run_app.py", "--host", "127.0.0.1", "--port", "8765"]

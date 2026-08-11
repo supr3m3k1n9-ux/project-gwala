@@ -12,6 +12,8 @@ shadow mode. It does not replace or disable the current macOS LaunchAgents.
 - Dashboard: Python `http.server` through `run_app.py`
 - Trading posture: local paper-validation shadow mode only
 - Host systemd health artifact: `/opt/project-gwala/logs/host_systemd_health.json`
+- Docker security: root `compose.yaml` runs the Gwala service as UID/GID
+  `1000:1000` with `security_opt: no-new-privileges:true`.
 
 The Linux services and timers mirror the current macOS production roles:
 

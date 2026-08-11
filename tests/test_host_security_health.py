@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 from deploy.linux.write_host_security_health import (
+    compose_security_fallback,
     credential_leak_check,
     docker_inspect_check,
     listening_ports_check,
@@ -28,6 +29,15 @@ pubkeyauthentication yes
 
 
 class HostSecurityHealthTests(unittest.TestCase):
+    def test_repository_compose_declares_no_new_privileges(self) -> None:
+        compose = Path(__file__).resolve().parents[1] / "compose.yaml"
+        text = compose.read_text(encoding="utf-8")
+
+        self.assertIn("security_opt:", text)
+        self.assertIn("no-new-privileges:true", text.replace(" ", ""))
+        self.assertIn('user: "1000:1000"', text)
+        self.assertIn('"127.0.0.1:8765:8765"', text)
+
     def test_safe_ssh_config_is_green(self) -> None:
         check = ssh_hardening_check(SAFE_SSHD)
         self.assertEqual(check["status"], "GREEN")
@@ -169,6 +179,47 @@ tcp LISTEN 0 4096 0.0.0.0:2375 0.0.0.0:* users:(("dockerd",pid=12,fd=3))
     def test_uid_1000_non_root_container_is_green(self) -> None:
         check = docker_inspect_check([self.good_container()])
         self.assertEqual(check["status"], "GREEN")
+
+    def test_declared_no_new_privileges_is_green(self) -> None:
+        container = self.good_container()
+
+        check = docker_inspect_check([container])
+
+        self.assertEqual(check["status"], "GREEN")
+        self.assertNotIn("no-new-privileges", check["reason"])
+
+    def test_absent_no_new_privileges_remains_watch(self) -> None:
+        container = self.good_container()
+        container["HostConfig"]["SecurityOpt"] = []
+
+        check = docker_inspect_check([container])
+
+        self.assertEqual(check["status"], "WATCH")
+        self.assertIn("no-new-privileges not declared", check["reason"])
+
+    def test_compose_declared_no_new_privileges_removes_compose_warning(self) -> None:
+        with TemporaryDirectory() as raw:
+            compose = Path(raw) / "compose.yaml"
+            compose.write_text("services:\n  gwala:\n    image: project-gwala:latest\n", encoding="utf-8")
+            compose_payload = {
+                "services": {
+                    "gwala": {
+                        "image": "project-gwala:latest",
+                        "user": "1000:1000",
+                        "security_opt": ["no-new-privileges:true"],
+                        "volumes": [],
+                    }
+                }
+            }
+            with patch(
+                "deploy.linux.write_host_security_health.run_command_full",
+                return_value=(0, json.dumps(compose_payload)),
+            ):
+                check = compose_security_fallback(compose)
+
+        self.assertEqual(check["status"], "WATCH")
+        self.assertIn("Runtime-only fields remain unverified", check["reason"])
+        self.assertNotIn("no-new-privileges not declared", check["reason"])
 
     @staticmethod
     def good_container() -> dict[str, object]:
