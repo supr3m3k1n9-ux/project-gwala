@@ -11458,6 +11458,98 @@ class StateAndEndpointTests(unittest.TestCase):
             eod_schedule,
         )
 
+class FounderCommandCenterV1Tests(unittest.TestCase):
+    def test_validation_scorecard_uses_authoritative_official_ledger(self) -> None:
+        with TemporaryDirectory() as temporary:
+            samples = Path(temporary) / "paper_validation_samples.csv"
+            pd.DataFrame(
+                [
+                    {"symbol": "SPY", "setup": "Setup A Long", "counts_toward_30": True, "invalid_for_validation": "", "outcome_r": "1.0", "entry_time_et": "2026-08-01 10:00"},
+                    {"symbol": "QQQ", "setup": "Setup B Short", "counts_toward_30": True, "invalid_for_validation": "", "outcome_r": "-0.5", "entry_time_et": "2026-08-02 10:00"},
+                    {"symbol": "AAPL", "setup": "Setup C Long", "counts_toward_30": True, "invalid_for_validation": "", "outcome_r": "", "entry_time_et": "2026-08-03 10:00"},
+                    {"symbol": "SPY", "setup": "Morning ORB", "counts_toward_30": False, "invalid_for_validation": "", "outcome_r": "8.0", "entry_time_et": "2026-08-04 10:00"},
+                    {"symbol": "MSFT", "setup": "Invalid", "counts_toward_30": True, "invalid_for_validation": "true", "outcome_r": "4.0", "entry_time_et": "2026-08-05 10:00"},
+                ]
+            ).to_csv(samples, index=False)
+
+            scorecard = run_app.founder_validation_scorecard(samples)
+
+        self.assertEqual(scorecard["official_rows"], 3)
+        self.assertEqual(scorecard["completed_trades"], 2)
+        self.assertEqual(scorecard["open_trades"], 1)
+        self.assertEqual(scorecard["remaining_to_30"], 28)
+        self.assertEqual(scorecard["wins"], 1)
+        self.assertEqual(scorecard["losses"], 1)
+        self.assertEqual(scorecard["total_r"], 0.5)
+        self.assertEqual(scorecard["expectancy_r"], 0.25)
+        self.assertEqual(scorecard["equity_curve"][-1]["cumulative_r"], 0.5)
+
+    def test_today_funnel_marks_missing_artifacts_unavailable_not_zero(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "logs"
+            data = root / "data"
+            logs.mkdir()
+            data.mkdir()
+            pd.DataFrame(
+                [
+                    {"symbol": "SPY", "scanner_status": "allowed"},
+                    {"symbol": "QQQ", "scanner_status": "blocked"},
+                ]
+            ).to_csv(logs / "daily_paper_signal_scanner.csv", index=False)
+
+            funnel = run_app.founder_today_funnel(logs, data)
+
+        stages = {stage["name"]: stage for stage in funnel["stages"]}
+        self.assertEqual(stages["Scanner"]["count"], 2)
+        self.assertEqual(stages["Allowed"]["count"], 1)
+        self.assertEqual(stages["Current Candle"]["status"], "UNAVAILABLE")
+        self.assertIsNone(stages["Current Candle"]["count"])
+        self.assertEqual(stages["Paper Gate"]["status"], "UNAVAILABLE")
+        self.assertIsNone(stages["Paper Gate"]["count"])
+
+    def test_command_center_chart_payload_includes_candidate_timeline(self) -> None:
+        with TemporaryDirectory() as temporary:
+            logs = Path(temporary)
+            candle_dir = logs / "candles" / "SPY"
+            candle_dir.mkdir(parents=True)
+            candles = pd.DataFrame(
+                [
+                    {"datetime": "2026-08-12T13:30:00Z", "open": 100, "high": 101, "low": 99, "close": 100.5, "volume": 1000},
+                    {"datetime": "2026-08-12T14:00:00Z", "open": 100.5, "high": 102, "low": 100, "close": 101.5, "volume": 1200},
+                ]
+            )
+            candles.to_csv(candle_dir / "M30.csv", index=False)
+            candles.to_csv(candle_dir / "M5.csv", index=False)
+            pd.DataFrame(
+                [
+                    {
+                        "symbol": "SPY",
+                        "setup": "Setup C Full-Session Long",
+                        "direction": "long",
+                        "signal_time_et": "2026-08-12 12:30",
+                        "scanner_status": "allowed",
+                    }
+                ]
+            ).to_csv(logs / "daily_paper_signal_scanner.csv", index=False)
+
+            with patch.object(run_app, "LOGS_DIR", logs):
+                payload = run_app.founder_command_center_chart_payload("SPY", "M30")
+
+        self.assertEqual(payload["symbol"], "SPY")
+        self.assertEqual(payload["timeframe"], "M30")
+        self.assertGreaterEqual(len(payload["candles"]), 1)
+        self.assertEqual(payload["timeline"][0]["stage"], "Scanner")
+        self.assertEqual(payload["timeline"][0]["status"], "allowed")
+
+    def test_founder_command_center_payload_does_not_include_secret_environment_values(self) -> None:
+        with patch.dict(os.environ, {"WEBULL_APP_SECRET": "TEST_SECRET_FIXTURE_DO_NOT_LEAK"}, clear=False):
+            payload = run_app.founder_command_center_payload()
+
+        serialized = json.dumps(payload)
+        self.assertNotIn("TEST_SECRET_FIXTURE_DO_NOT_LEAK", serialized)
+        self.assertIn("Read-only observability", serialized)
+
 
 if __name__ == "__main__":
     unittest.main()

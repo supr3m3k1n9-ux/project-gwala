@@ -11,7 +11,7 @@ alerts, or connect to broker execution.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import date, datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
@@ -103,6 +103,7 @@ TRADING_WORKSPACE_TIMEFRAMES = {
 }
 TRADING_SIGNAL_TIMEFRAMES = {"M5", "M30"}
 TRADING_WORKSPACE_SYMBOLS = playbook_symbols("approved_plus_watch")
+COMMAND_CENTER_SYMBOLS = ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]
 WEBULL_PYTHON = PROJECT_DIR / ".venv-webull" / "bin" / "python"
 ALLOWED_REPORTS = {
     "dashboard": "project_gwala_dashboard.md",
@@ -226,6 +227,458 @@ def json_safe(value):
     if isinstance(value, float):
         return value if math.isfinite(value) else None
     return value
+
+
+def text_value(value: object, default: str = "") -> str:
+    """Return stripped dashboard text without leaking pandas NaN."""
+
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    return text if text else default
+
+
+def bool_value(value: object) -> bool:
+    """Interpret common artifact booleans."""
+
+    return text_value(value).lower() in {"1", "true", "yes", "y", "pass", "passed"}
+
+
+def safe_read_json(path: Path) -> dict:
+    """Read one JSON artifact, returning metadata instead of raising."""
+
+    if not path.exists():
+        return {"_available": False, "_path": str(path), "_error": "missing"}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {"_available": False, "_path": str(path), "_error": str(error)}
+    if not isinstance(payload, dict):
+        return {"_available": False, "_path": str(path), "_error": "not an object"}
+    payload["_available"] = True
+    payload["_path"] = str(path)
+    return payload
+
+
+def safe_read_csv(path: Path) -> pd.DataFrame:
+    """Read one CSV artifact as strings without treating missing files as zero."""
+
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path, dtype=str).fillna("")
+    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        return pd.DataFrame()
+
+
+def artifact_state(path: Path) -> dict:
+    """Return lightweight artifact availability for the Command Center."""
+
+    if not path.exists():
+        return {"status": "UNAVAILABLE", "path": str(path), "updated_at": None}
+    updated = datetime.fromtimestamp(path.stat().st_mtime, tz=MARKET_TZ)
+    return {
+        "status": "AVAILABLE",
+        "path": str(path),
+        "updated_at": updated.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "updated_iso": updated.isoformat(),
+    }
+
+
+def current_trading_date(moment: datetime | None = None) -> date:
+    """Return the market-local date used for daily dashboard counts."""
+
+    return (moment or datetime.now(MARKET_TZ)).astimezone(MARKET_TZ).date()
+
+
+def official_validation_frame(samples_csv: Path | None = None) -> pd.DataFrame:
+    """Return official non-invalid validation rows from the authoritative ledger."""
+
+    path = samples_csv or RUNTIME_DATA_DIR / "paper_validation_samples.csv"
+    samples = safe_read_csv(path)
+    if samples.empty:
+        return samples
+    if "counts_toward_30" in samples.columns:
+        official = samples["counts_toward_30"].map(bool_value)
+    else:
+        official = samples.get("sample_tier", pd.Series([""] * len(samples))).astype(str).str.upper().isin({"A", "B"})
+    if "invalid_for_validation" in samples.columns:
+        official &= ~samples["invalid_for_validation"].map(bool_value)
+    return samples[official].copy()
+
+
+def completed_official_validation_frame(samples_csv: Path | None = None) -> pd.DataFrame:
+    """Return official validation rows with recorded R outcomes."""
+
+    frame = official_validation_frame(samples_csv)
+    if frame.empty or "outcome_r" not in frame.columns:
+        return pd.DataFrame()
+    numeric_r = pd.to_numeric(frame["outcome_r"], errors="coerce")
+    completed = frame[numeric_r.notna()].copy()
+    completed["_outcome_r"] = numeric_r[numeric_r.notna()].astype(float)
+    time_columns = ["exit_time_et", "exit_time", "entry_time_et", "entry_time", "signal_time", "sample_date"]
+    for column in time_columns:
+        if column in completed.columns:
+            parsed = pd.to_datetime(completed[column], errors="coerce", utc=True)
+            if parsed.notna().any():
+                completed["_sort_time"] = parsed
+                break
+    if "_sort_time" not in completed.columns:
+        completed["_sort_time"] = pd.RangeIndex(len(completed))
+    return completed.sort_values("_sort_time").reset_index(drop=True)
+
+
+def max_drawdown_r(values: list[float]) -> float:
+    """Return maximum peak-to-trough drawdown for cumulative R."""
+
+    peak = 0.0
+    drawdown = 0.0
+    cumulative = 0.0
+    for value in values:
+        cumulative += value
+        peak = max(peak, cumulative)
+        drawdown = min(drawdown, cumulative - peak)
+    return round(drawdown, 2)
+
+
+def founder_validation_scorecard(samples_csv: Path | None = None) -> dict:
+    """Build the founder-facing official validation scorecard."""
+
+    ledger_path = samples_csv or RUNTIME_DATA_DIR / "paper_validation_samples.csv"
+    official = official_validation_frame(ledger_path)
+    completed = completed_official_validation_frame(ledger_path)
+    r_values = completed["_outcome_r"].astype(float).tolist() if not completed.empty else []
+    wins = [value for value in r_values if value > 0]
+    losses = [value for value in r_values if value < 0]
+    breakevens = [value for value in r_values if value == 0]
+    gross_win = sum(wins)
+    gross_loss = abs(sum(losses))
+    cumulative = []
+    running = 0.0
+    for index, row in completed.iterrows():
+        running += float(row["_outcome_r"])
+        cumulative.append(
+            {
+                "trade": int(index) + 1,
+                "symbol": text_value(row.get("symbol"), "--"),
+                "setup": text_value(row.get("setup"), "--"),
+                "r": round(float(row["_outcome_r"]), 2),
+                "cumulative_r": round(running, 2),
+            }
+        )
+    latest = cumulative[-1] if cumulative else {}
+    return {
+        "ledger_available": ledger_path.exists(),
+        "ledger_path": str(ledger_path),
+        "official_rows": int(len(official)),
+        "completed_trades": int(len(completed)),
+        "open_trades": max(int(len(official) - len(completed)), 0),
+        "remaining_to_30": max(30 - int(len(completed)), 0),
+        "wins": len(wins),
+        "losses": len(losses),
+        "breakevens": len(breakevens),
+        "win_rate": round(len(wins) / len(r_values) * 100, 1) if r_values else None,
+        "total_r": round(sum(r_values), 2) if r_values else 0.0,
+        "expectancy_r": round(sum(r_values) / len(r_values), 3) if r_values else None,
+        "profit_factor": round(gross_win / gross_loss, 2) if gross_loss else None,
+        "max_drawdown_r": max_drawdown_r(r_values),
+        "equity_curve": cumulative,
+        "latest_completed_trade": latest,
+    }
+
+
+def count_or_unavailable(frame: pd.DataFrame, predicate=None) -> dict:
+    """Return a count with explicit unavailable status."""
+
+    if frame.empty:
+        return {"status": "UNAVAILABLE", "count": None}
+    if predicate is None:
+        return {"status": "AVAILABLE", "count": int(len(frame))}
+    try:
+        return {"status": "AVAILABLE", "count": int(predicate(frame).sum())}
+    except Exception as error:  # defensive for malformed artifacts
+        return {"status": "PARTIAL", "count": None, "reason": str(error)}
+
+
+def founder_today_funnel(logs_dir: Path | None = None, runtime_dir: Path | None = None) -> dict:
+    """Return today's evidence funnel from saved artifacts without changing state."""
+
+    logs = logs_dir or LOGS_DIR
+    runtime = runtime_dir or RUNTIME_DATA_DIR
+    today = current_trading_date().isoformat()
+    scanner = safe_read_csv(logs / "daily_paper_signal_scanner.csv")
+    sizing = safe_read_csv(logs / "position_sizing.csv")
+    paper_gate = safe_read_csv(logs / "paper_gate_v2.csv")
+    contract_gate = safe_read_csv(logs / "options_contract_gate.csv")
+    samples = official_validation_frame(runtime / "paper_validation_samples.csv")
+    capture = safe_read_json(logs / "current_candle_capture.json")
+    import_preview = safe_read_json(logs / "paper_validation_sample_import.json")
+
+    def scanner_status(frame: pd.DataFrame, value: str):
+        column = "scanner_status" if "scanner_status" in frame.columns else "signal_status"
+        return frame[column].astype(str).str.lower().eq(value)
+
+    def today_rows(frame: pd.DataFrame) -> pd.DataFrame:
+        if frame.empty:
+            return frame
+        for column in ("sample_date", "trade_date", "session_date", "entry_date"):
+            if column in frame.columns:
+                return frame[frame[column].astype(str).str.startswith(today)].copy()
+        return frame
+
+    today_samples = today_rows(samples)
+    today_completed = (
+        today_samples[pd.to_numeric(today_samples.get("outcome_r", pd.Series([], dtype=str)), errors="coerce").notna()]
+        if not today_samples.empty
+        else today_samples
+    )
+    stages = [
+        {"name": "Scanner", **count_or_unavailable(scanner)},
+        {"name": "Allowed", **count_or_unavailable(scanner, lambda df: scanner_status(df, "allowed"))},
+        {
+            "name": "Current Candle",
+            "status": "AVAILABLE" if capture.get("_available") else "UNAVAILABLE",
+            "count": capture.get("current_candle_count") or capture.get("current_session_count"),
+            "detail": capture.get("summary") or capture.get("_error", ""),
+        },
+        {"name": "Size OK", **count_or_unavailable(sizing, lambda df: df.get("sizing_status", "").astype(str).str.lower().eq("size_ok"))},
+        {
+            "name": "Paper Gate",
+            **count_or_unavailable(
+                paper_gate,
+                lambda df: df.get("sample_status", "").astype(str).str.lower().eq("ready_for_validation_sample"),
+            ),
+        },
+        {
+            "name": "Contract Gate",
+            **count_or_unavailable(
+                contract_gate,
+                lambda df: df.get("contract_gate_pass", "").map(bool_value),
+            ),
+        },
+        {"name": "Official Validation", "status": "AVAILABLE" if not samples.empty else "UNAVAILABLE", "count": int(len(today_samples)) if not samples.empty else None},
+    ]
+    return {
+        "trading_date": today,
+        "stages": stages,
+        "new_official_trades": int(len(today_samples)) if not samples.empty else None,
+        "completed_trades": int(len(today_completed)) if not today_samples.empty else 0,
+        "today_r": round(pd.to_numeric(today_completed.get("outcome_r", pd.Series(dtype=str)), errors="coerce").sum(), 2)
+        if not today_completed.empty
+        else 0.0,
+        "artifacts": {
+            "scanner": artifact_state(logs / "daily_paper_signal_scanner.csv"),
+            "current_candle_capture": artifact_state(logs / "current_candle_capture.json"),
+            "candidate_ledger": artifact_state(runtime / "candidate_window_ledger.csv"),
+            "paper_gate": artifact_state(logs / "paper_gate_v2.csv"),
+            "contract_gate": artifact_state(logs / "options_contract_gate.csv"),
+            "validation_import_preview": {
+                "status": "AVAILABLE" if import_preview.get("_available") else "UNAVAILABLE",
+                "path": str(logs / "paper_validation_sample_import.json"),
+            },
+        },
+    }
+
+
+def founder_candidate_timeline(logs_dir: Path | None = None, symbol: str = "SPY") -> list[dict]:
+    """Normalize visible candidate events for the Markets timeline."""
+
+    logs = logs_dir or LOGS_DIR
+    symbol = symbol.upper()
+    events: list[dict] = []
+    sources = [
+        ("Scanner", logs / "daily_paper_signal_scanner.csv", "scanner_status"),
+        ("Position Sizing", logs / "position_sizing.csv", "sizing_status"),
+        ("Paper Gate", logs / "paper_gate_v2.csv", "sample_status"),
+        ("Contract Gate", logs / "options_contract_gate.csv", "contract_gate_status"),
+    ]
+    for stage, path, status_column in sources:
+        frame = safe_read_csv(path)
+        if frame.empty or "symbol" not in frame.columns:
+            continue
+        for _, row in frame[frame["symbol"].astype(str).str.upper().eq(symbol)].tail(15).iterrows():
+            timestamp = (
+                text_value(row.get("signal_time_et"))
+                or text_value(row.get("candidate_entry_et"))
+                or text_value(row.get("entry_time_et"))
+                or text_value(row.get("signal_time"))
+            )
+            events.append(
+                {
+                    "stage": stage,
+                    "timestamp": timestamp or "latest",
+                    "symbol": symbol,
+                    "setup": text_value(row.get("setup"), "--"),
+                    "direction": text_value(row.get("direction"), "--"),
+                    "status": text_value(row.get(status_column), text_value(row.get("status"), "--")),
+                    "reason": text_value(row.get("reason"), text_value(row.get("blocker"), "")),
+                }
+            )
+    return events[-40:]
+
+
+def founder_report_events(logs_dir: Path | None = None) -> list[dict]:
+    """Return a normalized read-only executive/report inbox."""
+
+    logs = logs_dir or LOGS_DIR
+    events: list[dict] = []
+    report_paths = sorted(
+        list(logs.glob("executive_reports/**/*.md")) + list(logs.glob("*executive_report*.md")) + list(logs.glob("production_heartbeat.md")),
+        key=lambda path: path.stat().st_mtime if path.exists() else 0,
+        reverse=True,
+    )
+    seen: set[str] = set()
+    for path in report_paths:
+        if str(path) in seen or not path.exists():
+            continue
+        seen.add(str(path))
+        updated = datetime.fromtimestamp(path.stat().st_mtime, tz=MARKET_TZ)
+        name = path.stem.replace("_", " ").replace("-", " ").title()
+        category = "Executive" if "executive" in str(path).lower() else "Alerts"
+        try:
+            content = path.read_text(encoding="utf-8")
+            lines = [line.strip("# ").strip() for line in content.splitlines() if line.strip()]
+        except OSError:
+            content = ""
+            lines = []
+        events.append(
+            {
+                "id": str(uuid.uuid5(uuid.NAMESPACE_URL, str(path))),
+                "timestamp": updated.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "timestamp_iso": updated.isoformat(),
+                "category": category,
+                "importance": "Important" if any(word in " ".join(lines[:12]).upper() for word in ("WATCH", "FAIL", "RED", "ACTION")) else "Normal",
+                "title": name,
+                "summary": lines[1] if len(lines) > 1 else (lines[0] if lines else "Report archived."),
+                "path": str(path),
+                "content": content[:24000],
+            }
+        )
+    heartbeat = safe_read_json(logs / "production_heartbeat.json")
+    if heartbeat.get("_available"):
+        events.insert(
+            0,
+            {
+                "id": "production-heartbeat",
+                "timestamp": text_value(heartbeat.get("generated_at_et"), "latest"),
+                "category": "Alerts",
+                "importance": "Important" if text_value(heartbeat.get("status")).upper() not in {"GREEN", "PASS"} else "Normal",
+                "title": "Production Health",
+                "summary": f"Status {text_value(heartbeat.get('status'), 'UNKNOWN')}",
+                "path": str(logs / "production_heartbeat.json"),
+                "content": json.dumps({k: v for k, v in heartbeat.items() if k != "_path"}, indent=2)[:8000],
+            },
+        )
+    return events[:60]
+
+
+def founder_research_payload(samples_csv: Path | None = None) -> dict:
+    """Return strategy portfolio state without creating new strategy decisions."""
+
+    scorecard = founder_validation_scorecard(samples_csv)
+    return {
+        "primary": {
+            "name": "VWAP official paper validation",
+            "allocation": "Primary",
+            "status": "CONTINUE",
+            "evidence": f"{scorecard['completed_trades']} / 30 completed official paper trades",
+            "next_trigger": f"{scorecard['remaining_to_30']} completed trade(s) to checkpoint",
+        },
+        "secondary": {
+            "name": "Morning SPY/QQQ Long ORB",
+            "allocation": "Secondary",
+            "status": "WATCH",
+            "evidence": "Manual Paper-Watch lane. Evidence remains separate from VWAP.",
+            "next_trigger": "Awaiting Manual Paper-Watch completed outcomes.",
+        },
+        "placeholders": [
+            {"name": "Phase 3 Tiny Live", "status": "Awaiting Phase 3 Evidence"},
+            {"name": "Capital Scaling", "status": "Awaiting Phase 3 Evidence"},
+        ],
+    }
+
+
+def founder_system_payload(logs_dir: Path | None = None) -> dict:
+    """Return infrastructure status from existing authoritative artifacts."""
+
+    logs = logs_dir or LOGS_DIR
+    artifacts = {
+        "Production Health": safe_read_json(logs / "production_heartbeat.json"),
+        "Host systemd": safe_read_json(logs / "host_systemd_health.json"),
+        "Docker": safe_read_json(logs / "host_docker_health.json"),
+        "Host Security": safe_read_json(logs / "host_security_health.json"),
+        "Runtime Assurance": safe_read_json(logs / "continuous_assurance.json"),
+        "Dashboard Preflight": safe_read_json(logs / "dashboard_data_preflight.json"),
+        "Autonomous Workflow": safe_read_json(logs / "autonomous_paper_workflow_status.json"),
+    }
+    cards = []
+    for label, payload in artifacts.items():
+        status = text_value(payload.get("status"), "UNAVAILABLE").upper() if payload.get("_available") else "UNAVAILABLE"
+        if status == "GREEN":
+            status = "PASS"
+        if status == "YELLOW":
+            status = "WATCH"
+        if status == "RED":
+            status = "FAIL"
+        cards.append(
+            {
+                "name": label,
+                "status": status,
+                "detail": text_value(payload.get("red_reason"), text_value(payload.get("message"), text_value(payload.get("_error"), "No current artifact."))),
+                "path": str(payload.get("_path", "")),
+            }
+        )
+    return {
+        "cards": cards,
+        "deployment_commit": text_value(safe_read_json(logs / "production_readiness.json").get("commit"), ""),
+        "logs_dir": str(logs),
+        "runtime_data_dir": str(RUNTIME_DATA_DIR),
+    }
+
+
+def founder_command_center_payload() -> dict:
+    """Build the read-only founder-facing Command Center V1 payload."""
+
+    validation = founder_validation_scorecard()
+    funnel = founder_today_funnel()
+    system = founder_system_payload()
+    production_status = next((card["status"] for card in system["cards"] if card["name"] == "Production Health"), "UNAVAILABLE")
+    return {
+        "generated_at_et": datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "overview": {
+            "production": production_status,
+            "evidence": "CLEAN" if validation["completed_trades"] >= 30 else "PARTIAL",
+            "market_state": text_value(safe_read_json(LOGS_DIR / "autonomous_paper_workflow_status.json").get("decision"), "UNKNOWN"),
+            "current_phase": "Phase 2: Discover first commercially viable edge",
+            "official_validation": f"{validation['completed_trades']} / 30",
+            "last_autonomous_run": text_value(safe_read_json(LOGS_DIR / "autonomous_paper_workflow_status.json").get("generated_at_et"), "UNAVAILABLE"),
+            "next_autonomous_run": "Systemd timer cadence",
+        },
+        "today": funnel,
+        "validation": validation,
+        "markets": {
+            "symbols": COMMAND_CENTER_SYMBOLS,
+            "primary_symbols": ["SPY", "QQQ"],
+            "timeframes": list(TRADING_WORKSPACE_TIMEFRAMES.keys()),
+        },
+        "inbox": {"events": founder_report_events()},
+        "research": founder_research_payload(),
+        "system": system,
+        "guardrail": "Read-only observability. No trading controls, no broker orders, and no evidence mutations.",
+    }
+
+
+def founder_command_center_chart_payload(symbol: str = "SPY", timeframe: str = "M30") -> dict:
+    """Return Command Center chart plus candidate timeline."""
+
+    payload = build_trading_workspace_data(LOGS_DIR, symbol, timeframe)
+    payload["timeline"] = founder_candidate_timeline(LOGS_DIR, symbol)
+    return payload
 
 
 def command_center_sample_key(row: dict | pd.Series) -> str:
@@ -1323,6 +1776,12 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/system-state":
             self.serve_system_state()
             return
+        if parsed.path == "/api/command-center-v1":
+            self.serve_founder_command_center()
+            return
+        if parsed.path == "/api/command-center-v1/chart":
+            self.serve_founder_command_center_chart(parsed.query)
+            return
         if parsed.path == "/api/trading-workspace":
             self.serve_trading_workspace(parsed.query)
             return
@@ -1433,6 +1892,27 @@ class ProjectGwalaHandler(SimpleHTTPRequestHandler):
             self.send_error(500, "logs/system_state.json is invalid. Run python run_system_state.py again.")
             return
         self.send_json(state)
+
+    def serve_founder_command_center(self) -> None:
+        """Return the read-only founder-facing Command Center payload."""
+
+        try:
+            self.send_json(founder_command_center_payload())
+        except Exception as error:
+            self.send_json({"error": f"Command Center unavailable: {error}"}, status=500)
+
+    def serve_founder_command_center_chart(self, query: str) -> None:
+        """Return read-only chart data for the founder Command Center."""
+
+        params = parse_qs(query)
+        symbol = params.get("symbol", ["SPY"])[0]
+        timeframe = params.get("timeframe", ["M30"])[0]
+        try:
+            payload = founder_command_center_chart_payload(symbol, timeframe)
+        except (FileNotFoundError, ValueError) as error:
+            self.send_json({"error": str(error)}, status=404)
+            return
+        self.send_json(payload)
 
     def rebuild_lightweight_system_state(self) -> None:
         """Refresh local status files before serving app state.

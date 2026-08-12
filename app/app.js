@@ -1,4 +1,6 @@
 const stateUrl = "/api/system-state";
+const commandCenterV1Url = "/api/command-center-v1";
+const commandCenterV1ChartUrl = "/api/command-center-v1/chart";
 const tradingWorkspaceUrl = "/api/trading-workspace";
 const setupReadinessUrl = "/api/setup-readiness";
 const replayChartUrl = "/api/replay-chart";
@@ -21,6 +23,7 @@ const paperCommandConfirmEntryUrl = "/api/actions/paper-command-center/confirm-e
 const paperCommandConfirmExitUrl = "/api/actions/paper-command-center/confirm-exit";
 const updatePaperTradeActionUrl = "/api/actions/update-paper-trade";
 const replayJournalStorageKey = "project_gwala_replay_practice_v1";
+const commandCenterInboxStorageKey = "project_gwala_command_center_inbox_v1";
 const autoRefreshMs = 60_000;
 const reports = [
   ["dashboard", "Dashboard"],
@@ -233,6 +236,11 @@ let alertStateInitialized = false;
 let lastReadyCandidateKeys = new Set();
 let lastOpenPaperKeys = new Set();
 let terminalFocus = null;
+let commandCenterState = null;
+let commandCenterInboxState = loadCommandCenterInboxState();
+let commandCenterSymbol = "SPY";
+let commandCenterTimeframe = "M30";
+let commandCenterInboxFilter = "All";
 let paperCommandCenter = { candidates: [], open_trades: [] };
 let selectedPaperCommandKey = "";
 const preEntryReviewedKeys = new Set();
@@ -2822,6 +2830,322 @@ function renderTerminalTicket(state, chart) {
     : matchingCard.blockers?.join(" ") || "Signal exists but is not eligible for review.";
 }
 
+function loadCommandCenterInboxState() {
+  try {
+    return JSON.parse(localStorage.getItem(commandCenterInboxStorageKey) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveCommandCenterInboxState() {
+  localStorage.setItem(commandCenterInboxStorageKey, JSON.stringify(commandCenterInboxState));
+}
+
+function statusTone(value) {
+  const normalized = text(value, "UNAVAILABLE").toUpperCase();
+  if (["PASS", "GREEN", "CLEAN", "CONTINUE", "PROMOTE", "READY"].includes(normalized)) return "pass";
+  if (["WATCH", "PARTIAL", "YELLOW", "INVESTIGATE"].includes(normalized)) return "watch";
+  if (["FAIL", "RED", "INVALID", "DOWN", "RETIRE", "REDUCE"].includes(normalized)) return "fail";
+  return "muted";
+}
+
+function statusBadge(value) {
+  const label = text(value, "UNAVAILABLE").toUpperCase();
+  return `<span class="cc-status ${statusTone(label)}">${escapeHtml(label)}</span>`;
+}
+
+function renderCommandCenterOverview(payload) {
+  const overview = payload.overview || {};
+  const items = [
+    ["Production", overview.production],
+    ["Evidence", overview.evidence],
+    ["Market State", titleCase(overview.market_state)],
+    ["Current Phase", overview.current_phase],
+    ["Official Validation", overview.official_validation],
+    ["Last Autonomous Run", overview.last_autonomous_run],
+    ["Next Autonomous Run", overview.next_autonomous_run],
+  ];
+  $("cc-status-strip").innerHTML = items
+    .map(
+      ([label, value]) => `
+        <article>
+          <span>${escapeHtml(label)}</span>
+          <strong>${label === "Production" || label === "Evidence" ? statusBadge(value) : escapeHtml(value)}</strong>
+        </article>
+      `,
+    )
+    .join("");
+  $("cc-generated-at").textContent = `Updated ${payload.generated_at_et || "--"}`;
+  $("cc-guardrail").textContent = payload.guardrail || "Read-only observability.";
+}
+
+function renderCommandCenterFunnel(today) {
+  const stages = today?.stages || [];
+  $("cc-funnel").innerHTML = stages
+    .map(
+      (stage, index) => `
+        <article class="cc-funnel-stage">
+          <span>${index + 1}. ${escapeHtml(stage.name)}</span>
+          <strong>${stage.count === null || stage.count === undefined ? escapeHtml(stage.status || "UNAVAILABLE") : escapeHtml(stage.count)}</strong>
+          <p>${escapeHtml(stage.detail || stage.status || "")}</p>
+        </article>
+      `,
+    )
+    .join("");
+  setText("cc-today-scanner", stages[0]?.count ?? stages[0]?.status ?? "UNAVAILABLE");
+  setText("cc-today-allowed", stages[1]?.count ?? stages[1]?.status ?? "UNAVAILABLE");
+  setText("cc-today-paper-gate", stages[4]?.count ?? stages[4]?.status ?? "UNAVAILABLE");
+  setText("cc-today-contract-gate", stages[5]?.count ?? stages[5]?.status ?? "UNAVAILABLE");
+  setText("cc-today-new-official", today?.new_official_trades ?? "UNAVAILABLE");
+  setText("cc-today-completed", today?.completed_trades ?? "UNAVAILABLE");
+  setText("cc-today-r", `${signedValue(today?.today_r || 0)}R`);
+}
+
+function renderCommandCenterValidation(validation) {
+  setText("cc-validation-progress", `${validation.completed_trades ?? 0} / 30`);
+  setText("cc-validation-detail", `${validation.open_trades ?? 0} open. ${validation.remaining_to_30 ?? "--"} remaining.`);
+  const metrics = [
+    ["Wins", validation.wins],
+    ["Losses", validation.losses],
+    ["Win Rate", validation.win_rate === null ? "--" : `${validation.win_rate}%`],
+    ["Total R", `${signedValue(validation.total_r || 0)}R`],
+    ["Expectancy", validation.expectancy_r === null ? "--" : `${signedValue(validation.expectancy_r, 3)}R`],
+    ["Profit Factor", validation.profit_factor ?? "--"],
+    ["Max DD", `${signedValue(validation.max_drawdown_r || 0)}R`],
+  ];
+  $("cc-validation-metrics").innerHTML = metrics
+    .map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
+    .join("");
+  const curve = validation.equity_curve || [];
+  if (!curve.length) {
+    $("cc-equity-curve").innerHTML = '<div class="terminal-empty">No completed official paper trades yet.</div>';
+    return;
+  }
+  const width = 620;
+  const height = 190;
+  const pad = 22;
+  const values = curve.map((point) => Number(point.cumulative_r));
+  const low = Math.min(...values, 0);
+  const high = Math.max(...values, 0);
+  const range = Math.max(high - low, 1);
+  const x = (index) => pad + (index / Math.max(curve.length - 1, 1)) * (width - pad * 2);
+  const y = (value) => height - pad - ((Number(value) - low) / range) * (height - pad * 2);
+  const points = values.map((value, index) => `${x(index)},${y(value)}`).join(" ");
+  const zeroY = y(0);
+  $("cc-equity-curve").innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Official validation cumulative R curve">
+      <line class="price-grid" x1="${pad}" y1="${zeroY}" x2="${width - pad}" y2="${zeroY}"></line>
+      <polyline class="cc-equity-line" points="${points}"></polyline>
+      ${curve
+        .map((point, index) => `<circle class="cc-equity-dot" cx="${x(index)}" cy="${y(point.cumulative_r)}" r="3"><title>#${point.trade} ${escapeHtml(point.symbol)} ${signedValue(point.r)}R</title></circle>`)
+        .join("")}
+    </svg>
+  `;
+}
+
+function renderCommandCenterNeedsAttention(payload) {
+  const cards = payload.system?.cards || [];
+  const attention = cards.filter((card) => card.status !== "PASS" && card.status !== "GREEN" && card.status !== "AVAILABLE");
+  const funnelIssues = (payload.today?.stages || []).filter((stage) => ["UNAVAILABLE", "PARTIAL", "STALE"].includes(stage.status));
+  const items = [
+    ...attention.map((item) => ({ title: item.name, detail: item.detail, status: item.status })),
+    ...funnelIssues.map((item) => ({ title: item.name, detail: "Evidence funnel artifact needs review.", status: item.status })),
+  ].slice(0, 8);
+  $("cc-needs-attention").innerHTML = items.length
+    ? items
+        .map(
+          (item) => `
+            <article>
+              ${statusBadge(item.status)}
+              <strong>${escapeHtml(item.title)}</strong>
+              <p>${escapeHtml(item.detail || "Review the authoritative artifact.")}</p>
+            </article>
+          `,
+        )
+        .join("")
+    : '<article><span class="cc-status pass">PASS</span><strong>No action required</strong><p>Green controls are summarized quietly.</p></article>';
+}
+
+function renderCommandCenterMarkets(payload) {
+  const symbols = payload.markets?.symbols || ["SPY", "QQQ"];
+  const timeframes = payload.markets?.timeframes || ["M30"];
+  $("cc-symbols").innerHTML = symbols
+    .map((symbol) => `<button type="button" class="${symbol === commandCenterSymbol ? "active" : ""}" data-cc-symbol="${escapeHtml(symbol)}">${escapeHtml(symbol)}</button>`)
+    .join("");
+  $("cc-timeframes").innerHTML = timeframes
+    .map((timeframe) => `<button type="button" class="${timeframe === commandCenterTimeframe ? "active" : ""}" data-cc-timeframe="${escapeHtml(timeframe)}">${escapeHtml(timeframe)}</button>`)
+    .join("");
+  for (const button of document.querySelectorAll("[data-cc-symbol]")) {
+    button.addEventListener("click", () => {
+      commandCenterSymbol = button.dataset.ccSymbol;
+      loadCommandCenterChart();
+      renderCommandCenterMarkets(commandCenterState || {});
+    });
+  }
+  for (const button of document.querySelectorAll("[data-cc-timeframe]")) {
+    button.addEventListener("click", () => {
+      commandCenterTimeframe = button.dataset.ccTimeframe;
+      loadCommandCenterChart();
+      renderCommandCenterMarkets(commandCenterState || {});
+    });
+  }
+}
+
+async function loadCommandCenterChart() {
+  $("cc-market-chart").innerHTML = '<div class="terminal-empty">Loading saved candles...</div>';
+  try {
+    const response = await fetch(
+      `${commandCenterV1ChartUrl}?symbol=${encodeURIComponent(commandCenterSymbol)}&timeframe=${encodeURIComponent(commandCenterTimeframe)}`,
+      { cache: "no-store" },
+    );
+    const chart = await response.json();
+    if (!response.ok) throw new Error(chart.error || `Chart request failed: ${response.status}`);
+    $("cc-market-title").textContent = `${chart.symbol} ${chart.timeframe}`;
+    $("cc-market-subtitle").textContent = `${chart.source}. Latest bar ${chart.latest_bar_et}.`;
+    $("cc-market-chart").innerHTML = tradingChartSvg(chart.candles || [], []);
+    $("cc-market-timeline").innerHTML = chart.timeline?.length
+      ? chart.timeline
+          .map(
+            (event) => `
+              <li>
+                <strong>${escapeHtml(event.stage)}</strong>
+                <span>${escapeHtml(event.timestamp)} / ${escapeHtml(event.setup)} / ${escapeHtml(event.status)}</span>
+                <small>${escapeHtml(event.reason || event.direction || "")}</small>
+              </li>
+            `,
+          )
+          .join("")
+      : "<li>No candidate events are available for this symbol.</li>";
+  } catch (error) {
+    $("cc-market-chart").innerHTML = `<div class="terminal-empty">${escapeHtml(error.message)}</div>`;
+    $("cc-market-subtitle").textContent = "Saved candle data is unavailable for this selection.";
+    $("cc-market-timeline").innerHTML = "<li>Timeline unavailable.</li>";
+  }
+}
+
+function inboxVisibleEvents(events) {
+  return events.filter((event) => {
+    const state = commandCenterInboxState[event.id] || {};
+    if (commandCenterInboxFilter === "Unread") return !state.read && !state.archived;
+    if (commandCenterInboxFilter === "Archived") return Boolean(state.archived);
+    if (commandCenterInboxFilter === "Important") return event.importance === "Important" && !state.archived;
+    if (["Executive", "Research", "Trading", "Alerts"].includes(commandCenterInboxFilter)) {
+      return event.category === commandCenterInboxFilter && !state.archived;
+    }
+    return !state.archived;
+  });
+}
+
+function renderCommandCenterInbox(events = []) {
+  const unread = events.filter((event) => !(commandCenterInboxState[event.id] || {}).read).length;
+  setText("cc-inbox-count", unread);
+  $("cc-inbox-filters").innerHTML = ["All", "Unread", "Important", "Executive", "Research", "Trading", "Alerts", "Archived"]
+    .map((filter) => `<button type="button" class="${filter === commandCenterInboxFilter ? "active" : ""}" data-cc-filter="${escapeHtml(filter)}">${escapeHtml(filter)}</button>`)
+    .join("");
+  for (const button of document.querySelectorAll("[data-cc-filter]")) {
+    button.addEventListener("click", () => {
+      commandCenterInboxFilter = button.dataset.ccFilter;
+      renderCommandCenterInbox(commandCenterState?.inbox?.events || []);
+    });
+  }
+  const visible = inboxVisibleEvents(events);
+  $("cc-inbox-list").innerHTML = visible.length
+    ? visible
+        .map((event) => {
+          const state = commandCenterInboxState[event.id] || {};
+          return `
+            <article class="cc-inbox-item ${state.read ? "read" : "unread"}">
+              <header>
+                <div>
+                  <span>${escapeHtml(event.category)} / ${escapeHtml(event.timestamp)}</span>
+                  <strong>${state.pinned ? "Pinned: " : ""}${escapeHtml(event.title)}</strong>
+                </div>
+                ${statusBadge(event.importance)}
+              </header>
+              <p>${escapeHtml(event.summary)}</p>
+              <details>
+                <summary>Open</summary>
+                <pre>${escapeHtml(event.content || "No body available.")}</pre>
+              </details>
+              <div class="cc-inbox-actions">
+                <button type="button" data-cc-inbox-action="read" data-cc-inbox-id="${escapeHtml(event.id)}">${state.read ? "Unread" : "Read"}</button>
+                <button type="button" data-cc-inbox-action="pin" data-cc-inbox-id="${escapeHtml(event.id)}">${state.pinned ? "Unpin" : "Pin"}</button>
+                <button type="button" data-cc-inbox-action="archive" data-cc-inbox-id="${escapeHtml(event.id)}">${state.archived ? "Restore" : "Archive"}</button>
+              </div>
+            </article>
+          `;
+        })
+        .join("")
+    : '<article class="cc-inbox-item"><strong>No events in this filter.</strong><p>Nothing requires attention here.</p></article>';
+  for (const button of document.querySelectorAll("[data-cc-inbox-action]")) {
+    button.addEventListener("click", () => {
+      const id = button.dataset.ccInboxId;
+      const action = button.dataset.ccInboxAction;
+      commandCenterInboxState[id] = commandCenterInboxState[id] || {};
+      if (action === "read") commandCenterInboxState[id].read = !commandCenterInboxState[id].read;
+      if (action === "pin") commandCenterInboxState[id].pinned = !commandCenterInboxState[id].pinned;
+      if (action === "archive") commandCenterInboxState[id].archived = !commandCenterInboxState[id].archived;
+      saveCommandCenterInboxState();
+      renderCommandCenterInbox(commandCenterState?.inbox?.events || []);
+    });
+  }
+}
+
+function renderCommandCenterResearch(research) {
+  const cards = [research?.primary, research?.secondary].filter(Boolean);
+  $("cc-research-portfolio").innerHTML = cards
+    .map(
+      (card) => `
+        <article>
+          <header>${statusBadge(card.status)}<strong>${escapeHtml(card.name)}</strong></header>
+          <p>${escapeHtml(card.allocation)} / ${escapeHtml(card.evidence)}</p>
+          <span>${escapeHtml(card.next_trigger)}</span>
+        </article>
+      `,
+    )
+    .join("");
+  $("cc-research-placeholders").innerHTML = (research?.placeholders || [])
+    .map((item) => `<li><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.status)}</span></li>`)
+    .join("");
+}
+
+function renderCommandCenterSystem(system) {
+  $("cc-system-grid").innerHTML = (system?.cards || [])
+    .map(
+      (card) => `
+        <article>
+          ${statusBadge(card.status)}
+          <strong>${escapeHtml(card.name)}</strong>
+          <p>${escapeHtml(card.detail || "No issue reported.")}</p>
+        </article>
+      `,
+    )
+    .join("");
+  setText("cc-runtime-paths", `Runtime data: ${system?.runtime_data_dir || "--"} / Logs: ${system?.logs_dir || "--"}`);
+}
+
+function renderCommandCenter(payload) {
+  commandCenterState = payload;
+  renderCommandCenterOverview(payload);
+  renderCommandCenterFunnel(payload.today || {});
+  renderCommandCenterValidation(payload.validation || {});
+  renderCommandCenterNeedsAttention(payload);
+  renderCommandCenterMarkets(payload);
+  renderCommandCenterInbox(payload.inbox?.events || []);
+  renderCommandCenterResearch(payload.research || {});
+  renderCommandCenterSystem(payload.system || {});
+}
+
+async function loadCommandCenter() {
+  const response = await fetch(commandCenterV1Url, { cache: "no-store" });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || `Command Center request failed: ${response.status}`);
+  renderCommandCenter(payload);
+  await loadCommandCenterChart();
+  return payload;
+}
+
 function meaningfulValue(value) {
   return value !== undefined && value !== null && String(value).trim() !== "" && String(value).trim() !== "--";
 }
@@ -4838,18 +5162,25 @@ function renderReportTabs() {
 function updateAppRoute() {
   let activeHash = window.location.hash && window.location.hash !== "#" ? window.location.hash : "#home";
   const routeAliases = {
+    "#home": "#overview",
     "#state": "#system",
     "#app-health": "#system",
     "#workflow": "#system",
     "#app-scaffold": "#system",
-    "#research": "#research-lab",
+    "#research-lab": "#research",
+    "#systems": "#system",
   };
   if (routeAliases[activeHash]) {
     window.location.hash = routeAliases[activeHash];
     return;
   }
   const routePages = {
-    "#home": {
+    "#overview": { bodyClass: "cc-overview-route", sections: ["cc-overview"] },
+    "#markets": { bodyClass: "cc-markets-route", sections: ["cc-markets"] },
+    "#research": { bodyClass: "cc-research-route", sections: ["cc-research"] },
+    "#inbox": { bodyClass: "cc-inbox-route", sections: ["cc-inbox"] },
+    "#system": { bodyClass: "cc-system-route", sections: ["cc-system"] },
+    "#home-legacy": {
       bodyClass: "home-route",
       sections: ["home-executive", "home-dashboard"],
     },
@@ -4872,7 +5203,7 @@ function updateAppRoute() {
         "trade-logger",
       ],
     },
-    "#research-lab": {
+    "#research-legacy": {
       bodyClass: "research-lab-route",
       sections: [
         "research-executive",
@@ -4886,11 +5217,11 @@ function updateAppRoute() {
     "#strategy-evidence-collection": { bodyClass: "research-lab-route", sections: ["research-executive", "strategy-evidence-collection"] },
     "#forward-evidence": { bodyClass: "validation-route", sections: ["validation-executive", "forward-evidence"] },
     "#strategy-vault": { bodyClass: "strategy-vault-route", sections: ["research-executive", "strategy-vault"] },
-    "#systems": { bodyClass: "systems-route", sections: ["systems-executive", "systems-overview"] },
+    "#systems-legacy": { bodyClass: "systems-route", sections: ["systems-executive", "systems-overview"] },
     "#data-flow-sentinel": { bodyClass: "systems-route", sections: ["systems-executive", "data-flow-sentinel"] },
     "#strategy-contract-status": { bodyClass: "systems-route", sections: ["systems-executive", "strategy-contract-status"] },
     "#phase-milestones": { bodyClass: "systems-route", sections: ["systems-executive", "phase-milestones"] },
-    "#system": { bodyClass: "systems-route", sections: ["systems-executive", "state", "state-metrics", "app-health", "workflow", "app-scaffold"] },
+    "#system-legacy": { bodyClass: "systems-route", sections: ["systems-executive", "state", "state-metrics", "app-health", "workflow", "app-scaffold"] },
     "#sample-queue": { bodyClass: "sample-queue-route", sections: ["validation-executive", "sample-queue"] },
     "#candidates": { bodyClass: "candidates-route", sections: ["trade-desk-executive", "candidates"] },
     "#trade-logger": { bodyClass: "trade-logger-route", sections: ["validation-executive", "trade-logger"] },
@@ -4899,7 +5230,7 @@ function updateAppRoute() {
     "#practice-replay": { bodyClass: "practice-replay-route", sections: ["research-executive", "practice-replay"] },
     "#reports": { bodyClass: "reports-route", sections: ["research-executive", "reports"] },
   };
-  const selectedPage = routePages[activeHash] || routePages["#home"];
+  const selectedPage = routePages[activeHash] || routePages["#overview"];
   const selectedSections = new Set(selectedPage.sections);
   const routePageList = Object.keys(routePages).map((key) => routePages[key]);
   const allRouteClasses = routePageList.map((page) => page.bodyClass);
@@ -4918,12 +5249,16 @@ function updateAppRoute() {
   if (topbar) topbar.hidden = activeHash !== "#home";
 
   if (!routePages[activeHash]) {
-    window.location.hash = "#home";
+    window.location.hash = "#overview";
     return;
   }
 
   const navParents = {
-    "#home": "#home",
+    "#overview": "#overview",
+    "#markets": "#markets",
+    "#research": "#research",
+    "#inbox": "#inbox",
+    "#system": "#system",
     "#trade-desk": "#trade-desk",
     "#trading-workspace": "#trade-desk",
     "#candidates": "#trade-desk",
@@ -4932,7 +5267,7 @@ function updateAppRoute() {
     "#trade-logger": "#validation",
     "#paper-visualization": "#validation",
     "#forward-evidence": "#validation",
-    "#research-lab": "#research-lab",
+    "#research-legacy": "#research",
     "#strategy-vault": "#research-lab",
     "#backtest-performance": "#research-lab",
     "#evidence-maturity": "#research-lab",
@@ -4944,13 +5279,13 @@ function updateAppRoute() {
     "#health": "#research-lab",
     "#practice-replay": "#research-lab",
     "#reports": "#research-lab",
-    "#systems": "#systems",
+    "#systems-legacy": "#system",
     "#data-flow-sentinel": "#systems",
     "#strategy-contract-status": "#systems",
     "#phase-milestones": "#systems",
-    "#system": "#systems",
+    "#system-legacy": "#system",
   };
-  const activeParent = navParents[activeHash] || "#home";
+  const activeParent = navParents[activeHash] || "#overview";
   for (const link of document.querySelectorAll(".sidebar nav a")) {
     link.classList.toggle("active", link.getAttribute("href") === activeParent);
   }
@@ -5236,7 +5571,7 @@ async function refresh() {
   $("refresh-button").disabled = true;
   updateAutoRefreshStatus("Checking latest app state...");
   try {
-    const state = await loadState();
+    const [state] = await Promise.all([loadState(), loadCommandCenter()]);
     renderState(state);
     const checkedAt = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     updateAutoRefreshStatus(

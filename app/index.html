@@ -12,15 +12,15 @@
         <div class="brand-mark">PG</div>
         <div>
           <h1>Project Gwala</h1>
-          <p>Research and paper validation</p>
+          <p>Command Center</p>
         </div>
       </div>
       <nav aria-label="Dashboard sections">
-        <a href="#home">Home</a>
-        <a href="#trade-desk">Trade Desk</a>
-        <a href="#validation">Validation</a>
-        <a href="#research-lab">Research Lab</a>
-        <a href="#systems">Systems</a>
+        <a href="#overview">Overview</a>
+        <a href="#markets">Markets</a>
+        <a href="#research">Research</a>
+        <a href="#inbox">Inbox <span id="cc-inbox-count" class="sidebar-count">0</span></a>
+        <a href="#system">System</a>
       </nav>
     </aside>
 
@@ -33,11 +33,109 @@
         </div>
         <div class="topbar-actions">
           <a href="#trade-desk" class="secondary-link">Trade Desk</a>
-          <button id="refresh-button" type="button">Refresh</button>
+          <button id="legacy-refresh-button" type="button">Refresh</button>
         </div>
       </header>
       <audio id="entry-alert-audio" src="/assets/entry-alert.wav" preload="auto"></audio>
       <audio id="exit-alert-audio" src="/assets/exit-alert.wav" preload="auto"></audio>
+
+      <section id="cc-overview" class="cc-page cc-overview-page" aria-label="Command Center overview">
+        <header class="cc-header">
+          <div>
+            <p class="eyebrow">Founder Command Center</p>
+            <h2>Overview</h2>
+            <p id="cc-generated-at">Loading Command Center.</p>
+          </div>
+          <button id="refresh-button" type="button">Refresh</button>
+        </header>
+        <div id="cc-status-strip" class="cc-status-strip"></div>
+        <p id="cc-guardrail" class="cc-guardrail">Read-only observability.</p>
+        <div class="cc-today-grid">
+          <article><span>Scanner Candidates</span><strong id="cc-today-scanner">--</strong></article>
+          <article><span>Allowed</span><strong id="cc-today-allowed">--</strong></article>
+          <article><span>Paper Gate</span><strong id="cc-today-paper-gate">--</strong></article>
+          <article><span>Contract Gate</span><strong id="cc-today-contract-gate">--</strong></article>
+          <article><span>New Official Trades</span><strong id="cc-today-new-official">--</strong></article>
+          <article><span>Completed Trades</span><strong id="cc-today-completed">--</strong></article>
+          <article><span>Today’s R</span><strong id="cc-today-r">--</strong></article>
+        </div>
+        <div class="cc-two-column">
+          <section class="cc-panel">
+            <header><h3>Evidence Funnel</h3></header>
+            <div id="cc-funnel" class="cc-funnel"></div>
+          </section>
+          <section class="cc-panel">
+            <header><h3>Needs Attention</h3></header>
+            <div id="cc-needs-attention" class="cc-attention-list"></div>
+          </section>
+        </div>
+        <section class="cc-panel">
+          <header>
+            <div>
+              <h3>Official Validation Scorecard</h3>
+              <p id="cc-validation-detail">Reading authoritative ledger.</p>
+            </div>
+            <strong id="cc-validation-progress">-- / 30</strong>
+          </header>
+          <div id="cc-validation-metrics" class="cc-metric-grid"></div>
+          <div id="cc-equity-curve" class="cc-equity-curve"></div>
+        </section>
+      </section>
+
+      <section id="cc-markets" class="cc-page" hidden aria-label="Command Center markets">
+        <header class="cc-header">
+          <div>
+            <p class="eyebrow">Markets</p>
+            <h2 id="cc-market-title">SPY M30</h2>
+            <p id="cc-market-subtitle">Loading saved Webull candles.</p>
+          </div>
+        </header>
+        <div id="cc-symbols" class="cc-segmented"></div>
+        <div id="cc-timeframes" class="cc-segmented compact"></div>
+        <div id="cc-market-chart" class="cc-chart"></div>
+        <section class="cc-panel">
+          <header><h3>Candidate Timeline</h3></header>
+          <ul id="cc-market-timeline" class="cc-timeline"></ul>
+        </section>
+      </section>
+
+      <section id="cc-research" class="cc-page" hidden aria-label="Command Center research">
+        <header class="cc-header">
+          <div>
+            <p class="eyebrow">Research</p>
+            <h2>Strategy Portfolio</h2>
+            <p>Evidence lanes, decision triggers, and Phase 3 placeholders.</p>
+          </div>
+        </header>
+        <div id="cc-research-portfolio" class="cc-research-grid"></div>
+        <section class="cc-panel">
+          <header><h3>Phase 3 Funnel</h3></header>
+          <ul id="cc-research-placeholders" class="cc-placeholder-list"></ul>
+        </section>
+      </section>
+
+      <section id="cc-inbox" class="cc-page" hidden aria-label="Command Center inbox">
+        <header class="cc-header">
+          <div>
+            <p class="eyebrow">Inbox</p>
+            <h2>Reports and Alerts</h2>
+            <p>Normalized stream from archived reports and production health artifacts.</p>
+          </div>
+        </header>
+        <div id="cc-inbox-filters" class="cc-segmented"></div>
+        <div id="cc-inbox-list" class="cc-inbox-list"></div>
+      </section>
+
+      <section id="cc-system" class="cc-page" hidden aria-label="Command Center system">
+        <header class="cc-header">
+          <div>
+            <p class="eyebrow">System</p>
+            <h2>Production Health</h2>
+            <p id="cc-runtime-paths">Loading runtime paths.</p>
+          </div>
+        </header>
+        <div id="cc-system-grid" class="cc-system-grid"></div>
+      </section>
 
       <section id="home-executive" class="page-executive" aria-label="Home executive summary">
         <article>
