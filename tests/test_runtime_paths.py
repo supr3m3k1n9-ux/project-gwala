@@ -18,6 +18,7 @@ from deploy.linux.verify_docker_runtime_boundary import (
     validate_deployment_roots,
 )
 from deploy.linux.verify_vps_production import docker_boundary_check
+from deploy.linux.verify_vps_production import dashboard_http_check
 from deploy.linux.verify_vps_production import extract_json_line
 from deploy.linux.verify_vps_production import parse_artifact_timestamp
 from deploy.linux.write_host_security_health import container_security_warnings
@@ -402,6 +403,38 @@ class RuntimePathTests(unittest.TestCase):
         self.assertIn('export GWALA_APP_DIR="$APP_DIR"', wrapper_text)
         self.assertIn('cd "$STACK_DIR"', wrapper_text)
 
+    def test_dashboard_systemd_service_publishes_compose_service_ports(self) -> None:
+        text = Path("deploy/linux/systemd/project-gwala-dashboard.service").read_text(encoding="utf-8")
+        self.assertIn("GWALA_APP_DIR=/srv/projects/gwala/app", text)
+        self.assertIn("GWALA_STACK_DIR=/srv/projects/gwala", text)
+        self.assertIn("--service-ports gwala python run_app.py", text)
+        self.assertNotIn("/srv/projects/gwala/run_in_docker.sh python run_app.py", text)
+
+    def test_vps_verifier_dashboard_http_check_passes_on_command_center_payload(self) -> None:
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self, _limit):
+                return b'{"guardrail": "Read-only observability. No trading controls."}'
+
+        with patch("deploy.linux.verify_vps_production.urlopen", return_value=FakeResponse()):
+            check = dashboard_http_check()
+
+        self.assertEqual(check.status, "PASS")
+
+    def test_vps_verifier_dashboard_http_check_fails_when_unreachable(self) -> None:
+        with patch("deploy.linux.verify_vps_production.urlopen", side_effect=OSError("connection refused")):
+            check = dashboard_http_check()
+
+        self.assertEqual(check.status, "FAIL")
+        self.assertIn("dashboard endpoint unreachable", check.reason)
+
     def test_linux_systemd_docker_services_use_runtime_data_mount(self) -> None:
         systemd_dir = Path("deploy/linux/systemd")
         for name in [
@@ -419,6 +452,7 @@ class RuntimePathTests(unittest.TestCase):
         self.assertIn("project-gwala-*.service", text)
         self.assertIn("project-gwala-*.timer", text)
         self.assertIn("systemctl daemon-reload", text)
+        self.assertIn("systemctl try-restart project-gwala-dashboard.service", text)
         self.assertNotIn("systemctl enable", text)
         self.assertNotIn("systemctl start", text)
         self.assertNotIn("systemctl stop", text)

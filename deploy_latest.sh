@@ -46,6 +46,9 @@ export GWALA_STACK_DIR="$STACK_DIR"
 python3 "$APP_DIR/deploy/linux/verify_docker_runtime_boundary.py" --compose-file "$COMPOSE_FILE" --app-dir "$APP_DIR" --stack-dir "$STACK_DIR"
 GWALA_APP_DIR="$APP_DIR" GWALA_STACK_DIR="$STACK_DIR" docker compose -f "$COMPOSE_FILE" build gwala
 python3 "$APP_DIR/deploy/linux/verify_docker_runtime_boundary.py" --compose-file "$COMPOSE_FILE" --app-dir "$APP_DIR" --stack-dir "$STACK_DIR" --runtime-check
+if systemctl is-active --quiet project-gwala-dashboard.service; then
+  systemctl try-restart project-gwala-dashboard.service
+fi
 
 python3 "$APP_DIR/deploy/linux/write_host_systemd_health.py" --output "$STACK_DIR/logs/host_systemd_health.json"
 python3 "$APP_DIR/deploy/linux/write_host_docker_health.py" --output "$STACK_DIR/logs/host_docker_health.json" --compose-file "$COMPOSE_FILE" --expected-image project-gwala:shadow

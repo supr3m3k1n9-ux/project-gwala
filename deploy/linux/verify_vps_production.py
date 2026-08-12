@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.error import URLError
+from urllib.request import urlopen
 
 
 DEFAULT_STACK_DIR = Path(os.environ.get("GWALA_STACK_DIR", "/srv/projects/gwala"))
@@ -354,6 +356,22 @@ def container_checks(app_dir: Path, stack_dir: Path) -> list[Check]:
     ]
 
 
+def dashboard_http_check(host: str = "127.0.0.1", port: int = 8765) -> Check:
+    """Verify the always-on dashboard is reachable on localhost."""
+
+    url = f"http://{host}:{port}/api/command-center-v1"
+    try:
+        with urlopen(url, timeout=5) as response:
+            body = response.read(4096).decode("utf-8", errors="replace")
+    except (OSError, URLError) as exc:
+        return Check("Dashboard HTTP", "FAIL", f"dashboard endpoint unreachable at {url}: {exc}")
+    if response.status != 200:
+        return Check("Dashboard HTTP", "FAIL", f"dashboard endpoint returned HTTP {response.status}")
+    if "Read-only observability" not in body:
+        return Check("Dashboard HTTP", "WATCH", "dashboard responded, but Command Center payload was not recognized")
+    return Check("Dashboard HTTP", "PASS", "Command Center endpoint reachable on localhost")
+
+
 def print_report(checks: list[Check], next_session: str) -> None:
     verdict = aggregate(checks)
     ready = verdict == "PASS"
@@ -384,6 +402,7 @@ def main() -> None:
         checks.append(Check("Container runtime", "WATCH", "container checks skipped by operator flag"))
     else:
         checks.extend(container_checks(app_dir, stack_dir))
+    checks.append(dashboard_http_check())
     print_report(checks, next_market_session_text(app_dir))
     raise SystemExit(1 if aggregate(checks) == "FAIL" else 0)
 

@@ -6,7 +6,10 @@ Requires=docker.service
 
 [Service]
 Type=simple
-ExecStart=/srv/projects/gwala/run_in_docker.sh python run_app.py --host 127.0.0.1 --port 8765
+WorkingDirectory=/srv/projects/gwala
+Environment=GWALA_APP_DIR=/srv/projects/gwala/app
+Environment=GWALA_STACK_DIR=/srv/projects/gwala
+ExecStart=/usr/bin/docker compose -f /srv/projects/gwala/compose.yaml run --rm --service-ports gwala python run_app.py --host 127.0.0.1 --port 8765
 Restart=on-failure
 RestartSec=10
 
