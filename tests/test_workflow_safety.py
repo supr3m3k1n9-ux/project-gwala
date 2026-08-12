@@ -32,6 +32,7 @@ from reports.system_state import (
     risk_guard_state,
 )
 import run_app
+import run_current_candle_capture
 from run_autonomous_paper_workflow import choose_action, commands_for_action, sleep_after_action
 from run_autonomous_a_tier_lifecycle import build_lifecycle as build_autonomous_a_tier_lifecycle
 from run_autonomous_a_tier_lifecycle import run_exit_monitor as run_autonomous_a_tier_exit_monitor
@@ -1302,8 +1303,16 @@ class MarketCalendarTests(unittest.TestCase):
                 "run_candidate_ledger_event_dispatcher.write_options_contract_gate_outputs"
             ), patch(
                 "run_candidate_ledger_event_dispatcher.build_autonomous_lifecycle",
-                return_value={"mode": "autonomous_a_tier_only"},
-            ) as lifecycle_builder:
+                return_value={
+                    "mode": "autonomous_a_tier_only",
+                    "paper_orders_written": 1,
+                    "open_paper_trades_written": 1,
+                    "validation_rows_written": 1,
+                    "rows": [{"reason": "Autonomous clean A-tier lifecycle completed through open paper entry."}],
+                },
+            ) as lifecycle_builder, patch(
+                "run_candidate_ledger_event_dispatcher.write_autonomous_lifecycle_outputs"
+            ) as lifecycle_writer:
                 payload = build_candidate_ledger_event_dispatch(
                     output_dir=output_dir,
                     ledger_csv=ledger_csv,
@@ -1316,10 +1325,12 @@ class MarketCalendarTests(unittest.TestCase):
 
         self.assertEqual(payload["dispatched_event_count"], 1)
         self.assertEqual(payload["rows"][0]["status"], "completed")
+        self.assertEqual(payload["rows"][0]["validation_rows_written"], 1)
         import_builder.assert_called_once()
         review_builder.assert_called_once()
         contract_builder.assert_called_once()
         lifecycle_builder.assert_called_once()
+        lifecycle_writer.assert_called_once()
 
     def test_candidate_ledger_event_dispatch_does_not_need_current_candle_capture_artifact(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1405,6 +1416,92 @@ class MarketCalendarTests(unittest.TestCase):
         self.assertEqual(first["dispatched_event_count"], 1)
         self.assertEqual(second["dispatched_event_count"], 0)
         import_builder.assert_called_once()
+
+    def test_candidate_ledger_event_dispatch_retries_lifecycle_safety_blocks(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output_dir = root / "logs"
+            data_dir = root / "data"
+            output_dir.mkdir()
+            data_dir.mkdir()
+            ledger_csv = data_dir / "candidate_window_ledger.csv"
+            state_csv = data_dir / "candidate_ledger_event_state.csv"
+            pd.DataFrame([a_tier_ledger_row()]).to_csv(ledger_csv, index=False)
+            lifecycle_payload = {
+                "mode": "autonomous_a_tier_only",
+                "paper_orders_written": 0,
+                "open_paper_trades_written": 0,
+                "validation_rows_written": 0,
+                "rows": [{"reason": "blocked_invalid_session"}],
+            }
+
+            with patch(
+                "run_candidate_ledger_event_dispatcher.build_option_chain_import",
+                return_value={
+                    "status": "ready",
+                    "ready_a_tier_samples": 1,
+                    "symbols_requested": 1,
+                    "chains_imported": 1,
+                    "errors": 0,
+                    "rows": [],
+                    "columns": [],
+                    "guardrail": "test",
+                },
+            ), patch(
+                "run_candidate_ledger_event_dispatcher.write_option_chain_import_outputs"
+            ), patch(
+                "run_candidate_ledger_event_dispatcher.build_options_chain_review",
+                return_value={
+                    "status": "ready",
+                    "ready_sample_count": 1,
+                    "selected_contract_count": 1,
+                    "write_audit": True,
+                    "contract_audit_csv": "",
+                    "filters": {},
+                    "selected_contracts": [],
+                    "rows": [],
+                    "guardrail": "test",
+                },
+            ), patch(
+                "run_candidate_ledger_event_dispatcher.write_options_chain_review_outputs"
+            ), patch(
+                "run_candidate_ledger_event_dispatcher.build_options_contract_gate",
+                return_value={
+                    "status": "ready",
+                    "passed_contract_count": 1,
+                    "ready_sample_count": 1,
+                    "missing_contract_reviews": 0,
+                    "blocked_contract_count": 0,
+                    "rows": [],
+                    "template_rows": [],
+                    "guardrail": "test",
+                },
+            ), patch(
+                "run_candidate_ledger_event_dispatcher.write_options_contract_gate_outputs"
+            ), patch(
+                "run_candidate_ledger_event_dispatcher.build_autonomous_lifecycle",
+                return_value=lifecycle_payload,
+            ) as lifecycle_builder, patch(
+                "run_candidate_ledger_event_dispatcher.write_autonomous_lifecycle_outputs"
+            ):
+                first = build_candidate_ledger_event_dispatch(
+                    output_dir=output_dir,
+                    ledger_csv=ledger_csv,
+                    event_state_csv=state_csv,
+                    market={"market_is_open": True, "today": "2026-05-26"},
+                )
+                second = build_candidate_ledger_event_dispatch(
+                    output_dir=output_dir,
+                    ledger_csv=ledger_csv,
+                    event_state_csv=state_csv,
+                    market={"market_is_open": True, "today": "2026-05-26"},
+                )
+
+        self.assertEqual(first["dispatched_event_count"], 1)
+        self.assertEqual(first["rows"][0]["status"], "retry_pending")
+        self.assertEqual(first["rows"][0]["reason"], "blocked_invalid_session")
+        self.assertEqual(second["dispatched_event_count"], 1)
+        self.assertEqual(lifecycle_builder.call_count, 2)
 
     def test_candidate_ledger_event_dispatch_ignores_stale_candidates(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -7417,6 +7514,51 @@ class PaperGuardrailTests(unittest.TestCase):
         self.assertNotIn("run_paper_import.py", flat)
         self.assertNotIn("--confirm-samples", flat)
         self.assertNotIn("--confirm-local-paper", flat)
+
+    def test_current_candle_capture_writes_artifact_when_late_step_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "logs"
+            args = argparse.Namespace(
+                output_dir=output_dir,
+                symbols=["SPY"],
+                skip_refresh=True,
+                entry_count=1200,
+                exit_count=1200,
+                entry_pages=1,
+                exit_pages=1,
+                chart_m1_count=240,
+                chart_m15_count=400,
+                chart_m60_count=400,
+                chart_d_count=260,
+                pause=5.0,
+                account_size=10_000.0,
+                risk_per_trade_pct=0.005,
+                auto_confirm_paper_exits=False,
+            )
+            ok = run_current_candle_capture.StepResult("Scanner", "ok", "python scanner", "ok")
+            failure = subprocess.CalledProcessError(
+                7,
+                ["python", "run_data_flow_sentinel.py"],
+                output="sentinel failed",
+                stderr="blocked",
+            )
+
+            with patch("run_current_candle_capture.parse_args", return_value=args), patch(
+                "run_current_candle_capture.build_commands",
+                return_value=[
+                    ("Scanner", ["python", "scanner"]),
+                    ("Data Flow Sentinel", ["python", "run_data_flow_sentinel.py"]),
+                ],
+            ), patch("run_current_candle_capture.run_step", side_effect=[ok, failure]):
+                with self.assertRaises(SystemExit) as raised:
+                    run_current_candle_capture.main()
+
+            self.assertEqual(raised.exception.code, 7)
+            artifact = output_dir / "current_candle_capture.json"
+            self.assertTrue(artifact.exists())
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+            self.assertEqual(payload["capture_status"], "failed")
+            self.assertEqual(payload["failed_step"], "Data Flow Sentinel")
 
     def test_current_candle_capture_summarizes_orb_shadow_only_trigger_distance(self) -> None:
         with TemporaryDirectory() as temporary:

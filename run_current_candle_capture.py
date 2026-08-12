@@ -435,6 +435,15 @@ def capture_count_summary(output_dir: Path) -> dict[str, object]:
     }
 
 
+def failed_step_result(step: str, command: list[str], error: subprocess.CalledProcessError) -> StepResult:
+    """Return a bounded failed step result for the capture report."""
+
+    output = "\n".join(part.strip() for part in [error.stdout, error.stderr] if part and str(part).strip())
+    if not output:
+        output = f"Command exited with status {error.returncode}."
+    return StepResult(step=step, status=f"failed:{error.returncode}", command=" ".join(command), output=output[-8000:])
+
+
 def run_step(step: str, command: list[str]) -> StepResult:
     """Run one local capture command."""
 
@@ -460,6 +469,8 @@ def write_report(output_dir: Path, results: list[StepResult], payload: dict[str,
         "symbols": normalized_symbols(args.symbols),
         "refresh_ran": not args.skip_refresh,
         "auto_confirm_paper_exits": bool(args.auto_confirm_paper_exits),
+        "capture_status": "failed" if any(result.status.startswith("failed") for result in results) else "ok",
+        "failed_step": next((result.step for result in results if result.status.startswith("failed")), ""),
         **payload,
         "guardrail": (
             "A/current + B/grace capture is local paper-validation only. It never places broker orders, "
@@ -599,13 +610,21 @@ def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     results = []
+    failed: subprocess.CalledProcessError | None = None
     for step, command in build_commands(args):
         print(f"Running: {step}", flush=True)
-        results.append(run_step(step, command))
+        try:
+            results.append(run_step(step, command))
+        except subprocess.CalledProcessError as error:
+            results.append(failed_step_result(step, command, error))
+            failed = error
+            break
     payload = capture_count_summary(args.output_dir)
     report_path = write_report(args.output_dir, results, payload, args)
     print(f"Current/grace capture complete. Saved report: {report_path}")
     print(f"First bottleneck: {payload['first_bottleneck']}")
+    if failed is not None:
+        raise SystemExit(failed.returncode)
 
 
 if __name__ == "__main__":

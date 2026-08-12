@@ -25,6 +25,7 @@ from config.market_calendar import MARKET_TZ
 from config.runtime_paths import runtime_data_path
 from reports.refresh_status import market_refresh_state
 from run_autonomous_a_tier_lifecycle import build_lifecycle as build_autonomous_lifecycle
+from run_autonomous_a_tier_lifecycle import write_outputs as write_autonomous_lifecycle_outputs
 from run_option_chain_import import build_import as build_option_chain_import
 from run_option_chain_import import write_outputs as write_option_chain_import_outputs
 from run_options_chain_review import build_payload as build_options_chain_review
@@ -55,6 +56,10 @@ EVENT_STATE_COLUMNS = [
     "contract_gate_status",
     "contract_passed_count",
     "lifecycle_status",
+    "lifecycle_reason",
+    "paper_orders_written",
+    "open_paper_trades_written",
+    "validation_rows_written",
 ]
 
 
@@ -160,8 +165,27 @@ def eligible_candidate_events(ledger: pd.DataFrame, market: dict[str, Any]) -> p
 def processed_event_keys(state: pd.DataFrame) -> set[str]:
     if state.empty or "event_key" not in state.columns:
         return set()
-    terminal = state["status"].astype(str).isin(["completed", "blocked_market_closed", "failed"])
+    terminal = state["status"].astype(str).isin(["completed", "blocked_market_closed"])
     return set(state[terminal]["event_key"].astype(str))
+
+
+def lifecycle_write_count(payload: dict[str, Any]) -> int:
+    """Return how many official local-paper artifacts lifecycle wrote."""
+
+    return int(payload.get("paper_orders_written", 0) or 0) + int(payload.get("open_paper_trades_written", 0) or 0) + int(
+        payload.get("validation_rows_written", 0) or 0
+    )
+
+
+def lifecycle_block_reason(payload: dict[str, Any]) -> str:
+    """Return the first lifecycle row reason when no write happened."""
+
+    rows = payload.get("rows", [])
+    if isinstance(rows, list):
+        for row in rows:
+            if isinstance(row, dict) and text(row.get("reason")):
+                return text(row.get("reason"))
+    return "lifecycle wrote no paper-validation artifacts"
 
 
 def append_state(path: Path, rows: list[dict[str, Any]]) -> pd.DataFrame:
@@ -235,6 +259,10 @@ def dispatch_event(
         "contract_gate_status": "",
         "contract_passed_count": 0,
         "lifecycle_status": "",
+        "lifecycle_reason": "",
+        "paper_orders_written": 0,
+        "open_paper_trades_written": 0,
+        "validation_rows_written": 0,
     }
     if not bool(market.get("market_is_open", False)):
         state.update(
@@ -295,8 +323,27 @@ def dispatch_event(
                 option_chain_dir=chain_dir,
                 now=event_time,
             )
+            write_autonomous_lifecycle_outputs(output_dir, lifecycle_payload)
             state["lifecycle_at_et"] = timestamp()
             state["lifecycle_status"] = text(lifecycle_payload.get("mode")) or "ran"
+            state["lifecycle_reason"] = lifecycle_block_reason(lifecycle_payload)
+            state["paper_orders_written"] = int(lifecycle_payload.get("paper_orders_written", 0) or 0)
+            state["open_paper_trades_written"] = int(lifecycle_payload.get("open_paper_trades_written", 0) or 0)
+            state["validation_rows_written"] = int(lifecycle_payload.get("validation_rows_written", 0) or 0)
+            if lifecycle_write_count(lifecycle_payload) <= 0:
+                duplicate_reasons = {
+                    text(row.get("reason"))
+                    for row in lifecycle_payload.get("rows", [])
+                    if isinstance(row, dict)
+                }
+                if duplicate_reasons == {"blocked_duplicate"}:
+                    state["status"] = "completed"
+                    state["reason"] = "duplicate lifecycle artifact already exists"
+                else:
+                    state["status"] = "retry_pending"
+                    state["reason"] = state["lifecycle_reason"]
+                state["completed_at_et"] = timestamp()
+                return state
         else:
             state["lifecycle_status"] = "not_triggered_no_contract_pass"
 
