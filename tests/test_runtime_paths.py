@@ -426,7 +426,10 @@ class RuntimePathTests(unittest.TestCase):
                 return False
 
             def read(self, _limit):
-                return b'{"guardrail": "Read-only observability. No trading controls."}'
+                return (
+                    b'{"overview": {}, "markets": {}, "research": {}, "inbox": {}, '
+                    b'"system": {}, "validation": {}, "guardrail": "Read-only observability."}'
+                )
 
         with patch("deploy.linux.verify_vps_production.urlopen", return_value=FakeResponse()):
             check = dashboard_http_check()

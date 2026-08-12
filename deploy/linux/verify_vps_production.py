@@ -362,13 +362,19 @@ def dashboard_http_check(host: str = "127.0.0.1", port: int = 8765) -> Check:
     url = f"http://{host}:{port}/api/command-center-v1"
     try:
         with urlopen(url, timeout=5) as response:
-            body = response.read(4096).decode("utf-8", errors="replace")
+            body = response.read(2_000_000).decode("utf-8", errors="replace")
     except (OSError, URLError) as exc:
         return Check("Dashboard HTTP", "FAIL", f"dashboard endpoint unreachable at {url}: {exc}")
     if response.status != 200:
         return Check("Dashboard HTTP", "FAIL", f"dashboard endpoint returned HTTP {response.status}")
-    if "Read-only observability" not in body:
-        return Check("Dashboard HTTP", "WATCH", "dashboard responded, but Command Center payload was not recognized")
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return Check("Dashboard HTTP", "WATCH", "dashboard responded, but Command Center payload was not valid JSON")
+    required = {"overview", "markets", "research", "inbox", "system", "validation", "guardrail"}
+    missing = sorted(required - set(payload))
+    if missing:
+        return Check("Dashboard HTTP", "WATCH", "dashboard responded, but Command Center payload is missing: " + ", ".join(missing))
     return Check("Dashboard HTTP", "PASS", "Command Center endpoint reachable on localhost")
 
 
