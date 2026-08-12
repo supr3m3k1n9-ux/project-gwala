@@ -33,4 +33,4 @@ services:
       - ${GWALA_STACK_DIR:-.}/config/webull_tokens:/app/.webull_tokens
     security_opt:
       - no-new-privileges:true
-    command: ["python", "run_app.py", "--host", "127.0.0.1", "--port", "8765"]
+    command: ["python", "run_app.py", "--host", "0.0.0.0", "--port", "8765"]

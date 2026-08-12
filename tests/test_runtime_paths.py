@@ -407,8 +407,13 @@ class RuntimePathTests(unittest.TestCase):
         text = Path("deploy/linux/systemd/project-gwala-dashboard.service").read_text(encoding="utf-8")
         self.assertIn("GWALA_APP_DIR=/srv/projects/gwala/app", text)
         self.assertIn("GWALA_STACK_DIR=/srv/projects/gwala", text)
-        self.assertIn("--service-ports gwala python run_app.py", text)
+        self.assertIn("--service-ports gwala python run_app.py --host 0.0.0.0 --port 8765", text)
         self.assertNotIn("/srv/projects/gwala/run_in_docker.sh python run_app.py", text)
+
+    def test_compose_dashboard_binds_container_all_interfaces_but_host_localhost_only(self) -> None:
+        text = Path("compose.yaml").read_text(encoding="utf-8")
+        self.assertIn('"127.0.0.1:8765:8765"', text)
+        self.assertIn('"0.0.0.0"', text)
 
     def test_vps_verifier_dashboard_http_check_passes_on_command_center_payload(self) -> None:
         class FakeResponse:
