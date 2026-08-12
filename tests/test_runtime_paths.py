@@ -402,6 +402,27 @@ class RuntimePathTests(unittest.TestCase):
         self.assertIn('export GWALA_APP_DIR="$APP_DIR"', wrapper_text)
         self.assertIn('cd "$STACK_DIR"', wrapper_text)
 
+    def test_linux_systemd_docker_services_use_runtime_data_mount(self) -> None:
+        systemd_dir = Path("deploy/linux/systemd")
+        for name in [
+            "project-gwala-production-alert.service",
+            "project-gwala-opening-executive-report.service",
+            "project-gwala-eod-executive-report.service",
+        ]:
+            text = (systemd_dir / name).read_text(encoding="utf-8")
+            self.assertIn("/srv/projects/gwala/run_in_docker.sh", text)
+            self.assertIn("--data-dir /app/runtime_data", text)
+            self.assertNotIn("--data-dir data", text)
+
+    def test_deploy_latest_syncs_systemd_units_without_timer_state_changes(self) -> None:
+        text = Path("deploy_latest.sh").read_text(encoding="utf-8")
+        self.assertIn("project-gwala-*.service", text)
+        self.assertIn("project-gwala-*.timer", text)
+        self.assertIn("systemctl daemon-reload", text)
+        self.assertNotIn("systemctl enable", text)
+        self.assertNotIn("systemctl start", text)
+        self.assertNotIn("systemctl stop", text)
+
     def test_data_source_package_imports_remain_available(self) -> None:
         from data.webull_data import disable_sdk_default_logging
 

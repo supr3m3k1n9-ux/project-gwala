@@ -1,12 +1,10 @@
 [Unit]
-Description=Project Gwala production alert shadow check
-After=network-online.target
+Description=Project Gwala production alert - Docker shadow
+After=network-online.target docker.service
 Wants=network-online.target
+Requires=docker.service
 
 [Service]
 Type=oneshot
-EnvironmentFile=/etc/project-gwala/gwala.env
-WorkingDirectory=/opt/project-gwala
-ExecStart=/bin/bash -lc 'cd "$GWALA_PROJECT_ROOT" && exec "$GWALA_PYTHON" run_production_alert.py --output-dir logs --data-dir "${GWALA_DATA_DIR:-data}" --interval-minutes 5 --cooldown-minutes 30 --recheck-seconds 25 --outage-threshold-minutes 5 --down-confirmation-failures 2'
-NoNewPrivileges=true
-PrivateTmp=true
+ExecStartPre=/usr/bin/python3 /srv/projects/gwala/app/deploy/linux/write_host_systemd_health.py --output /srv/projects/gwala/logs/host_systemd_health.json
+ExecStart=/srv/projects/gwala/run_in_docker.sh python run_production_alert.py --output-dir logs --data-dir /app/runtime_data --interval-minutes 5 --cooldown-minutes 30 --recheck-seconds 25 --outage-threshold-minutes 5 --down-confirmation-failures 2

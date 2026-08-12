@@ -34,6 +34,11 @@ fi
 if [[ "$APP_DIR/deploy_latest.sh" != "$STACK_DIR/deploy_latest.sh" ]]; then
   install -m 0755 "$APP_DIR/deploy_latest.sh" "$STACK_DIR/deploy_latest.sh"
 fi
+if [[ -d /etc/systemd/system ]]; then
+  install -m 0644 "$APP_DIR/deploy/linux/systemd"/project-gwala-*.service /etc/systemd/system/
+  install -m 0644 "$APP_DIR/deploy/linux/systemd"/project-gwala-*.timer /etc/systemd/system/
+  systemctl daemon-reload
+fi
 
 export GWALA_APP_DIR="$APP_DIR"
 export GWALA_STACK_DIR="$STACK_DIR"

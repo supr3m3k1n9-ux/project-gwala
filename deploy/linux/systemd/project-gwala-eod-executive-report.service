@@ -1,12 +1,9 @@
 [Unit]
-Description=Project Gwala End-of-Day Executive Report shadow delivery
-After=network-online.target
+Description=Project Gwala End-of-Day Executive Report - Docker shadow
+After=network-online.target docker.service
 Wants=network-online.target
+Requires=docker.service
 
 [Service]
 Type=oneshot
-EnvironmentFile=/etc/project-gwala/gwala.env
-WorkingDirectory=/opt/project-gwala
-ExecStart=/bin/bash -lc 'cd "$GWALA_PROJECT_ROOT" && exec "$GWALA_PYTHON" run_executive_report.py --report-type eod --output-dir logs --data-dir "${GWALA_DATA_DIR:-data}" --reports-dir logs/executive_reports --deliver'
-NoNewPrivileges=true
-PrivateTmp=true
+ExecStart=/srv/projects/gwala/run_in_docker.sh python run_executive_report.py --report-type eod --output-dir logs --data-dir /app/runtime_data --reports-dir logs/executive_reports --deliver

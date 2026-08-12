@@ -1,17 +1,14 @@
 [Unit]
-Description=Project Gwala dashboard shadow service
-After=network-online.target
+Description=Project Gwala dashboard - Docker shadow
+After=network-online.target docker.service
 Wants=network-online.target
+Requires=docker.service
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/project-gwala/gwala.env
-WorkingDirectory=/opt/project-gwala
-ExecStart=/bin/bash -lc 'cd "$GWALA_PROJECT_ROOT" && exec "$GWALA_PYTHON" run_app.py --host "$GWALA_DASHBOARD_HOST" --port "$GWALA_DASHBOARD_PORT"'
+ExecStart=/srv/projects/gwala/run_in_docker.sh python run_app.py --host 127.0.0.1 --port 8765
 Restart=on-failure
 RestartSec=10
-NoNewPrivileges=true
-PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
