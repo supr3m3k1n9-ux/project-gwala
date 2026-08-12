@@ -11542,6 +11542,40 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertEqual(payload["timeline"][0]["stage"], "Scanner")
         self.assertEqual(payload["timeline"][0]["status"], "allowed")
 
+    def test_command_center_payload_exposes_all_market_symbols_and_timeframes(self) -> None:
+        payload = run_app.founder_command_center_payload()
+
+        self.assertEqual(payload["markets"]["symbols"], ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"])
+        self.assertEqual(payload["markets"]["timeframes"], ["M1", "M5", "M15", "M30", "M60", "D"])
+
+    def test_command_center_frontend_uses_json_chart_endpoint_contract(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+
+        self.assertIn('const commandCenterV1ChartUrl = "/api/command-center-v1/chart";', script)
+        self.assertIn("fetchJsonPayload(", script)
+        self.assertIn("content-type", script)
+        self.assertIn("application/json", script)
+        self.assertIn("returned invalid JSON", script)
+        chart_loader = script.split("async function loadCommandCenterChart()", 1)[1].split("function inboxVisibleEvents", 1)[0]
+        self.assertNotIn("response.json()", chart_loader)
+
+    def test_command_center_frontend_keeps_full_market_selector_fallbacks(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+
+        self.assertIn('const commandCenterMarketSymbols = ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"];', script)
+        self.assertIn('const commandCenterMarketTimeframes = ["M1", "M5", "M15", "M30", "M60", "D"];', script)
+        self.assertNotIn('payload.markets?.symbols || ["SPY", "QQQ"]', script)
+        self.assertNotIn('payload.markets?.timeframes || ["M30"]', script)
+
+    def test_command_center_frontend_renders_clean_chart_errors_and_empty_timeline(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+
+        self.assertIn("Could not load chart data for", script)
+        self.assertIn("Candidate events could not be loaded for this selection.", script)
+        self.assertIn("No candidate events for this selection.", script)
+        self.assertNotIn("Timeline unavailable.", script)
+        self.assertNotIn("JSON.parse:", script)
+
     def test_founder_command_center_payload_does_not_include_secret_environment_values(self) -> None:
         with patch.dict(os.environ, {"WEBULL_APP_SECRET": "TEST_SECRET_FIXTURE_DO_NOT_LEAK"}, clear=False):
             payload = run_app.founder_command_center_payload()
@@ -11560,7 +11594,7 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
     def test_founder_command_center_uses_versioned_frontend_asset(self) -> None:
         html = Path("app/index.html").read_text(encoding="utf-8")
 
-        self.assertIn("/app.js?v=20260812-command-center-renderer", html)
+        self.assertIn("/app.js?v=20260812-command-center-markets-contract", html)
 
 
 if __name__ == "__main__":

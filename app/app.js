@@ -1,6 +1,8 @@
 const stateUrl = "/api/system-state";
 const commandCenterV1Url = "/api/command-center-v1";
 const commandCenterV1ChartUrl = "/api/command-center-v1/chart";
+const commandCenterMarketSymbols = ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"];
+const commandCenterMarketTimeframes = ["M1", "M5", "M15", "M30", "M60", "D"];
 const tradingWorkspaceUrl = "/api/trading-workspace";
 const setupReadinessUrl = "/api/setup-readiness";
 const replayChartUrl = "/api/replay-chart";
@@ -267,6 +269,26 @@ function safeRender(name, callback) {
     console.error(`${name} render failed`, error);
     updateAutoRefreshStatus(`${name} panel failed: ${error.message}`);
   }
+}
+
+async function fetchJsonPayload(url, label) {
+  const response = await fetch(url, { cache: "no-store" });
+  const contentType = response.headers.get("content-type") || "";
+  const body = await response.text();
+  let payload = null;
+
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new Error(`${label} returned ${response.status} with ${contentType || "unknown content type"}.`);
+  }
+  try {
+    payload = body ? JSON.parse(body) : {};
+  } catch {
+    throw new Error(`${label} returned invalid JSON.`);
+  }
+  if (!response.ok) {
+    throw new Error(payload.error || `${label} request failed: ${response.status}`);
+  }
+  return payload;
 }
 
 function safeClassName(value) {
@@ -2968,8 +2990,12 @@ function renderCommandCenterNeedsAttention(payload) {
 }
 
 function renderCommandCenterMarkets(payload) {
-  const symbols = payload.markets?.symbols || ["SPY", "QQQ"];
-  const timeframes = payload.markets?.timeframes || ["M30"];
+  const symbols = Array.isArray(payload.markets?.symbols) && payload.markets.symbols.length
+    ? payload.markets.symbols
+    : commandCenterMarketSymbols;
+  const timeframes = Array.isArray(payload.markets?.timeframes) && payload.markets.timeframes.length
+    ? payload.markets.timeframes
+    : commandCenterMarketTimeframes;
   $("cc-symbols").innerHTML = symbols
     .map((symbol) => `<button type="button" class="${symbol === commandCenterSymbol ? "active" : ""}" data-cc-symbol="${escapeHtml(symbol)}">${escapeHtml(symbol)}</button>`)
     .join("");
@@ -2995,14 +3021,12 @@ function renderCommandCenterMarkets(payload) {
 async function loadCommandCenterChart() {
   $("cc-market-chart").innerHTML = '<div class="terminal-empty">Loading saved candles...</div>';
   try {
-    const response = await fetch(
+    const chart = await fetchJsonPayload(
       `${commandCenterV1ChartUrl}?symbol=${encodeURIComponent(commandCenterSymbol)}&timeframe=${encodeURIComponent(commandCenterTimeframe)}`,
-      { cache: "no-store" },
+      "Command Center chart",
     );
-    const chart = await response.json();
-    if (!response.ok) throw new Error(chart.error || `Chart request failed: ${response.status}`);
     $("cc-market-title").textContent = `${chart.symbol} ${chart.timeframe}`;
-    $("cc-market-subtitle").textContent = `${chart.source}. Latest bar ${chart.latest_bar_et}.`;
+    $("cc-market-subtitle").textContent = `${chart.source}. Latest bar ${chart.latest_bar_et}. Freshness ${minutesLabel(chart.data_lag_minutes)}.`;
     $("cc-market-chart").innerHTML = tradingChartSvg(chart.candles || [], []);
     $("cc-market-timeline").innerHTML = chart.timeline?.length
       ? chart.timeline
@@ -3016,11 +3040,11 @@ async function loadCommandCenterChart() {
             `,
           )
           .join("")
-      : "<li>No candidate events are available for this symbol.</li>";
+      : "<li>No candidate events for this selection.</li>";
   } catch (error) {
-    $("cc-market-chart").innerHTML = `<div class="terminal-empty">${escapeHtml(error.message)}</div>`;
-    $("cc-market-subtitle").textContent = "Saved candle data is unavailable for this selection.";
-    $("cc-market-timeline").innerHTML = "<li>Timeline unavailable.</li>";
+    $("cc-market-chart").innerHTML = `<div class="terminal-empty">Could not load chart data for ${escapeHtml(commandCenterSymbol)} ${escapeHtml(commandCenterTimeframe)}. ${escapeHtml(error.message)}</div>`;
+    $("cc-market-subtitle").textContent = "Saved candle data could not be loaded for this selection.";
+    $("cc-market-timeline").innerHTML = "<li>Candidate events could not be loaded for this selection.</li>";
   }
 }
 
@@ -3138,9 +3162,7 @@ function renderFounderCommandCenter(payload) {
 }
 
 async function loadCommandCenter() {
-  const response = await fetch(commandCenterV1Url, { cache: "no-store" });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || `Command Center request failed: ${response.status}`);
+  const payload = await fetchJsonPayload(commandCenterV1Url, "Command Center");
   renderFounderCommandCenter(payload);
   await loadCommandCenterChart();
   return payload;
