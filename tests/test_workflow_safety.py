@@ -11550,6 +11550,13 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertNotIn("TEST_SECRET_FIXTURE_DO_NOT_LEAK", serialized)
         self.assertIn("Read-only observability", serialized)
 
+    def test_founder_command_center_frontend_does_not_shadow_legacy_renderer(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+
+        self.assertEqual(script.count("function renderCommandCenter("), 1)
+        self.assertIn("function renderFounderCommandCenter(", script)
+        self.assertIn("renderFounderCommandCenter(payload)", script)
+
 
 if __name__ == "__main__":
     unittest.main()

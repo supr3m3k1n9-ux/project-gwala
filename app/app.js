@@ -3125,7 +3125,7 @@ function renderCommandCenterSystem(system) {
   setText("cc-runtime-paths", `Runtime data: ${system?.runtime_data_dir || "--"} / Logs: ${system?.logs_dir || "--"}`);
 }
 
-function renderCommandCenter(payload) {
+function renderFounderCommandCenter(payload) {
   commandCenterState = payload;
   renderCommandCenterOverview(payload);
   renderCommandCenterFunnel(payload.today || {});
@@ -3141,7 +3141,7 @@ async function loadCommandCenter() {
   const response = await fetch(commandCenterV1Url, { cache: "no-store" });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || `Command Center request failed: ${response.status}`);
-  renderCommandCenter(payload);
+  renderFounderCommandCenter(payload);
   await loadCommandCenterChart();
   return payload;
 }
