@@ -11557,6 +11557,11 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertIn("function renderFounderCommandCenter(", script)
         self.assertIn("renderFounderCommandCenter(payload)", script)
 
+    def test_founder_command_center_uses_versioned_frontend_asset(self) -> None:
+        html = Path("app/index.html").read_text(encoding="utf-8")
+
+        self.assertIn("/app.js?v=20260812-command-center-renderer", html)
+
 
 if __name__ == "__main__":
     unittest.main()
