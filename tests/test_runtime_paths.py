@@ -526,15 +526,16 @@ class RuntimePathTests(unittest.TestCase):
             self.assertIn("--data-dir /app/runtime_data", text)
             self.assertNotIn("--data-dir data", text)
 
-    def test_deploy_latest_syncs_systemd_units_without_timer_state_changes(self) -> None:
+    def test_deploy_latest_syncs_systemd_units_and_enables_async_lane_only(self) -> None:
         text = Path("deploy_latest.sh").read_text(encoding="utf-8")
         self.assertIn("project-gwala-*.service", text)
         self.assertIn("project-gwala-*.timer", text)
         self.assertIn("systemctl daemon-reload", text)
+        self.assertIn("systemctl enable --now project-gwala-market-async-lane.timer", text)
         self.assertIn("systemctl restart project-gwala-dashboard.service", text)
         self.assertIn("docker compose -f \"$COMPOSE_FILE\" down --remove-orphans", text)
-        self.assertNotIn("systemctl enable", text)
-        self.assertNotIn("systemctl start", text)
+        self.assertNotIn("systemctl enable --now project-gwala-autonomous-paper.timer", text)
+        self.assertNotIn("systemctl enable --now project-gwala-production-alert.timer", text)
         self.assertNotIn("systemctl stop", text)
 
     def test_data_source_package_imports_remain_available(self) -> None:

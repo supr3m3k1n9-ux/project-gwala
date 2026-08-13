@@ -38,6 +38,7 @@ if [[ -d /etc/systemd/system ]]; then
   install -m 0644 "$APP_DIR/deploy/linux/systemd"/project-gwala-*.service /etc/systemd/system/
   install -m 0644 "$APP_DIR/deploy/linux/systemd"/project-gwala-*.timer /etc/systemd/system/
   systemctl daemon-reload
+  systemctl enable --now project-gwala-market-async-lane.timer >/dev/null
 fi
 
 export GWALA_APP_DIR="$APP_DIR"
