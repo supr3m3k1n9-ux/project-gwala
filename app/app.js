@@ -243,6 +243,7 @@ let commandCenterInboxState = loadCommandCenterInboxState();
 let commandCenterSymbol = "SPY";
 let commandCenterTimeframe = "M30";
 let commandCenterInboxFilter = "All";
+let commandCenterRefreshInFlight = false;
 let paperCommandCenter = { candidates: [], open_trades: [] };
 let selectedPaperCommandKey = "";
 const preEntryReviewedKeys = new Set();
@@ -303,6 +304,10 @@ function setStatusPill(element, status) {
 function updateAutoRefreshStatus(message) {
   const target = $("auto-refresh-status");
   if (target) target.textContent = message;
+}
+
+function updateCommandCenterRefreshStatus(message) {
+  setText("cc-refresh-status", message);
 }
 
 function setFeedRailCollapsed(collapsed) {
@@ -2899,6 +2904,7 @@ function renderCommandCenterOverview(payload) {
     )
     .join("");
   $("cc-generated-at").textContent = `Updated ${payload.generated_at_et || "--"}`;
+  setText("cc-last-updated", `Last updated: ${payload.generated_at_et || "--"}`);
   $("cc-guardrail").textContent = payload.guardrail || "Read-only observability.";
 }
 
@@ -3162,10 +3168,31 @@ function renderFounderCommandCenter(payload) {
 }
 
 async function loadCommandCenter() {
-  const payload = await fetchJsonPayload(commandCenterV1Url, "Command Center");
-  renderFounderCommandCenter(payload);
-  await loadCommandCenterChart();
-  return payload;
+  if (commandCenterRefreshInFlight) return commandCenterState;
+  commandCenterRefreshInFlight = true;
+  updateCommandCenterRefreshStatus("Command Center loading...");
+  try {
+    const payload = await fetchJsonPayload(commandCenterV1Url, "Command Center");
+    renderFounderCommandCenter(payload);
+    await loadCommandCenterChart();
+    updateCommandCenterRefreshStatus(`Command Center updated ${payload.generated_at_et || "successfully"}.`);
+    return payload;
+  } catch (error) {
+    updateCommandCenterRefreshStatus(`Command Center render failed: ${error.message}`);
+    throw error;
+  } finally {
+    commandCenterRefreshInFlight = false;
+  }
+}
+
+async function refreshCommandCenter() {
+  try {
+    return await loadCommandCenter();
+  } catch (error) {
+    updateCommandCenterRefreshStatus(`Command Center refresh failed: ${error.message}`);
+    setText("cc-generated-at", `Command Center refresh failed: ${error.message}`);
+    return commandCenterState;
+  }
 }
 
 function meaningfulValue(value) {
@@ -5592,14 +5619,17 @@ async function refresh() {
   stateRefreshInFlight = true;
   $("refresh-button").disabled = true;
   updateAutoRefreshStatus("Checking latest app state...");
+  const commandCenterRefresh = refreshCommandCenter();
   try {
-    const [state] = await Promise.all([loadState(), loadCommandCenter()]);
+    const state = await loadState();
     renderState(state);
+    await commandCenterRefresh;
     const checkedAt = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     updateAutoRefreshStatus(
       `Checked ${checkedAt} ${compactTimezoneLabel()}. State ${appStateAgeLabel(state)}. ${appStateGeneratedLabel(state)}.`,
     );
   } catch (error) {
+    await commandCenterRefresh;
     setText("verdict", error.message);
     setText("safety-line", "Run python run_system_state.py, then refresh this app.");
     updateAutoRefreshStatus(`Auto-refresh failed: ${error.message}`);

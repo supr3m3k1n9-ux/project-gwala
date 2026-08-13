@@ -11591,10 +11591,50 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertIn("function renderFounderCommandCenter(", script)
         self.assertIn("renderFounderCommandCenter(payload)", script)
 
+    def test_founder_command_center_startup_fetches_stores_and_renders_payload(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+        render_block = script.split("function renderFounderCommandCenter(payload)", 1)[1].split("async function loadCommandCenter", 1)[0]
+        loader_block = script.split("async function loadCommandCenter()", 1)[1].split("async function refreshCommandCenter()", 1)[0]
+
+        self.assertIn('fetchJsonPayload(commandCenterV1Url, "Command Center")', loader_block)
+        self.assertIn("commandCenterState = payload", render_block)
+        self.assertIn("renderCommandCenterOverview(payload)", render_block)
+        self.assertIn("renderCommandCenterMarkets(payload)", render_block)
+        self.assertIn("renderCommandCenterInbox(payload.inbox?.events || [])", render_block)
+        self.assertIn("renderCommandCenterResearch(payload.research || {})", render_block)
+        self.assertIn("renderCommandCenterSystem(payload.system || {})", render_block)
+
+    def test_founder_command_center_refresh_is_independent_from_legacy_state(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+        refresh_block = script.split("async function refresh()", 1)[1].split('$("refresh-button").addEventListener', 1)[0]
+
+        self.assertIn("const commandCenterRefresh = refreshCommandCenter();", refresh_block)
+        self.assertIn("const state = await loadState();", refresh_block)
+        self.assertNotIn("Promise.all([loadState(), loadCommandCenter()])", refresh_block)
+        self.assertIn("await commandCenterRefresh;", refresh_block)
+
+    def test_founder_command_center_visible_refresh_and_timestamp_controls_exist(self) -> None:
+        html = Path("app/index.html").read_text(encoding="utf-8")
+        script = Path("app/app.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="cc-refresh-status"', html)
+        self.assertIn('id="cc-last-updated"', html)
+        self.assertIn('id="refresh-button"', html)
+        self.assertIn("updateCommandCenterRefreshStatus", script)
+        self.assertIn("Last updated:", script)
+
+    def test_founder_command_center_routes_preserve_v1_pages(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+        route_block = script.split("function updateAppRoute()", 1)[1].split("async function showReport", 1)[0]
+
+        for route in ['"#overview"', '"#markets"', '"#research"', '"#inbox"', '"#system"']:
+            self.assertIn(route, route_block)
+        self.assertNotIn("commandCenterState = null", route_block)
+
     def test_founder_command_center_uses_versioned_frontend_asset(self) -> None:
         html = Path("app/index.html").read_text(encoding="utf-8")
 
-        self.assertIn("/app.js?v=20260812-command-center-markets-contract", html)
+        self.assertIn("/app.js?v=20260812-command-center-startup-refresh", html)
 
 
 if __name__ == "__main__":
