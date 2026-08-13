@@ -32,6 +32,7 @@ from run_continuous_assurance import (
     now_et,
     secret_configuration_checks,
     summarize_existing_payload,
+    self_monitor,
     write_state,
 )
 
@@ -525,6 +526,29 @@ AssertionError: expected true
             state = write_state(args, [])
             self.assertEqual(state["status"], "WATCH")
             self.assertTrue((args.output_dir / "assurance_state.json").exists())
+
+    def test_runtime_only_self_monitor_keeps_stale_non_runtime_layers_watch(self) -> None:
+        with TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            args = args_for(tmp)
+            for relative in [
+                "premarket/premarket_assurance.json",
+                "eod/eod_evidence_integrity.json",
+                "weekly/weekly_deep_assurance.json",
+            ]:
+                path = args.output_dir / relative
+                write_json(path, fresh_payload("GREEN"))
+                old = now_et().timestamp() - 10 * 24 * 60 * 60
+                os.utime(path, (old, old))
+
+            payload = self_monitor(args, [{"layer": "runtime_smoke"}])
+
+        checks = {check["component"]: check for check in payload["checks"]}
+        self.assertEqual(payload["status"], "WATCH")
+        self.assertEqual(checks["Assurance self-monitor runtime_smoke"]["status"], "GREEN")
+        self.assertEqual(checks["Assurance self-monitor premarket_assurance"]["status"], "WATCH")
+        self.assertEqual(checks["Assurance self-monitor eod_evidence_integrity"]["status"], "WATCH")
+        self.assertEqual(checks["Assurance self-monitor weekly_deep_assurance"]["status"], "WATCH")
 
 
 if __name__ == "__main__":

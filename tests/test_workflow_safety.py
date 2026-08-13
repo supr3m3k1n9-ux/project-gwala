@@ -3870,6 +3870,30 @@ class MarketCalendarTests(unittest.TestCase):
         self.assertEqual(heartbeat["status"], "YELLOW")
         self.assertEqual(ledger["status"], "YELLOW")
 
+    def test_production_heartbeat_open_session_stale_dashboard_preflight_is_watch(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs_dir = root / "logs"
+            data_dir = root / "data"
+            logs_dir.mkdir()
+            data_dir.mkdir()
+            moment = datetime(2026, 5, 26, 10, 0, tzinfo=MARKET_TZ)
+            write_healthy_heartbeat_artifacts(logs_dir, data_dir, moment)
+            stale_time = moment - timedelta(minutes=20)
+            set_artifact_times([logs_dir / "dashboard_data_preflight.json"], stale_time)
+
+            heartbeat = build_production_heartbeat(
+                logs_dir,
+                data_dir=data_dir,
+                moment=moment,
+                launchctl_output="state = not running\nlast exit code = 0\n",
+                **MACOS_NATIVE_RUNTIME,
+            )
+
+        checks = {check["component"]: check for check in heartbeat["checks"]}
+        self.assertEqual(checks["Dashboard preflight"]["status"], "YELLOW")
+        self.assertEqual(heartbeat["status"], "YELLOW")
+
     def test_production_heartbeat_after_close_completed_session_artifacts_are_not_red_for_age(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)

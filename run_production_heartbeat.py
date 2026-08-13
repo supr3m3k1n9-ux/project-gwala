@@ -713,6 +713,7 @@ def build_heartbeat(
             moment=current_time,
             max_age_minutes=max_age_minutes,
             required_status="pass",
+            missing_status="YELLOW",
             requires_recency=requires_recency,
         ),
     ]

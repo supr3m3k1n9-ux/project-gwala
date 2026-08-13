@@ -1119,15 +1119,16 @@ def self_monitor(args: argparse.Namespace, layers: list[dict[str, Any]]) -> dict
             continue
         modified = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
         age = current - modified
-        status = "GREEN" if age <= max_age else "RED"
+        stale = age > max_age
+        status = "GREEN" if not stale else "RED" if name == "runtime_smoke" else "WATCH"
         checks.append(
             AssuranceCheck(
                 f"Assurance self-monitor {name}",
                 status,
                 f"Last run artifact age is {age}.",
-                operator_action_required="NONE" if status == "GREEN" else "YES",
+                operator_action_required="NONE" if status != "RED" else "YES",
                 engineering_trigger="WAIT" if status == "GREEN" else "INVESTIGATE",
-                recommended_next_action="Investigate missing assurance schedule." if status == "RED" else "Continue.",
+                recommended_next_action="Investigate missing runtime assurance schedule." if status == "RED" else "Continue.",
             )
         )
     payload = base_payload("assurance_self_monitor", checks, start)
