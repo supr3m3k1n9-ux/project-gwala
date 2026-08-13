@@ -374,6 +374,7 @@ class RuntimePathTests(unittest.TestCase):
             "checks": [
                 {"component": "Webull refresh", "status": "RED", "reason": "No current-session rows"},
                 {"component": "Scanner", "status": "RED", "reason": "Scanner output is missing"},
+                {"component": "Dashboard preflight", "status": "RED", "reason": "No current-session preflight"},
             ],
         }
         with TemporaryDirectory() as raw:

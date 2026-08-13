@@ -306,7 +306,7 @@ def heartbeat_readiness_check(app_dir: Path, stack_dir: Path) -> Check:
     checks = payload.get("checks") if isinstance(payload.get("checks"), list) else []
     red_components = {str(check.get("component", "")) for check in checks if isinstance(check, dict) and check.get("status") == "RED"}
     market_artifact_components = {"Scanner", "Current-candle capture", "Candidate ledger", "Data freshness"}
-    premarket_artifact_components = market_artifact_components | {"Webull refresh"}
+    premarket_artifact_components = market_artifact_components | {"Webull refresh", "Dashboard preflight"}
     runtime = payload.get("runtime") if isinstance(payload.get("runtime"), dict) else {}
     market_phase = str(runtime.get("market_phase", ""))
     if status == "RED" and market_phase in {"after_close", "closed_day"} and red_components and red_components.issubset(market_artifact_components):
