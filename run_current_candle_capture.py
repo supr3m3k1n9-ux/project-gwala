@@ -114,6 +114,7 @@ def refresh_commands(args: argparse.Namespace, python: str) -> list[tuple[str, l
     """Return the focused Webull refresh commands."""
 
     symbols = normalized_symbols(args.symbols)
+    critical_path_only = bool(getattr(args, "critical_path_only", False))
     base_command = [
         python,
         "run_webull_watchlist.py",
@@ -140,6 +141,51 @@ def refresh_commands(args: argparse.Namespace, python: str) -> list[tuple[str, l
         "--output-dir",
         str(args.output_dir),
     ]
+    if critical_path_only:
+        return [
+            (
+                "Refresh Webull decision candles",
+                [
+                    *base_command,
+                    "--refresh-only",
+                    "--chart-m1-count",
+                    "0",
+                    "--chart-m15-count",
+                    "0",
+                    "--chart-m60-count",
+                    "0",
+                    "--chart-d-count",
+                    "0",
+                ],
+            ),
+            (
+                "Repair M30 from lower timeframe",
+                [
+                    python,
+                    "run_repair_m30_from_lower_timeframe.py",
+                    "--symbols",
+                    *symbols,
+                    "--data-dir",
+                    str(args.output_dir),
+                    "--output-dir",
+                    str(args.output_dir),
+                ],
+            ),
+            (
+                "Record refresh audit",
+                [
+                    python,
+                    "run_refresh_audit.py",
+                    "--record",
+                    "--provider",
+                    "webull",
+                    "--symbols",
+                    *symbols,
+                    "--output-dir",
+                    str(args.output_dir),
+                ],
+            ),
+        ]
     return [
         ("Refresh Webull best/market setups", [*base_command, "--candidate-preset", "best_plus_market"]),
         ("Reuse Webull candles for Setup B", [*base_command, "--reuse-csv", "--candidate-preset", "setup_b"]),
@@ -491,6 +537,7 @@ def capture_count_summary(output_dir: Path) -> dict[str, object]:
 
 
 DECISION_CRITICAL_STEPS = {
+    "Refresh Webull decision candles",
     "Refresh Webull best/market setups",
     "Reuse Webull candles for Setup B",
     "Reuse Webull candles for full-session setups",

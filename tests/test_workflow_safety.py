@@ -33,6 +33,7 @@ from reports.system_state import (
 )
 import run_app
 import run_current_candle_capture
+import run_webull_watchlist
 from run_autonomous_paper_workflow import choose_action, commands_for_action, sleep_after_action
 from run_autonomous_a_tier_lifecycle import build_lifecycle as build_autonomous_a_tier_lifecycle
 from run_autonomous_a_tier_lifecycle import run_exit_monitor as run_autonomous_a_tier_exit_monitor
@@ -7829,11 +7830,58 @@ class PaperGuardrailTests(unittest.TestCase):
         self.assertIn("Scanner", steps)
         self.assertIn("Options Contract Gate", steps)
         self.assertIn("Validation Import Preview", steps)
+        self.assertEqual(steps[0], "Refresh Webull decision candles")
+        self.assertIn("--refresh-only", flat)
+        self.assertNotIn("Provider stability audit", steps)
         self.assertNotIn("Daily Ship Report", steps)
         self.assertNotIn("Opening Range Breakout Shadow Evidence", steps)
         self.assertNotIn("Dashboard Data Preflight", steps)
         self.assertNotIn("Data Flow Sentinel", steps)
         self.assertIn("--chart-m1-count 0", flat)
+
+    def test_webull_refresh_only_skips_backtests_and_chart_fetches(self) -> None:
+        args = argparse.Namespace(
+            symbols=["SPY", "QQQ"],
+            entry_count=1200,
+            exit_count=1200,
+            entry_pages=1,
+            exit_pages=1,
+            chart_m1_count=240,
+            chart_m1_pages=1,
+            chart_m15_count=400,
+            chart_m15_pages=1,
+            chart_m60_count=400,
+            chart_m60_pages=1,
+            chart_d_count=260,
+            chart_d_pages=1,
+            pause=0,
+            output_dir=Path("logs"),
+            variants=["current"],
+            exit_profiles=["current"],
+            reuse_csv=False,
+            chart_only=False,
+            refresh_only=True,
+            candidate_preset=None,
+            min_approved_trades=10,
+            market_regime_symbol="SPY",
+        )
+        fetched: list[tuple[str, str]] = []
+
+        def fake_fetch(_client, symbol, timespan, _count, _pages, _pause, output_dir):
+            fetched.append((symbol, timespan))
+            return output_dir / f"webull_{symbol}_{timespan}_candles.csv"
+
+        with TemporaryDirectory() as temporary, patch.object(run_webull_watchlist, "parse_args", return_value=args), patch.object(
+            run_webull_watchlist, "build_data_client", return_value=object()
+        ), patch.object(run_webull_watchlist, "fetch_and_save", side_effect=fake_fetch), patch.object(
+            run_webull_watchlist, "fetch_chart_only_timeframes"
+        ) as chart_fetch, patch.object(run_webull_watchlist, "run_symbol_backtest") as backtest:
+            args.output_dir = Path(temporary)
+            run_webull_watchlist.main()
+
+        self.assertEqual(fetched, [("SPY", "M30"), ("SPY", "M5"), ("QQQ", "M30"), ("QQQ", "M5")])
+        chart_fetch.assert_not_called()
+        backtest.assert_not_called()
 
     def test_invalid_open_validation_rows_do_not_trigger_m5_exit_priority(self) -> None:
         with TemporaryDirectory() as temporary:

@@ -191,6 +191,11 @@ def parse_args() -> argparse.Namespace:
         help="Fetch chart/context-only M1/M15/M60/D candles and skip strategy backtests.",
     )
     parser.add_argument(
+        "--refresh-only",
+        action="store_true",
+        help="Fetch decision-critical M30/M5 candles and skip watchlist backtests/reports.",
+    )
+    parser.add_argument(
         "--candidate-preset",
         choices=sorted(CANDIDATE_PRESETS),
         help="Use a curated set of variant/exit combinations, such as 'best'.",
@@ -797,6 +802,9 @@ def main() -> None:
             fetch_chart_only_timeframes(data_client, symbol, args, output_dir)
         print("Chart-only Webull refresh complete.")
         return
+    if args.refresh_only and args.reuse_csv:
+        print("Decision-critical refresh skipped because --reuse-csv was supplied.")
+        return
     results = []
     candidate_pairs = None
     if args.candidate_preset:
@@ -834,7 +842,12 @@ def main() -> None:
                 )
                 print(f"Saved {exit_csv}", flush=True)
                 time.sleep(args.pause)
+                if args.refresh_only:
+                    continue
                 fetch_chart_only_timeframes(data_client, symbol, args, output_dir)
+
+            if args.refresh_only:
+                continue
 
             pairs = candidate_pairs
             if pairs is None:
@@ -874,6 +887,9 @@ def main() -> None:
             time.sleep(args.pause * 2)
 
     summary = pd.DataFrame(results)
+    if args.refresh_only:
+        print("Decision-critical Webull refresh complete.")
+        return
     csv_path = output_dir / "webull_watchlist_backtest_summary.csv"
     md_path = output_dir / "webull_watchlist_backtest_summary.md"
     best_path = output_dir / "best_candidate_summary.md"
