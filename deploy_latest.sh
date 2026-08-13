@@ -47,10 +47,7 @@ python3 "$APP_DIR/deploy/linux/verify_docker_runtime_boundary.py" --compose-file
 GWALA_APP_DIR="$APP_DIR" GWALA_STACK_DIR="$STACK_DIR" docker compose -f "$COMPOSE_FILE" build gwala
 python3 "$APP_DIR/deploy/linux/verify_docker_runtime_boundary.py" --compose-file "$COMPOSE_FILE" --app-dir "$APP_DIR" --stack-dir "$STACK_DIR" --runtime-check
 if systemctl list-unit-files project-gwala-dashboard.service >/dev/null 2>&1; then
-  docker ps -q \
-    --filter "label=com.docker.compose.project=gwala" \
-    --filter "label=com.docker.compose.oneoff=True" \
-    | xargs -r docker rm -f >/dev/null
+  GWALA_APP_DIR="$APP_DIR" GWALA_STACK_DIR="$STACK_DIR" docker compose -f "$COMPOSE_FILE" down --remove-orphans >/dev/null
   systemctl restart project-gwala-dashboard.service
 fi
 
