@@ -9,6 +9,7 @@ from typing import Any
 import pandas as pd
 
 from config.settings import STRATEGY
+from config.runtime_paths import runtime_data_path
 from config.symbol_playbook import playbook_symbols
 from data.market_data import load_candles_from_csv
 from run_opening_range_breakout import add_research_columns, find_breakout_exit
@@ -23,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS, help="Symbols to inspect.")
     parser.add_argument("--data-dir", type=Path, default=Path("logs"), help="Where saved Webull candles live.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--shadow-csv", type=Path, default=Path("data/opening_range_breakout_shadow_samples.csv"))
+    parser.add_argument("--shadow-csv", type=Path, default=runtime_data_path("opening_range_breakout_shadow_samples.csv"))
     parser.add_argument("--entry-timeframe", default="M30")
     parser.add_argument("--exit-timeframe", default="M5")
     parser.add_argument("--target-r-multiple", type=float, default=1.20)
