@@ -293,6 +293,18 @@ def artifact_state(path: Path) -> dict:
     }
 
 
+def artifact_is_stale(path: Path, max_age_seconds: int = 60) -> bool:
+    """Return True when an app-side generated artifact should be refreshed."""
+
+    if not path.exists():
+        return True
+    try:
+        age = datetime.now(MARKET_TZ) - datetime.fromtimestamp(path.stat().st_mtime, tz=MARKET_TZ)
+    except OSError:
+        return True
+    return age.total_seconds() > max_age_seconds
+
+
 def current_trading_date(moment: datetime | None = None) -> date:
     """Return the market-local date used for daily dashboard counts."""
 
@@ -611,7 +623,7 @@ def founder_system_payload(logs_dir: Path | None = None) -> dict:
 
     logs = logs_dir or LOGS_DIR
     freshness_path = logs / "data_freshness_audit.json"
-    if not freshness_path.exists():
+    if artifact_is_stale(freshness_path):
         try:
             write_data_freshness_audit(build_data_freshness_audit(RUNTIME_DATA_DIR, candle_dir=logs), logs)
         except Exception:
