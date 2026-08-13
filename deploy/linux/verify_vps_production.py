@@ -306,6 +306,7 @@ def heartbeat_readiness_check(app_dir: Path, stack_dir: Path) -> Check:
     checks = payload.get("checks") if isinstance(payload.get("checks"), list) else []
     red_components = {str(check.get("component", "")) for check in checks if isinstance(check, dict) and check.get("status") == "RED"}
     market_artifact_components = {"Scanner", "Current-candle capture", "Candidate ledger", "Data freshness"}
+    premarket_artifact_components = market_artifact_components | {"Webull refresh"}
     runtime = payload.get("runtime") if isinstance(payload.get("runtime"), dict) else {}
     market_phase = str(runtime.get("market_phase", ""))
     if status == "RED" and market_phase in {"after_close", "closed_day"} and red_components and red_components.issubset(market_artifact_components):
@@ -313,6 +314,12 @@ def heartbeat_readiness_check(app_dir: Path, stack_dir: Path) -> Check:
             "Heartbeat",
             "PASS",
             "heartbeat executes; stale completed-session market artifacts reflect prior interrupted evidence collection, not deployment readiness",
+        )
+    if status == "RED" and market_phase == "premarket" and red_components and red_components.issubset(premarket_artifact_components):
+        return Check(
+            "Heartbeat",
+            "PASS",
+            "heartbeat executes; current-session market artifacts are not expected before the first premarket/market refresh",
         )
     return Check("Heartbeat", "FAIL" if status == "RED" else "WATCH", str(payload.get("reason") or payload.get("red_reason") or status))
 

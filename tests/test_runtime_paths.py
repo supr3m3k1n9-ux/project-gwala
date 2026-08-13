@@ -365,6 +365,25 @@ class RuntimePathTests(unittest.TestCase):
 
         self.assertEqual(check.status, "PASS")
 
+    def test_vps_readiness_allows_premarket_before_first_current_session_refresh(self) -> None:
+        heartbeat = {
+            "status": "RED",
+            "reason": "No Webull refresh rows exist for the expected session.",
+            "red_component": "Webull refresh",
+            "runtime": {"market_phase": "premarket"},
+            "checks": [
+                {"component": "Webull refresh", "status": "RED", "reason": "No current-session rows"},
+                {"component": "Scanner", "status": "RED", "reason": "Scanner output is missing"},
+            ],
+        }
+        with TemporaryDirectory() as raw:
+            stack = Path(raw)
+            (stack / "run_in_docker.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+            with patch("deploy.linux.verify_vps_production.run", return_value=(0, f"noise\n{__import__('json').dumps(heartbeat)}\n")):
+                check = heartbeat_readiness_check(stack / "app", stack)
+
+        self.assertEqual(check.status, "PASS")
+
     def test_vps_readiness_does_not_allow_regular_session_data_freshness_failure(self) -> None:
         heartbeat = {
             "status": "RED",
