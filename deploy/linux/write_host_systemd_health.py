@@ -103,7 +103,12 @@ def unit_health(fields: dict[str, str]) -> dict[str, Any]:
         blockers.append(f"ActiveState={active_state or 'missing'}")
     if result not in {"", "success"}:
         blockers.append(f"Result={result}")
-    if exec_status not in {"", "0"}:
+    oneshot_success_lifecycle = (
+        unit_type == "oneshot_service"
+        and result == "success"
+        and active_state in {"active", "inactive", "activating"}
+    )
+    if exec_status not in {"", "0"} and not oneshot_success_lifecycle:
         blockers.append(f"ExecMainStatus={exec_status}")
 
     status = "GREEN" if not blockers else "RED"

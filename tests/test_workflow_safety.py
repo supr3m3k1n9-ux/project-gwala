@@ -4481,6 +4481,21 @@ class MarketCalendarTests(unittest.TestCase):
         self.assertEqual(health["status"], "GREEN")
         self.assertEqual(health["type"], "oneshot_service")
 
+    def test_host_systemd_health_ignores_stale_exec_status_for_successful_oneshot(self) -> None:
+        health = host_systemd_unit_health(
+            {
+                "unit": "project-gwala-autonomous-paper.service",
+                "returncode": "0",
+                "LoadState": "loaded",
+                "ActiveState": "inactive",
+                "Result": "success",
+                "ExecMainStatus": "137",
+            }
+        )
+
+        self.assertEqual(health["status"], "GREEN")
+        self.assertEqual(health["type"], "oneshot_service")
+
     def test_host_systemd_health_failed_oneshot_is_red(self) -> None:
         health = host_systemd_unit_health(
             {
