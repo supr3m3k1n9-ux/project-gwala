@@ -11828,11 +11828,12 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
     def test_command_center_frontend_renders_clean_chart_errors_and_empty_timeline(self) -> None:
         script = Path("app/app.js").read_text(encoding="utf-8")
 
-        self.assertIn("Could not load chart data for", script)
+        self.assertIn("Command Center could not refresh the display. Production data was not changed.", script)
         self.assertIn("Candidate events could not be loaded for this selection.", script)
         self.assertIn("No candidate events for this selection.", script)
         self.assertNotIn("Timeline unavailable.", script)
         self.assertNotIn("JSON.parse:", script)
+        self.assertNotIn("NetworkError when attempting to fetch resource", script)
 
     def test_command_center_live_chart_frontend_polls_read_only_endpoints(self) -> None:
         script = Path("app/app.js").read_text(encoding="utf-8")
@@ -11866,14 +11867,23 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
 
     def test_command_center_manual_refresh_remains_read_only(self) -> None:
         script = Path("app/app.js").read_text(encoding="utf-8")
-        refresh_block = script.split("async function refresh()", 1)[1].split('$("refresh-button").addEventListener', 1)[0]
+        refresh_block = script.split("async function refreshCommandCenterView()", 1)[1].split("async function runRefreshViewAction", 1)[0]
+        click_block = script.split('$("refresh-button").addEventListener', 1)[1].split('$("feed-rail-toggle").addEventListener', 1)[0]
+        html = Path("app/index.html").read_text(encoding="utf-8")
 
-        self.assertIn("refreshCommandCenter()", refresh_block)
-        self.assertIn("loadState()", refresh_block)
+        self.assertIn("loadCommandCenter()", refresh_block)
+        self.assertIn("loadCommandCenterChart()", refresh_block)
+        self.assertIn("Production data was not changed", refresh_block)
+        self.assertIn("refreshCommandCenterView", click_block)
+        self.assertIn(">REFRESH VIEW<", html)
+        self.assertNotIn("Refresh Market Data", html)
+        self.assertNotIn("/api/actions/refresh-webull-data", script)
         self.assertNotIn("refreshWebullDataActionUrl", refresh_block)
+        self.assertNotIn("loadState()", refresh_block)
         self.assertNotIn("paperSessionConfirmEntryActionUrl", refresh_block)
         self.assertNotIn("paperCommandConfirmEntryUrl", refresh_block)
         self.assertNotIn("paperCommandAutoSelectContractUrl", refresh_block)
+        self.assertNotIn("run_current_candle_capture.py", refresh_block)
 
     def test_founder_command_center_payload_does_not_include_secret_environment_values(self) -> None:
         with patch.dict(os.environ, {"WEBULL_APP_SECRET": "TEST_SECRET_FIXTURE_DO_NOT_LEAK"}, clear=False):
@@ -11906,11 +11916,15 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
     def test_founder_command_center_refresh_is_independent_from_legacy_state(self) -> None:
         script = Path("app/app.js").read_text(encoding="utf-8")
         refresh_block = script.split("async function refresh()", 1)[1].split('$("refresh-button").addEventListener', 1)[0]
+        manual_refresh_block = script.split("async function refreshCommandCenterView()", 1)[1].split("async function runRefreshViewAction", 1)[0]
 
         self.assertIn("const commandCenterRefresh = refreshCommandCenter();", refresh_block)
         self.assertIn("const state = await loadState();", refresh_block)
         self.assertNotIn("Promise.all([loadState(), loadCommandCenter()])", refresh_block)
         self.assertIn("await commandCenterRefresh;", refresh_block)
+        self.assertIn("loadCommandCenter()", manual_refresh_block)
+        self.assertIn("loadCommandCenterChart()", manual_refresh_block)
+        self.assertNotIn("loadState()", manual_refresh_block)
 
     def test_founder_command_center_visible_refresh_and_timestamp_controls_exist(self) -> None:
         html = Path("app/index.html").read_text(encoding="utf-8")
@@ -11919,8 +11933,11 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertIn('id="cc-refresh-status"', html)
         self.assertIn('id="cc-last-updated"', html)
         self.assertIn('id="refresh-button"', html)
+        self.assertIn("REFRESH VIEW", html)
         self.assertIn("updateCommandCenterRefreshStatus", script)
         self.assertIn("Last updated:", script)
+        self.assertIn("Command Center could not refresh the display. Production data was not changed.", script)
+        self.assertNotIn("NetworkError when attempting to fetch resource", script)
 
     def test_founder_command_center_routes_preserve_v1_pages(self) -> None:
         script = Path("app/app.js").read_text(encoding="utf-8")
@@ -11933,7 +11950,7 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
     def test_founder_command_center_uses_versioned_frontend_asset(self) -> None:
         html = Path("app/index.html").read_text(encoding="utf-8")
 
-        self.assertIn("/app.js?v=20260812-command-center-live-charts", html)
+        self.assertIn("/app.js?v=20260812-command-center-refresh-view", html)
 
     def test_phase_3_strategy_lifecycle_constitution_is_documented(self) -> None:
         document = Path("docs/strategy-vault.md").read_text(encoding="utf-8")

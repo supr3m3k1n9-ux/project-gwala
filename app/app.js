@@ -13,7 +13,6 @@ const backtestPortfolioUrl = "/api/backtest-portfolio";
 const openPaperTradesUrl = "/api/open-paper-trades";
 const paperCommandCenterUrl = "/api/paper-command-center";
 const refreshStatusActionUrl = "/api/actions/refresh-status";
-const refreshWebullDataActionUrl = "/api/actions/refresh-webull-data";
 const premarketCheckActionUrl = "/api/actions/premarket-check";
 const paperSessionPreviewActionUrl = "/api/actions/paper-session-preview";
 const paperSessionConfirmEntryActionUrl = "/api/actions/paper-session-confirm-entry";
@@ -321,6 +320,15 @@ function updateCommandCenterRefreshStatus(message) {
   setText("cc-refresh-status", message);
 }
 
+function commandCenterLastSuccessLabel() {
+  if (!lastCommandCenterSuccessAt) return "Last successful update: none this browser session.";
+  return `Last successful update: ${lastCommandCenterSuccessAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} ${compactTimezoneLabel()}.`;
+}
+
+function commandCenterDisplayFailureMessage() {
+  return `Command Center could not refresh the display. Production data was not changed. ${commandCenterLastSuccessLabel()} Use REFRESH VIEW to retry.`;
+}
+
 function markCommandCenterConnection(connected, message = "") {
   if (connected) {
     commandCenterFailureCount = 0;
@@ -331,7 +339,7 @@ function markCommandCenterConnection(connected, message = "") {
     commandCenterFailureCount += 1;
     setText("cc-connection-status", "Command Center: CONNECTION LOST");
     document.body.classList.add("cc-connection-lost");
-    if (message) updateCommandCenterRefreshStatus(message);
+    updateCommandCenterRefreshStatus(message || commandCenterDisplayFailureMessage());
   }
 }
 
@@ -679,9 +687,9 @@ function commandCenterDecision(state) {
     return {
       tone: "watch",
       title: "Market is open, but the scanner data is stale.",
-      detail: "Refresh Webull market data before reviewing candidates. This rebuilds reports and stays research-only.",
-      button: "Refresh Market Data",
-      action: "refresh-webull",
+      detail: "Refresh the Command Center display, then use production alerts/reports to decide whether an operator action is required.",
+      button: "REFRESH VIEW",
+      action: "refresh-view",
     };
   }
 
@@ -689,9 +697,9 @@ function commandCenterDecision(state) {
     return {
       tone: "caution",
       title: "Market is open, but candle timestamps need a refresh.",
-      detail: `${candleState.detail} Refresh Webull market data before reviewing paper candidates.`,
-      button: "Refresh Market Data",
-      action: "refresh-webull",
+      detail: `${candleState.detail} Refresh the display only; do not trigger market-data collection from the browser.`,
+      button: "REFRESH VIEW",
+      action: "refresh-view",
     };
   }
 
@@ -859,9 +867,6 @@ function renderCommandCenter(state) {
   setCommandCard("command-safety-card", "command-safety-status", "command-safety-detail", safetyTone, safetyStatus, safetyDetail);
   setCommandCard("command-backtest-card", "command-backtest-status", "command-backtest-detail", backtestTone, backtestStatus, backtestDetail);
 
-  if (!marketOpen && decision.action === "refresh-webull") {
-    action.disabled = true;
-  }
 }
 
 function launchStatusLabel(status) {
@@ -3200,10 +3205,12 @@ async function loadCommandCenterChart(options = {}) {
           .join("")
       : "<li>No candidate events for this selection.</li>";
   } catch (error) {
-    markCommandCenterConnection(false, `Command Center chart refresh failed: ${error.message}`);
-    renderCommandCenterChartMeta({ freshness: { status: "STALE", explanation: "Live Command Center chart data is unavailable." } }, true);
+    console.error("Command Center chart refresh failed", error);
+    const displayMessage = commandCenterDisplayFailureMessage();
+    markCommandCenterConnection(false, displayMessage);
+    renderCommandCenterChartMeta({ freshness: { status: "STALE", explanation: "Display refresh failed. Production data was not changed." } }, true);
     if (!lastCommandCenterChartSignature) {
-      $("cc-market-chart").innerHTML = `<div class="terminal-empty">Could not load chart data for ${escapeHtml(commandCenterSymbol)} ${escapeHtml(commandCenterTimeframe)}. ${escapeHtml(error.message)}</div>`;
+      $("cc-market-chart").innerHTML = `<div class="terminal-empty">${escapeHtml(displayMessage)}</div>`;
     }
     $("cc-market-subtitle").textContent = `Connection lost. Preserving last known ${commandCenterSymbol} ${commandCenterTimeframe} chart.`;
     $("cc-market-timeline").innerHTML = "<li>Candidate events could not be loaded for this selection.</li>";
@@ -3487,8 +3494,10 @@ async function loadCommandCenter() {
     scheduleCommandCenterChartPolling(payload);
     return payload;
   } catch (error) {
-    markCommandCenterConnection(false, `Command Center refresh failed: ${error.message}`);
-    updateCommandCenterRefreshStatus(`Command Center render failed: ${error.message}`);
+    console.error("Command Center refresh failed", error);
+    const displayMessage = commandCenterDisplayFailureMessage();
+    markCommandCenterConnection(false, displayMessage);
+    updateCommandCenterRefreshStatus(displayMessage);
     throw error;
   } finally {
     commandCenterRefreshInFlight = false;
@@ -3499,8 +3508,10 @@ async function refreshCommandCenter() {
   try {
     return await loadCommandCenter();
   } catch (error) {
-    updateCommandCenterRefreshStatus(`Command Center refresh failed: ${error.message}`);
-    setText("cc-generated-at", `Command Center refresh failed: ${error.message}`);
+    console.error("Command Center refresh failed", error);
+    const displayMessage = commandCenterDisplayFailureMessage();
+    updateCommandCenterRefreshStatus(displayMessage);
+    setText("cc-generated-at", displayMessage);
     return commandCenterState;
   }
 }
@@ -5778,31 +5789,44 @@ async function runRefreshStatusAction() {
   }
 }
 
-async function runMarketDataRefreshAction() {
-  const button = $("run-webull-refresh");
+async function refreshCommandCenterView() {
+  const buttons = [$("refresh-button"), $("run-webull-refresh"), $("command-primary-action")].filter(Boolean);
   const message = $("webull-refresh-message");
-  button.disabled = true;
-  message.className = "action-message running";
-  message.textContent = "Refreshing Webull market-data CSVs and rebuilding reports...";
-
-  try {
-    const response = await fetch(refreshWebullDataActionUrl, { method: "POST", cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) {
-      const detail = payload.detail ? ` ${payload.detail}` : "";
-      throw new Error(`${payload.error || `Market-data refresh failed: ${response.status}`}${detail}`);
-    }
-
-    renderState(payload.state);
-    message.className = "action-message success";
-    message.textContent = payload.message;
-    await showReport("refresh_status");
-  } catch (error) {
-    message.className = "action-message failure";
-    message.textContent = error.message;
-  } finally {
-    button.disabled = false;
+  for (const button of buttons) button.disabled = true;
+  if (message) {
+    message.className = "action-message running";
+    message.textContent = "Refreshing Command Center display only. Production data will not be changed.";
   }
+  updateCommandCenterRefreshStatus("Refreshing Command Center view...");
+  try {
+    const payload = await loadCommandCenter();
+    await loadCommandCenterChart();
+    const checkedAt = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const success = `View refreshed ${checkedAt} ${compactTimezoneLabel()}. Production data was not changed.`;
+    updateCommandCenterRefreshStatus(success);
+    updateAutoRefreshStatus(success);
+    if (message) {
+      message.className = "action-message success";
+      message.textContent = success;
+    }
+    return payload;
+  } catch (error) {
+    console.error("Refresh View failed", error);
+    const displayMessage = commandCenterDisplayFailureMessage();
+    markCommandCenterConnection(false, displayMessage);
+    updateAutoRefreshStatus(displayMessage);
+    if (message) {
+      message.className = "action-message failure";
+      message.textContent = displayMessage;
+    }
+    return commandCenterState;
+  } finally {
+    for (const button of buttons) button.disabled = false;
+  }
+}
+
+async function runRefreshViewAction() {
+  return refreshCommandCenterView();
 }
 
 async function runPremarketCheckAction() {
@@ -5927,10 +5951,8 @@ function paperCommandContractPayload() {
 async function refresh() {
   if (stateRefreshInFlight) return;
   stateRefreshInFlight = true;
-  $("refresh-button").disabled = true;
-  updateAutoRefreshStatus("Checking latest app state...");
-  const commandCenterRefresh = refreshCommandCenter();
   try {
+    const commandCenterRefresh = refreshCommandCenter();
     const state = await loadState();
     renderState(state);
     await commandCenterRefresh;
@@ -5939,17 +5961,16 @@ async function refresh() {
       `Checked ${checkedAt} ${compactTimezoneLabel()}. State ${appStateAgeLabel(state)}. ${appStateGeneratedLabel(state)}.`,
     );
   } catch (error) {
-    await commandCenterRefresh;
-    setText("verdict", error.message);
+    console.error("Background app state refresh failed", error);
+    setText("verdict", "Background app state refresh failed. Command Center display data was not changed.");
     setText("safety-line", "Run python run_system_state.py, then refresh this app.");
-    updateAutoRefreshStatus(`Auto-refresh failed: ${error.message}`);
+    updateAutoRefreshStatus("Background app state refresh failed. Command Center polling will keep retrying.");
   } finally {
-    $("refresh-button").disabled = false;
     stateRefreshInFlight = false;
   }
 }
 
-$("refresh-button").addEventListener("click", refresh);
+$("refresh-button").addEventListener("click", refreshCommandCenterView);
 $("feed-rail-toggle").addEventListener("click", () => {
   setFeedRailCollapsed(!document.body.classList.contains("feed-rail-collapsed"));
 });
@@ -5969,8 +5990,8 @@ $("enable-alerts").addEventListener("click", async () => {
 });
 $("command-primary-action").addEventListener("click", () => {
   const button = $("command-primary-action");
-  if (button.dataset.action === "refresh-webull") {
-    runMarketDataRefreshAction();
+  if (button.dataset.action === "refresh-view") {
+    refreshCommandCenterView();
     return;
   }
   if (button.dataset.action === "premarket") {
@@ -5982,7 +6003,7 @@ $("command-primary-action").addEventListener("click", () => {
   }
 });
 $("run-refresh-status").addEventListener("click", runRefreshStatusAction);
-$("run-webull-refresh").addEventListener("click", runMarketDataRefreshAction);
+$("run-webull-refresh").addEventListener("click", runRefreshViewAction);
 $("run-premarket-check").addEventListener("click", runPremarketCheckAction);
 $("run-paper-session-preview").addEventListener("click", () =>
   runPaperSessionAction(paperSessionPreviewActionUrl, "Running local paper preview cycle..."),

@@ -36,7 +36,7 @@
           <span id="cc-connection-status" class="cc-refresh-status">Command Center: connecting</span>
           <span id="cc-source-identity" class="cc-refresh-status">Source: --</span>
           <span id="cc-refresh-status" class="cc-refresh-status">Command Center starting.</span>
-          <button id="refresh-button" type="button">Refresh Data</button>
+          <button id="refresh-button" type="button">REFRESH VIEW</button>
         </div>
       </header>
       <audio id="entry-alert-audio" src="/assets/entry-alert.wav" preload="auto"></audio>
@@ -1099,9 +1099,9 @@
           <code id="readiness-next-action">Loading...</code>
         </div>
         <div class="readiness-actions">
-          <button id="run-webull-refresh" type="button">Refresh Market Data</button>
+          <button id="run-webull-refresh" type="button">REFRESH VIEW</button>
           <p id="webull-refresh-message" class="action-message" aria-live="polite">
-            Runs the research-only data refresh and rebuilds reports. It cannot place orders or import paper trades.
+            Refetches the Command Center display only. It does not call Webull, run scanners, or alter production artifacts.
           </p>
         </div>
       </section>
@@ -2287,6 +2287,6 @@
       </div>
     </aside>
 
-    <script src="/app.js?v=20260812-command-center-live-charts"></script>
+    <script src="/app.js?v=20260812-command-center-refresh-view"></script>
   </body>
 </html>
