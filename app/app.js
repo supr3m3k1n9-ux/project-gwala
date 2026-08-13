@@ -3144,6 +3144,26 @@ function renderCommandCenterResearch(research) {
   $("cc-research-placeholders").innerHTML = (research?.placeholders || [])
     .map((item) => `<li><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.status)}</span></li>`)
     .join("");
+  const phase = research?.phase_3 || {};
+  const vault = research?.strategy_vault || {};
+  setText(
+    "cc-phase3-status",
+    `${phase.status || "PREPARED - NOT ACTIVE"} / Trigger: ${phase.activation_trigger || "Awaiting Phase 3 Evidence"}`,
+  );
+  $("cc-lifecycle-states").innerHTML = (research?.lifecycle_states || [])
+    .map(
+      (item) => `
+        <article>
+          <strong>${escapeHtml(item.state)}</strong>
+          <p>${escapeHtml(item.description)}</p>
+        </article>
+      `,
+    )
+    .join("");
+  setText("cc-vault-filters", (vault.supported_filters || ["Active", "Eligible", "Shelved", "Research", "Archived"]).join(" / "));
+  $("cc-vault-detail-sections").innerHTML = (vault.detail_sections || [])
+    .map((section) => `<li><strong>${escapeHtml(section)}</strong><span>${escapeHtml(vault.current_detail_state || "Awaiting Phase 3 Evidence")}</span></li>`)
+    .join("");
 }
 
 function renderCommandCenterSystem(system) {

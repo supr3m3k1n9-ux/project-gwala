@@ -18,6 +18,142 @@ from becoming paper-ready too early.
 The router can study multiple strategy families, but V1 launch discipline should
 keep official paper-watch focused on strategies that have earned evidence.
 
+## Phase 3 Strategy Lifecycle Constitution
+
+Adopted 2026-08-12. Phase 2 remains active until Project Gwala records 30
+legitimate completed official paper trades and freezes Cohort 1 under approved
+evidence governance. Until then:
+
+- Phase 3 status is `PREPARED - NOT ACTIVE`.
+- Phase 3 research is not activated.
+- No production strategy behavior, signals, gates, thresholds, risk rules,
+  regime routing, broker/live behavior, paper evidence rules, or research
+  allocation changes are authorized by this constitution.
+
+Core principle:
+
+Strategies must not be classified simply as good, bad, or deleted. A strategy
+may have edge only under specific instruments, directions, market regimes,
+volatility environments, times of day, and execution conditions. Gwala should
+preserve validated playbooks and learn when each playbook is eligible.
+
+Phase 3 research lifecycle:
+
+`DISCOVERY -> RESEARCH -> ROBUSTNESS -> WALK-FORWARD -> HOLDOUT -> FORWARD PAPER
+-> VALIDATED -> STRATEGY VAULT`
+
+Operational lifecycle states for validated or studied strategies:
+
+| State | Meaning |
+| --- | --- |
+| ACTIVE | A validated strategy currently permitted by the approved strategy/regime framework. |
+| ELIGIBLE | Current market conditions match validated eligibility conditions, but active allocation is not guaranteed. |
+| SHELVED - REGIME | Validated edge exists, but current market conditions do not match the demonstrated edge environment. |
+| SHELVED - DRIFT | Historical validation exists, but recent forward evidence has materially diverged from expected behavior. |
+| SHELVED - EXECUTION | Signal edge may remain valid, but current execution or contract implementation is not acceptable. |
+| RESEARCH HOLD | Evidence is insufficient or weak enough that additional research allocation is temporarily paused. |
+| ARCHIVED - FAILED VALIDATION | The hypothesis failed to demonstrate sufficient robust edge. Evidence and failure reasons remain permanent memory. |
+
+Phase 3 must evaluate edge across supported dimensions:
+
+`Strategy x Instrument x Direction x Regime x Time x Execution`
+
+This prevents broad conclusions such as "Trend Pullback is bad" when the actual
+evidence may say "SPY Long is weak, QQQ Long is watch, and NVDA Long is strong."
+The robustness and auditor framework must prevent over-slicing data to
+manufacture edge. Dimensional conclusions require sample sufficiency.
+
+## Strategy Vault Permanent Record
+
+The Strategy Vault should preserve:
+
+- strategy family;
+- strategy version;
+- hypothesis;
+- tested instruments and directions;
+- validated regimes and execution conditions;
+- historical, robustness, walk-forward, holdout, and forward evidence;
+- execution studies and auditor history;
+- Investment Committee history;
+- current lifecycle state and reason;
+- prior state changes;
+- versions, lineage, and failure reasons;
+- reactivation criteria.
+
+Nothing is silently deleted. Failed strategies are archived with evidence,
+versions, failure reasons, and research history so Gwala does not repeatedly
+rediscover the same failed hypothesis without new evidence.
+
+## Strategy Lineage Rule
+
+Refinement must create explicit versions. Do not overwrite one version's
+evidence with another version's results.
+
+Example:
+
+`ORB v1 -> baseline entry -> ORB v2 -> pullback entry -> ORB v3 -> revised exit`
+
+Every version must preserve:
+
+- what changed;
+- why it changed;
+- what evidence earned the change;
+- what data was used for development;
+- what data remained unseen;
+- whether the new version improved out-of-sample results.
+
+The farther a strategy progresses through Phase 3, the less freedom Gwala has
+to modify it:
+
+- Discovery: exploration allowed.
+- Research/refinement: hypotheses may be developed.
+- Walk-forward: freedom restricted.
+- Holdout: rules locked.
+- Forward Paper: hands off.
+- Validated: changes require a new version and new evidence cycle.
+
+Never optimize a validated strategy in place using evidence it later claims as
+independent validation.
+
+## Future Eligibility Auditors
+
+Phase 3 may later support:
+
+- Market Regime Auditor: determines current market conditions using validated
+  objective inputs.
+- Strategy Eligibility Auditor: compares current conditions with each
+  strategy's validated eligibility conditions.
+
+These auditors are governance concepts only until explicit future approval.
+They must not activate, deactivate, or switch production strategies during Phase
+2, and they must not automate strategy switching until Phase 3 has produced
+validated regime relationships and the Investment Committee approves automation.
+
+Future example output:
+
+| Strategy | Previous State | New State | Why |
+| --- | --- | --- | --- |
+| QQQ Short Continuation | SHELVED | ELIGIBLE | Current conditions match validated bearish-trend / elevated-volatility regime. |
+| VWAP Mean Reversion | ACTIVE | SHELVED - REGIME | Current market no longer resembles the validated mean-reversion environment. |
+
+## Reactivation Rule
+
+A shelved strategy may become eligible again when validated regime conditions
+return, drift review clears, execution issues are repaired and independently
+revalidated, or new evidence justifies renewed research. Reactivation must be
+evidence-based, not calendar-based.
+
+## Pivot Philosophy
+
+Failure of one strategy does not justify randomly activating another.
+
+- `CUT` or `REDUCE` means current evidence no longer earns additional
+  allocation.
+- `PIVOT` means another hypothesis has independently earned greater research
+  allocation.
+
+These are separate decisions.
+
 ## Current Strategy Families
 
 - VWAP + EMA Trend Continuation.

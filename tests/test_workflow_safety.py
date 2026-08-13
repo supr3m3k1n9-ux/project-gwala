@@ -11832,6 +11832,52 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
 
         self.assertIn("/app.js?v=20260812-data-freshness-auditor", html)
 
+    def test_phase_3_strategy_lifecycle_constitution_is_documented(self) -> None:
+        document = Path("docs/strategy-vault.md").read_text(encoding="utf-8")
+
+        self.assertIn("Phase 3 Strategy Lifecycle Constitution", document)
+        self.assertIn("Phase 3 status is `PREPARED - NOT ACTIVE`", document)
+        self.assertIn("DISCOVERY -> RESEARCH -> ROBUSTNESS -> WALK-FORWARD -> HOLDOUT -> FORWARD PAPER", document)
+        self.assertIn("ARCHIVED - FAILED VALIDATION", document)
+        self.assertIn("Never optimize a validated strategy in place", document)
+
+    def test_founder_research_payload_prepares_phase_3_without_activation(self) -> None:
+        with TemporaryDirectory() as temporary:
+            samples = Path(temporary) / "paper_validation_samples.csv"
+            pd.DataFrame(
+                [
+                    {"counts_toward_30": "true", "invalid_for_validation": "false", "outcome_r": 0.5},
+                    {"counts_toward_30": "true", "invalid_for_validation": "false", "outcome_r": ""},
+                ]
+            ).to_csv(samples, index=False)
+
+            payload = run_app.founder_research_payload(samples)
+
+        self.assertEqual(payload["phase_3"]["status"], "PREPARED - NOT ACTIVE")
+        self.assertFalse(payload["phase_3"]["research_active"])
+        self.assertFalse(payload["phase_3"]["automatic_switching_enabled"])
+        self.assertEqual(payload["primary"]["evidence"], "1 / 30 completed official paper trades")
+        self.assertIn("ACTIVE", {state["state"] for state in payload["lifecycle_states"]})
+        self.assertIn("SHELVED - REGIME", {state["state"] for state in payload["lifecycle_states"]})
+        self.assertIn("ARCHIVED - FAILED VALIDATION", {state["state"] for state in payload["lifecycle_states"]})
+        self.assertEqual(payload["strategy_vault"]["current_detail_state"], "Awaiting Phase 3 Evidence")
+        self.assertIn("Archived", payload["strategy_vault"]["supported_filters"])
+        self.assertIn("Does not activate Phase 3 research", payload["strategy_vault"]["guardrail"])
+
+    def test_command_center_phase_3_frontend_is_display_only(self) -> None:
+        html = Path("app/index.html").read_text(encoding="utf-8")
+        script = Path("app/app.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="cc-lifecycle-states"', html)
+        self.assertIn('id="cc-vault-filters"', html)
+        self.assertIn('id="cc-vault-detail-sections"', html)
+        self.assertIn("PREPARED - NOT ACTIVE", script)
+        self.assertIn("Awaiting Phase 3 Evidence", script)
+        self.assertIn("lifecycle_states", script)
+        self.assertNotIn("automaticStrategySwitch", script)
+        self.assertNotIn("enablePhase3Research", script)
+        self.assertNotIn("activateStrategy(", script)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -106,6 +106,64 @@ TRADING_WORKSPACE_TIMEFRAMES = {
 TRADING_SIGNAL_TIMEFRAMES = {"M5", "M30"}
 TRADING_WORKSPACE_SYMBOLS = playbook_symbols("approved_plus_watch")
 COMMAND_CENTER_SYMBOLS = ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]
+PHASE_3_STATUS = "PREPARED - NOT ACTIVE"
+STRATEGY_LIFECYCLE_STATES = [
+    {
+        "state": "ACTIVE",
+        "description": "A validated strategy currently permitted by the approved strategy/regime framework.",
+    },
+    {
+        "state": "ELIGIBLE",
+        "description": "Current market conditions match validated eligibility conditions, but active allocation is not guaranteed.",
+    },
+    {
+        "state": "SHELVED - REGIME",
+        "description": "This strategy has demonstrated edge, but today's market does not resemble the conditions where that edge was validated.",
+    },
+    {
+        "state": "SHELVED - DRIFT",
+        "description": "The strategy historically validated, but recent forward evidence has materially diverged from expected behavior.",
+    },
+    {
+        "state": "SHELVED - EXECUTION",
+        "description": "Underlying signal edge may remain valid, but current execution or contract implementation is not acceptable.",
+    },
+    {
+        "state": "RESEARCH HOLD",
+        "description": "Evidence is insufficient or weak enough that additional research allocation is temporarily paused.",
+    },
+    {
+        "state": "ARCHIVED - FAILED VALIDATION",
+        "description": "This strategy was tested but did not demonstrate sufficiently reliable edge. Its research history is preserved.",
+    },
+]
+STRATEGY_VAULT_PREPARATION = {
+    "status": PHASE_3_STATUS,
+    "activation_trigger": "30/30 legitimate completed official paper trades and frozen Cohort 1.",
+    "automatic_switching_enabled": False,
+    "phase_3_research_active": False,
+    "current_detail_state": "Awaiting Phase 3 Evidence",
+    "supported_filters": ["Active", "Eligible", "Shelved", "Research", "Archived"],
+    "detail_sections": [
+        "Current State",
+        "Why",
+        "Validated Conditions",
+        "Current Market Eligibility",
+        "Evidence",
+        "Auditors",
+        "Version History",
+        "State History",
+        "Reactivation Criteria",
+    ],
+    "future_inbox_events": [
+        "STRATEGY ELIGIBILITY CHANGE",
+        "STRATEGY DRIFT WARNING",
+    ],
+    "guardrail": (
+        "Governance display only. Does not activate Phase 3 research, switch strategies, "
+        "place orders, change gates, or alter paper evidence rules."
+    ),
+}
 WEBULL_PYTHON = PROJECT_DIR / ".venv-webull" / "bin" / "python"
 ALLOWED_REPORTS = {
     "dashboard": "project_gwala_dashboard.md",
@@ -615,6 +673,15 @@ def founder_research_payload(samples_csv: Path | None = None) -> dict:
             {"name": "Phase 3 Tiny Live", "status": "Awaiting Phase 3 Evidence"},
             {"name": "Capital Scaling", "status": "Awaiting Phase 3 Evidence"},
         ],
+        "phase_3": {
+            "status": PHASE_3_STATUS,
+            "activation_trigger": STRATEGY_VAULT_PREPARATION["activation_trigger"],
+            "research_active": STRATEGY_VAULT_PREPARATION["phase_3_research_active"],
+            "automatic_switching_enabled": STRATEGY_VAULT_PREPARATION["automatic_switching_enabled"],
+            "guardrail": STRATEGY_VAULT_PREPARATION["guardrail"],
+        },
+        "lifecycle_states": STRATEGY_LIFECYCLE_STATES,
+        "strategy_vault": STRATEGY_VAULT_PREPARATION,
     }
 
 

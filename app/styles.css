@@ -130,7 +130,8 @@ body {
 .cc-today-grid,
 .cc-metric-grid,
 .cc-system-grid,
-.cc-research-grid {
+.cc-research-grid,
+.cc-lifecycle-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
@@ -142,6 +143,7 @@ body {
 .cc-attention-list article,
 .cc-system-grid article,
 .cc-research-grid article,
+.cc-lifecycle-grid article,
 .cc-inbox-item {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -183,6 +185,25 @@ body {
 .cc-guardrail {
   margin: 0;
   color: var(--muted);
+}
+
+.cc-lifecycle-panel {
+  margin-top: 14px;
+}
+
+.cc-lifecycle-panel header p,
+.cc-lifecycle-grid p,
+.cc-vault-prep p {
+  color: var(--muted);
+}
+
+.cc-lifecycle-grid {
+  margin: 12px 0;
+}
+
+.cc-vault-prep {
+  display: grid;
+  gap: 8px;
 }
 
 .cc-two-column {
