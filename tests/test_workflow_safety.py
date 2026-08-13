@@ -3288,7 +3288,7 @@ class MarketCalendarTests(unittest.TestCase):
 
         command_text = " ".join(" ".join(command) for command in commands_for_action("market_scan", args))
 
-        self.assertIn("run_current_candle_capture.py", command_text)
+        self.assertIn("run_trading_critical_path.py", command_text)
         self.assertNotIn("--append-current-signals", command_text)
         self.assertNotIn("--auto-confirm-paper-exits", command_text)
         self.assertNotIn("run_paper_import.py", command_text)
@@ -3304,7 +3304,7 @@ class MarketCalendarTests(unittest.TestCase):
 
         command_text = " ".join(" ".join(command) for command in commands_for_action("market_scan", args))
 
-        self.assertIn("run_current_candle_capture.py", command_text)
+        self.assertIn("run_trading_critical_path.py", command_text)
         self.assertIn("--auto-confirm-paper-exits", command_text)
         self.assertNotIn("--append-current-signals", command_text)
         self.assertNotIn("run_paper_import.py", command_text)

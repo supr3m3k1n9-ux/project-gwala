@@ -137,13 +137,15 @@ def run_step(command: list[str]) -> None:
 
 
 def daily_workflow_command(args: argparse.Namespace) -> list[str]:
-    """Build the market-hours current-candle capture command."""
+    """Build the market-hours trading critical-path command."""
 
     command = [
         sys.executable,
-        "run_current_candle_capture.py",
+        "run_trading_critical_path.py",
         "--output-dir",
         str(args.output_dir),
+        "--interval-minutes",
+        str(getattr(args, "interval_minutes", 5)),
         "--pause",
         str(args.pause),
         "--account-size",

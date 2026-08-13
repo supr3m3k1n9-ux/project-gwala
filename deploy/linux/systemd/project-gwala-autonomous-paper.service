@@ -6,4 +6,4 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/srv/projects/gwala/run_in_docker.sh python run_trading_critical_path.py --interval-minutes 5 --auto-confirm-paper-exits
+ExecStart=/srv/projects/gwala/run_in_docker.sh python run_autonomous_paper_workflow.py --once --interval-minutes 5 --auto-confirm-paper-exits
