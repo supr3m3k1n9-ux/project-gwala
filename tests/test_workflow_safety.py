@@ -11830,7 +11830,7 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
     def test_founder_command_center_uses_versioned_frontend_asset(self) -> None:
         html = Path("app/index.html").read_text(encoding="utf-8")
 
-        self.assertIn("/app.js?v=20260812-data-freshness-auditor", html)
+        self.assertIn("/app.js?v=20260812-phase3-research-factory", html)
 
     def test_phase_3_strategy_lifecycle_constitution_is_documented(self) -> None:
         document = Path("docs/strategy-vault.md").read_text(encoding="utf-8")
@@ -11871,12 +11871,54 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertIn('id="cc-lifecycle-states"', html)
         self.assertIn('id="cc-vault-filters"', html)
         self.assertIn('id="cc-vault-detail-sections"', html)
+        self.assertIn('id="cc-research-nav"', html)
+        self.assertIn('id="cc-hypothesis-registry"', html)
+        self.assertIn('id="cc-research-queue"', html)
+        self.assertIn('id="cc-research-experiments"', html)
+        self.assertIn('id="cc-research-auditors"', html)
         self.assertIn("PREPARED - NOT ACTIVE", script)
         self.assertIn("Awaiting Phase 3 Evidence", script)
         self.assertIn("lifecycle_states", script)
+        self.assertIn("Hypothesis Registry", script)
+        self.assertIn("Research Queue", script)
         self.assertNotIn("automaticStrategySwitch", script)
         self.assertNotIn("enablePhase3Research", script)
         self.assertNotIn("activateStrategy(", script)
+
+    def test_phase_3_research_factory_governance_is_documented(self) -> None:
+        document = Path("docs/phase-3-research-factory.md").read_text(encoding="utf-8")
+
+        self.assertIn("Research Factory: PREPARED - NOT ACTIVE", document)
+        self.assertIn("Hypothesis Registry", document)
+        self.assertIn("Research Queue", document)
+        self.assertIn("HYPOTHESIS -> QUICK SCREEN -> DISCOVERY -> ROBUSTNESS", document)
+        self.assertIn("Do not emit these events without real evidence.", document)
+        self.assertIn("30 / 30 legitimate completed official paper trades", document)
+
+    def test_research_factory_payload_is_prepared_but_not_active(self) -> None:
+        payload = run_app.founder_research_payload()
+
+        factory = payload["research_factory"]
+        self.assertEqual(factory["status"], "PREPARED - NOT ACTIVE")
+        self.assertFalse(factory["active"])
+        self.assertFalse(factory["historical_mining_active"])
+        self.assertFalse(factory["automatic_strategy_generation_enabled"])
+        self.assertFalse(factory["automatic_switching_enabled"])
+        self.assertEqual(
+            factory["navigation"],
+            ["Strategy Vault", "Hypotheses", "Research Queue", "Experiments", "Auditors"],
+        )
+        self.assertEqual(payload["hypothesis_registry"]["count"], 0)
+        self.assertEqual(payload["hypothesis_registry"]["items"], [])
+        self.assertEqual(payload["research_queue"]["status"], "PREPARED - NOT ACTIVE")
+        self.assertEqual(payload["experiments"]["active_experiments"], 0)
+        self.assertFalse(payload["auditors"]["automation_allowed"])
+        self.assertGreaterEqual(payload["vault_counts"]["research"], 1)
+        self.assertEqual(payload["vault_counts"]["active"], 0)
+        self.assertEqual(payload["vault_counts"]["eligible"], 0)
+        self.assertEqual(payload["vault_counts"]["archived"], 0)
+        self.assertTrue(all(stage["count"] == 0 for stage in payload["research_funnel"]))
+        self.assertIn("PORTFOLIO GAP IDENTIFIED", payload["future_inbox_event_types"])
 
 
 if __name__ == "__main__":

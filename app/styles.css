@@ -131,7 +131,9 @@ body {
 .cc-metric-grid,
 .cc-system-grid,
 .cc-research-grid,
-.cc-lifecycle-grid {
+.cc-lifecycle-grid,
+.cc-research-factory-grid,
+.cc-vault-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
@@ -144,6 +146,8 @@ body {
 .cc-system-grid article,
 .cc-research-grid article,
 .cc-lifecycle-grid article,
+.cc-research-factory-grid article,
+.cc-vault-card-grid article,
 .cc-inbox-item {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -204,6 +208,45 @@ body {
 .cc-vault-prep {
   display: grid;
   gap: 8px;
+}
+
+.cc-research-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.cc-research-nav span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  padding: 6px 10px;
+}
+
+.cc-research-factory-panel,
+.cc-vault-browser {
+  margin-top: 14px;
+}
+
+.cc-vault-card-grid header {
+  align-items: flex-start;
+}
+
+.cc-vault-card-grid dl {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.cc-vault-card-grid dt {
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.cc-vault-card-grid dd {
+  margin: 2px 0 0;
 }
 
 .cc-two-column {

@@ -31,6 +31,7 @@ from config.runtime_paths import runtime_data_root
 from config.investment_narratives import INVESTMENT_NARRATIVES
 from config.symbol_playbook import playbook_symbols, setup_labels_for_symbol
 from config.strategy_registry import chart_marker_label_for_setup, strategy_vault_trade_logs
+from config.strategy_vault import STRATEGY_VAULT as RESEARCH_STRATEGY_VAULT
 from data.candle_cache import preferred_candle_path
 from data.market_data import load_candles_from_csv
 from data.market_data_sources import latest_source_for
@@ -163,6 +164,106 @@ STRATEGY_VAULT_PREPARATION = {
         "Governance display only. Does not activate Phase 3 research, switch strategies, "
         "place orders, change gates, or alter paper evidence rules."
     ),
+}
+RESEARCH_FACTORY_PREPARATION = {
+    "status": PHASE_3_STATUS,
+    "activation_trigger": (
+        "30/30 legitimate completed official paper trades, Cohort 1 frozen, "
+        "and explicit Phase 3 activation."
+    ),
+    "active": False,
+    "historical_mining_active": False,
+    "automatic_strategy_generation_enabled": False,
+    "automatic_switching_enabled": False,
+    "stages": [
+        "HYPOTHESIS",
+        "QUICK SCREEN",
+        "DISCOVERY",
+        "ROBUSTNESS",
+        "REFINEMENT",
+        "WALK-FORWARD",
+        "HOLDOUT",
+        "FORWARD PAPER",
+        "VALIDATED EDGE",
+        "STRATEGY VAULT",
+    ],
+    "navigation": ["Strategy Vault", "Hypotheses", "Research Queue", "Experiments", "Auditors"],
+    "guardrail": (
+        "Prepared architecture only. Does not start historical research, generate strategies, "
+        "change allocation, or affect production trading."
+    ),
+}
+HYPOTHESIS_REGISTRY_PREPARATION = {
+    "status": PHASE_3_STATUS,
+    "count": 0,
+    "fields": [
+        "hypothesis_id",
+        "name",
+        "strategy_family",
+        "source",
+        "date_proposed",
+        "rationale",
+        "market_behavior",
+        "instruments",
+        "directions",
+        "possible_regime_relationship",
+        "motivating_evidence",
+        "parent_strategy_version",
+        "research_priority",
+        "stage",
+        "decision",
+        "reason",
+        "linked_experiments",
+        "linked_strategy_versions",
+    ],
+    "sources": [
+        "Existing Strategy Families",
+        "Production Observations",
+        "Market Structure Ideas",
+        "Portfolio Gaps",
+        "Human Research Ideas",
+        "Vault Institutional Memory",
+    ],
+    "items": [],
+    "empty_state": "Awaiting Phase 3 Evidence",
+}
+RESEARCH_QUEUE_PREPARATION = {
+    "status": PHASE_3_STATUS,
+    "priority_inputs": [
+        "motivating evidence strength",
+        "portfolio need",
+        "novelty",
+        "expected information value",
+        "existing Vault knowledge",
+        "research cost",
+        "sample availability",
+        "Investment Committee allocation",
+    ],
+    "groups": [
+        {"name": "Now Researching", "items": [], "empty_state": "Awaiting Phase 3 Evidence"},
+        {"name": "Up Next", "items": [], "empty_state": "Awaiting Phase 3 Evidence"},
+        {"name": "Waiting for Evidence", "items": [], "empty_state": "Awaiting Phase 3 Evidence"},
+        {"name": "On Hold", "items": [], "empty_state": "Awaiting Phase 3 Evidence"},
+    ],
+}
+RESEARCH_EXPERIMENTS_PREPARATION = {
+    "status": PHASE_3_STATUS,
+    "active_experiments": 0,
+    "locked_holdouts": 0,
+    "lineage_rule": "Every refinement creates a new version; previous evidence is preserved.",
+    "empty_state": "Awaiting Phase 3 Evidence",
+}
+RESEARCH_AUDITORS_PREPARATION = {
+    "status": PHASE_3_STATUS,
+    "auditors": [
+        {"name": "Market Regime Auditor", "status": "Prepared - Not Active"},
+        {"name": "Strategy Eligibility Auditor", "status": "Prepared - Not Active"},
+        {"name": "Robustness Auditor", "status": "Prepared - Not Active"},
+        {"name": "Holdout Auditor", "status": "Prepared - Not Active"},
+        {"name": "Forward Drift Auditor", "status": "Prepared - Not Active"},
+        {"name": "Portfolio Gap Auditor", "status": "Prepared - Not Active"},
+    ],
+    "automation_allowed": False,
 }
 WEBULL_PYTHON = PROJECT_DIR / ".venv-webull" / "bin" / "python"
 ALLOWED_REPORTS = {
@@ -650,10 +751,45 @@ def founder_report_events(logs_dir: Path | None = None) -> list[dict]:
     return events[:60]
 
 
+def founder_strategy_vault_cards() -> list[dict]:
+    """Return research-only Strategy Vault cards from existing registry metadata."""
+
+    cards = []
+    for strategy in RESEARCH_STRATEGY_VAULT:
+        cards.append(
+            {
+                "name": strategy.name,
+                "family": strategy.family,
+                "version": "Awaiting Phase 3 Evidence",
+                "lifecycle_state": "RESEARCH HOLD" if strategy.status == "research_backlog" else "RESEARCH",
+                "current_eligibility": "Awaiting Phase 3 Evidence",
+                "instruments": "Awaiting Phase 3 Evidence",
+                "direction": "Awaiting Phase 3 Evidence",
+                "validated_environments": "Awaiting Phase 3 Evidence",
+                "n": None,
+                "expectancy": "Awaiting Phase 3 Evidence",
+                "profit_factor": "Awaiting Phase 3 Evidence",
+                "drawdown": "Awaiting Phase 3 Evidence",
+                "forward_evidence": "Awaiting Phase 3 Evidence",
+                "auditor_status": "Prepared - Not Active",
+                "investment_committee_decision": "No Phase 3 decision",
+                "plain_english": {
+                    "what": strategy.description,
+                    "why": "Awaiting Phase 3 Evidence",
+                    "evidence": strategy.evidence_source,
+                    "current_state_reason": "Phase 2 remains active; Phase 3 Research Factory is prepared but not active.",
+                    "roy_action": "None.",
+                },
+            }
+        )
+    return cards
+
+
 def founder_research_payload(samples_csv: Path | None = None) -> dict:
     """Return strategy portfolio state without creating new strategy decisions."""
 
     scorecard = founder_validation_scorecard(samples_csv)
+    vault_cards = founder_strategy_vault_cards()
     return {
         "primary": {
             "name": "VWAP official paper validation",
@@ -682,6 +818,37 @@ def founder_research_payload(samples_csv: Path | None = None) -> dict:
         },
         "lifecycle_states": STRATEGY_LIFECYCLE_STATES,
         "strategy_vault": STRATEGY_VAULT_PREPARATION,
+        "research_factory": RESEARCH_FACTORY_PREPARATION,
+        "hypothesis_registry": HYPOTHESIS_REGISTRY_PREPARATION,
+        "research_queue": RESEARCH_QUEUE_PREPARATION,
+        "experiments": RESEARCH_EXPERIMENTS_PREPARATION,
+        "auditors": RESEARCH_AUDITORS_PREPARATION,
+        "vault_cards": vault_cards,
+        "vault_counts": {
+            "active": 0,
+            "eligible": 0,
+            "shelved": 0,
+            "research": len(vault_cards),
+            "archived": 0,
+        },
+        "research_funnel": [
+            {"stage": stage, "count": 0, "status": "Awaiting Phase 3 Evidence"}
+            for stage in RESEARCH_FACTORY_PREPARATION["stages"]
+        ],
+        "future_inbox_event_types": [
+            "NEW HYPOTHESIS",
+            "RESEARCH PRIORITY CHANGE",
+            "STRATEGY VERSION CREATED",
+            "ROBUSTNESS PASS/FAIL",
+            "WALK-FORWARD PASS/FAIL",
+            "HOLDOUT PASS/FAIL",
+            "FORWARD CHECKPOINT",
+            "STRATEGY VALIDATED",
+            "STRATEGY SHELVED",
+            "STRATEGY ELIGIBLE",
+            "STRATEGY DRIFT WARNING",
+            "PORTFOLIO GAP IDENTIFIED",
+        ],
     }
 
 

@@ -3141,8 +3141,92 @@ function renderCommandCenterResearch(research) {
       `,
     )
     .join("");
+  const factory = research?.research_factory || {};
+  const registry = research?.hypothesis_registry || {};
+  const queue = research?.research_queue || {};
+  const experiments = research?.experiments || {};
+  const auditors = research?.auditors || {};
+  $("cc-research-nav").innerHTML = (factory.navigation || ["Strategy Vault", "Hypotheses", "Research Queue", "Experiments", "Auditors"])
+    .map((item) => `<span>${escapeHtml(item)}</span>`)
+    .join("");
   $("cc-research-placeholders").innerHTML = (research?.placeholders || [])
     .map((item) => `<li><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.status)}</span></li>`)
+    .join("");
+  setText(
+    "cc-research-factory-status",
+    `${factory.status || "PREPARED - NOT ACTIVE"} / ${factory.guardrail || "Prepared architecture only."}`,
+  );
+  $("cc-research-funnel").innerHTML = (research?.research_funnel || [])
+    .map(
+      (stage) => `
+        <article class="cc-funnel-stage">
+          <span>${escapeHtml(stage.stage)}</span>
+          <strong>${escapeHtml(String(stage.count ?? 0))}</strong>
+          <p>${escapeHtml(stage.status || "Awaiting Phase 3 Evidence")}</p>
+        </article>
+      `,
+    )
+    .join("");
+  const vaultCounts = research?.vault_counts || {};
+  setText(
+    "cc-vault-counts",
+    `Active ${vaultCounts.active ?? 0} / Eligible ${vaultCounts.eligible ?? 0} / Shelved ${vaultCounts.shelved ?? 0} / Research ${vaultCounts.research ?? 0} / Archived ${vaultCounts.archived ?? 0}`,
+  );
+  $("cc-vault-cards").innerHTML = (research?.vault_cards || [])
+    .map(
+      (card) => `
+        <article>
+          <header>
+            ${statusBadge(card.lifecycle_state || "RESEARCH")}
+            <strong>${escapeHtml(card.name)}</strong>
+          </header>
+          <p>${escapeHtml(card.family || "Unclassified")} / ${escapeHtml(card.version || "Awaiting Phase 3 Evidence")}</p>
+          <dl>
+            <div><dt>Eligibility</dt><dd>${escapeHtml(card.current_eligibility || "Awaiting Phase 3 Evidence")}</dd></div>
+            <div><dt>Evidence</dt><dd>${escapeHtml(card.plain_english?.evidence || "Awaiting Phase 3 Evidence")}</dd></div>
+            <div><dt>Roy action</dt><dd>${escapeHtml(card.plain_english?.roy_action || "None.")}</dd></div>
+          </dl>
+        </article>
+      `,
+    )
+    .join("");
+  $("cc-hypothesis-registry").innerHTML = `
+    <article>
+      ${statusBadge(registry.status || "PREPARED - NOT ACTIVE")}
+      <strong>Hypothesis Registry</strong>
+      <p>${escapeHtml(registry.empty_state || "Awaiting Phase 3 Evidence")}</p>
+      <span>${escapeHtml((registry.sources || []).join(" / "))}</span>
+    </article>
+  `;
+  $("cc-research-queue").innerHTML = (queue.groups || [])
+    .map(
+      (group) => `
+        <article>
+          <strong>${escapeHtml(group.name)}</strong>
+          <p>${escapeHtml(group.empty_state || "Awaiting Phase 3 Evidence")}</p>
+          <span>${escapeHtml(`${(group.items || []).length} active item(s)`)}</span>
+        </article>
+      `,
+    )
+    .join("");
+  $("cc-research-experiments").innerHTML = `
+    <article>
+      ${statusBadge(experiments.status || "PREPARED - NOT ACTIVE")}
+      <strong>Experiments</strong>
+      <p>${escapeHtml(experiments.empty_state || "Awaiting Phase 3 Evidence")}</p>
+      <span>${escapeHtml(experiments.lineage_rule || "Every refinement creates a new version.")}</span>
+    </article>
+  `;
+  $("cc-research-auditors").innerHTML = (auditors.auditors || [])
+    .map(
+      (auditor) => `
+        <article>
+          ${statusBadge(auditor.status)}
+          <strong>${escapeHtml(auditor.name)}</strong>
+          <p>Automation disabled until Phase 3 activation and explicit governance approval.</p>
+        </article>
+      `,
+    )
     .join("");
   const phase = research?.phase_3 || {};
   const vault = research?.strategy_vault || {};
