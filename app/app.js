@@ -27,6 +27,10 @@ const updatePaperTradeActionUrl = "/api/actions/update-paper-trade";
 const replayJournalStorageKey = "project_gwala_replay_practice_v1";
 const commandCenterInboxStorageKey = "project_gwala_command_center_inbox_v1";
 const autoRefreshMs = 60_000;
+const defaultCommandCenterPollMs = 15_000;
+const defaultCommandCenterChartPollMs = 7_000;
+const closedCommandCenterPollMs = 120_000;
+const closedChartPollMs = 120_000;
 const reports = [
   ["dashboard", "Dashboard"],
   ["scanner", "Scanner"],
@@ -244,6 +248,13 @@ let commandCenterSymbol = "SPY";
 let commandCenterTimeframe = "M30";
 let commandCenterInboxFilter = "All";
 let commandCenterRefreshInFlight = false;
+let commandCenterChartRefreshInFlight = false;
+let commandCenterPollTimer = null;
+let commandCenterChartPollTimer = null;
+let lastCommandCenterChartSignature = "";
+let lastCommandCenterSuccessAt = null;
+let lastCommandCenterChartSuccessAt = null;
+let commandCenterFailureCount = 0;
 let paperCommandCenter = { candidates: [], open_trades: [] };
 let selectedPaperCommandKey = "";
 const preEntryReviewedKeys = new Set();
@@ -308,6 +319,61 @@ function updateAutoRefreshStatus(message) {
 
 function updateCommandCenterRefreshStatus(message) {
   setText("cc-refresh-status", message);
+}
+
+function markCommandCenterConnection(connected, message = "") {
+  if (connected) {
+    commandCenterFailureCount = 0;
+    lastCommandCenterSuccessAt = new Date();
+    setText("cc-connection-status", "Command Center: CONNECTED");
+    document.body.classList.remove("cc-connection-lost");
+  } else {
+    commandCenterFailureCount += 1;
+    setText("cc-connection-status", "Command Center: CONNECTION LOST");
+    document.body.classList.add("cc-connection-lost");
+    if (message) updateCommandCenterRefreshStatus(message);
+  }
+}
+
+function commandCenterPollCadence(payload = commandCenterState) {
+  const session = payload?.session || {};
+  return Number(session.polling?.command_center_ms || defaultCommandCenterPollMs);
+}
+
+function commandCenterChartPollCadence(payload = commandCenterState) {
+  const session = payload?.session || {};
+  return Number(session.polling?.chart_ms || defaultCommandCenterChartPollMs);
+}
+
+function scheduleCommandCenterPolling(payload = commandCenterState) {
+  if (commandCenterPollTimer) window.clearTimeout(commandCenterPollTimer);
+  const delay = Math.max(commandCenterPollCadence(payload), 5_000);
+  commandCenterPollTimer = window.setTimeout(async () => {
+    await refreshCommandCenter();
+    scheduleCommandCenterPolling(commandCenterState);
+  }, delay);
+}
+
+function scheduleCommandCenterChartPolling(payload = commandCenterState) {
+  if (commandCenterChartPollTimer) window.clearTimeout(commandCenterChartPollTimer);
+  const delay = Math.max(commandCenterChartPollCadence(payload), 5_000);
+  commandCenterChartPollTimer = window.setTimeout(async () => {
+    await loadCommandCenterChart({ poll: true });
+    scheduleCommandCenterChartPolling(commandCenterState);
+  }, delay);
+}
+
+function updateCommandCenterSource(payload) {
+  const source = payload?.source || {};
+  setText("cc-source-identity", `Source: ${source.label || "UNKNOWN"}`);
+}
+
+function formatCountdown(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value)) return "--";
+  const minutes = Math.floor(value / 60);
+  const remaining = value % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`;
 }
 
 function setFeedRailCollapsed(collapsed) {
@@ -2812,9 +2878,11 @@ function tradingChartSvg(candles, signalMarkers = [], planLevels = []) {
       `;
     })
     .join("");
+  const lastCloseY = y(last.close);
+  const lastPrice = Number(last.close).toFixed(2);
 
   return `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Saved market-data candle chart with strategy indicators">
+    <svg class="cc-live-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Saved market-data candle chart with strategy indicators">
       ${grid}
       ${rangeLines}
       ${levelLines}
@@ -2825,9 +2893,53 @@ function tradingChartSvg(candles, signalMarkers = [], planLevels = []) {
       ${indicator("ema_21", "line-ema21")}
       ${indicator("ema_200", "line-ema200")}
       ${markers}
+      <line class="latest-price-line" x1="${left}" y1="${lastCloseY}" x2="${width - right}" y2="${lastCloseY}"></line>
+      <rect class="latest-price-pill" x="${width - right + 5}" y="${lastCloseY - 9}" width="54" height="18" rx="4"></rect>
+      <text class="latest-price-label" x="${width - right + 32}" y="${lastCloseY + 4}" text-anchor="middle">${lastPrice}</text>
       ${timeLabels}
     </svg>
   `;
+}
+
+function dedupeTimelineEvents(events = []) {
+  const seen = new Set();
+  return events.filter((event) => {
+    const key = [event.timestamp, event.symbol, event.stage, event.setup, event.status].map((part) => text(part, "")).join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function commandCenterMarkerTime(value) {
+  const raw = text(value, "");
+  const match = raw.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2})/);
+  if (match) return `${match[2]}/${match[3]} ${match[4]}`;
+  const shortMatch = raw.match(/(\d{2})\/(\d{2})[ T](\d{2}:\d{2})/);
+  if (shortMatch) return `${shortMatch[1]}/${shortMatch[2]} ${shortMatch[3]}`;
+  return raw;
+}
+
+function chartMarkersFromTimeline(events = []) {
+  return dedupeTimelineEvents(events).map((event) => ({
+    time_et: commandCenterMarkerTime(event.timestamp),
+    label: text(event.stage, "?").slice(0, 1).toUpperCase(),
+    kind: text(event.status, "").toLowerCase().includes("pass") || text(event.status, "").toLowerCase().includes("allowed") ? "allowed" : "watch",
+  }));
+}
+
+function chartPayloadSignature(chart) {
+  const candles = chart?.candles || [];
+  const last = candles[candles.length - 1] || {};
+  return [
+    chart?.symbol,
+    chart?.timeframe,
+    candles.length,
+    last.time_et,
+    last.close,
+    chart?.freshness?.status,
+    (chart?.timeline || []).length,
+  ].join("|");
 }
 
 function renderTerminalTicket(state, chart) {
@@ -2871,9 +2983,9 @@ function saveCommandCenterInboxState() {
 
 function statusTone(value) {
   const normalized = text(value, "UNAVAILABLE").toUpperCase();
-  if (["PASS", "GREEN", "CLEAN", "CONTINUE", "PROMOTE", "READY"].includes(normalized)) return "pass";
-  if (["WATCH", "PARTIAL", "YELLOW", "INVESTIGATE"].includes(normalized)) return "watch";
-  if (["FAIL", "RED", "INVALID", "DOWN", "RETIRE", "REDUCE"].includes(normalized)) return "fail";
+  if (["PASS", "GREEN", "CLEAN", "CONTINUE", "PROMOTE", "READY", "LATEST COMPLETED CANDLE", "CONNECTED"].includes(normalized)) return "pass";
+  if (["WATCH", "PARTIAL", "YELLOW", "INVESTIGATE", "PROVIDER FINAL"].includes(normalized)) return "watch";
+  if (["FAIL", "RED", "INVALID", "DOWN", "RETIRE", "REDUCE", "STALE", "CONNECTION LOST"].includes(normalized)) return "fail";
   return "muted";
 }
 
@@ -3017,6 +3129,7 @@ function renderCommandCenterMarkets(payload) {
   for (const button of document.querySelectorAll("[data-cc-symbol]")) {
     button.addEventListener("click", () => {
       commandCenterSymbol = button.dataset.ccSymbol;
+      lastCommandCenterChartSignature = "";
       loadCommandCenterChart();
       renderCommandCenterMarkets(commandCenterState || {});
     });
@@ -3024,24 +3137,57 @@ function renderCommandCenterMarkets(payload) {
   for (const button of document.querySelectorAll("[data-cc-timeframe]")) {
     button.addEventListener("click", () => {
       commandCenterTimeframe = button.dataset.ccTimeframe;
+      lastCommandCenterChartSignature = "";
       loadCommandCenterChart();
       renderCommandCenterMarkets(commandCenterState || {});
     });
   }
 }
 
-async function loadCommandCenterChart() {
-  $("cc-market-chart").innerHTML = '<div class="terminal-empty">Loading saved candles...</div>';
+function renderCommandCenterChartMeta(chart, stale = false) {
+  const freshness = chart?.freshness || {};
+  const freshnessStatus = stale ? "STALE" : freshness.status || "UNAVAILABLE";
+  setText("cc-candle-state", stale ? "STALE" : chart?.candle_state || "LATEST COMPLETED CANDLE");
+  $("cc-candle-state").className = `cc-inline-status ${statusTone(stale ? "STALE" : chart?.candle_state || "LATEST COMPLETED CANDLE")}`;
+  setText("cc-chart-freshness", freshnessStatus);
+  $("cc-chart-freshness").className = `cc-inline-status ${statusTone(freshnessStatus)}`;
+  setText("cc-chart-latest", freshness.latest_timestamp_et || chart?.latest_bar_et || "--");
+  setText("cc-chart-expected", freshness.expected_latest_timestamp_et || "--");
+  setText("cc-chart-updated", chart?.server_timestamp_et || "--");
+  const next = chart?.next_candle || {};
+  setText("cc-next-candle", next.active ? `${next.label} ${formatCountdown(next.seconds_remaining)}` : next.label || "--");
+  const lag = freshness.lag_minutes ?? chart?.data_lag_minutes;
+  const detail = freshness.explanation || "Reading canonical saved candle data.";
+  $("cc-chart-freshness-detail").textContent = `${detail} Lag ${minutesLabel(lag)}. Last refresh ${freshness.last_refresh || "--"}.`;
+}
+
+async function loadCommandCenterChart(options = {}) {
+  if (commandCenterChartRefreshInFlight) return;
+  commandCenterChartRefreshInFlight = true;
+  const isPoll = Boolean(options.poll);
+  if (!isPoll && !lastCommandCenterChartSignature) {
+    $("cc-market-chart").innerHTML = '<div class="terminal-empty">Loading saved candles...</div>';
+  }
   try {
     const chart = await fetchJsonPayload(
       `${commandCenterV1ChartUrl}?symbol=${encodeURIComponent(commandCenterSymbol)}&timeframe=${encodeURIComponent(commandCenterTimeframe)}`,
       "Command Center chart",
     );
+    markCommandCenterConnection(true);
+    lastCommandCenterChartSuccessAt = new Date();
     $("cc-market-title").textContent = `${chart.symbol} ${chart.timeframe}`;
-    $("cc-market-subtitle").textContent = `${chart.source}. Latest bar ${chart.latest_bar_et}. Freshness ${minutesLabel(chart.data_lag_minutes)}.`;
-    $("cc-market-chart").innerHTML = tradingChartSvg(chart.candles || [], []);
-    $("cc-market-timeline").innerHTML = chart.timeline?.length
-      ? chart.timeline
+    $("cc-market-subtitle").textContent = `${chart.source}. ${chart.candle_state || "LATEST COMPLETED CANDLE"}. Latest bar ${chart.latest_bar_et}.`;
+    renderCommandCenterChartMeta(chart);
+    const signature = chartPayloadSignature(chart);
+    if (signature !== lastCommandCenterChartSignature) {
+      $("cc-market-chart").innerHTML = tradingChartSvg(chart.candles || [], chartMarkersFromTimeline(chart.timeline || []));
+      lastCommandCenterChartSignature = signature;
+      $("cc-market-chart").classList.add("cc-updated");
+      window.setTimeout(() => $("cc-market-chart").classList.remove("cc-updated"), 700);
+    }
+    const timeline = dedupeTimelineEvents(chart.timeline || []);
+    $("cc-market-timeline").innerHTML = timeline.length
+      ? timeline
           .map(
             (event) => `
               <li>
@@ -3054,9 +3200,15 @@ async function loadCommandCenterChart() {
           .join("")
       : "<li>No candidate events for this selection.</li>";
   } catch (error) {
-    $("cc-market-chart").innerHTML = `<div class="terminal-empty">Could not load chart data for ${escapeHtml(commandCenterSymbol)} ${escapeHtml(commandCenterTimeframe)}. ${escapeHtml(error.message)}</div>`;
-    $("cc-market-subtitle").textContent = "Saved candle data could not be loaded for this selection.";
+    markCommandCenterConnection(false, `Command Center chart refresh failed: ${error.message}`);
+    renderCommandCenterChartMeta({ freshness: { status: "STALE", explanation: "Live Command Center chart data is unavailable." } }, true);
+    if (!lastCommandCenterChartSignature) {
+      $("cc-market-chart").innerHTML = `<div class="terminal-empty">Could not load chart data for ${escapeHtml(commandCenterSymbol)} ${escapeHtml(commandCenterTimeframe)}. ${escapeHtml(error.message)}</div>`;
+    }
+    $("cc-market-subtitle").textContent = `Connection lost. Preserving last known ${commandCenterSymbol} ${commandCenterTimeframe} chart.`;
     $("cc-market-timeline").innerHTML = "<li>Candidate events could not be loaded for this selection.</li>";
+  } finally {
+    commandCenterChartRefreshInFlight = false;
   }
 }
 
@@ -3310,6 +3462,7 @@ function renderCommandCenterSystem(system) {
 
 function renderFounderCommandCenter(payload) {
   commandCenterState = payload;
+  updateCommandCenterSource(payload);
   renderCommandCenterOverview(payload);
   renderCommandCenterFunnel(payload.today || {});
   renderCommandCenterValidation(payload.validation || {});
@@ -3326,11 +3479,15 @@ async function loadCommandCenter() {
   updateCommandCenterRefreshStatus("Command Center loading...");
   try {
     const payload = await fetchJsonPayload(commandCenterV1Url, "Command Center");
+    markCommandCenterConnection(true);
     renderFounderCommandCenter(payload);
     await loadCommandCenterChart();
     updateCommandCenterRefreshStatus(`Command Center updated ${payload.generated_at_et || "successfully"}.`);
+    scheduleCommandCenterPolling(payload);
+    scheduleCommandCenterChartPolling(payload);
     return payload;
   } catch (error) {
+    markCommandCenterConnection(false, `Command Center refresh failed: ${error.message}`);
     updateCommandCenterRefreshStatus(`Command Center render failed: ${error.message}`);
     throw error;
   } finally {

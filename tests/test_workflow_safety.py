@@ -11737,12 +11737,74 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertGreaterEqual(len(payload["candles"]), 1)
         self.assertEqual(payload["timeline"][0]["stage"], "Scanner")
         self.assertEqual(payload["timeline"][0]["status"], "allowed")
+        self.assertLessEqual(payload["bounded_candle_count"], payload["max_candles"])
+        self.assertIn(payload["candle_state"], {"LATEST COMPLETED CANDLE", "WATCH", "PROVIDER FINAL", "STALE"})
+        self.assertEqual(payload["source_identity"]["label"], "LOCAL WORKSTATION")
 
     def test_command_center_payload_exposes_all_market_symbols_and_timeframes(self) -> None:
         payload = run_app.founder_command_center_payload()
 
         self.assertEqual(payload["markets"]["symbols"], ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"])
         self.assertEqual(payload["markets"]["timeframes"], ["M1", "M5", "M15", "M30", "M60", "D"])
+        self.assertIn("source", payload)
+        self.assertIn("session", payload)
+        self.assertIn("polling", payload["session"])
+
+    def test_command_center_session_polling_uses_market_phase(self) -> None:
+        regular = run_app.command_center_session_payload(datetime(2026, 8, 13, 10, 15, tzinfo=run_app.MARKET_TZ))
+        after_close = run_app.command_center_session_payload(datetime(2026, 8, 13, 17, 0, tzinfo=run_app.MARKET_TZ))
+        weekend = run_app.command_center_session_payload(datetime(2026, 8, 15, 12, 0, tzinfo=run_app.MARKET_TZ))
+        premarket = run_app.command_center_session_payload(datetime(2026, 8, 13, 8, 0, tzinfo=run_app.MARKET_TZ))
+
+        self.assertEqual(regular["phase"], "regular_session")
+        self.assertEqual(regular["polling"]["command_center_ms"], 15000)
+        self.assertEqual(regular["polling"]["chart_ms"], 7000)
+        self.assertEqual(premarket["phase"], "premarket")
+        self.assertEqual(after_close["phase"], "after_close")
+        self.assertGreater(after_close["polling"]["chart_ms"], regular["polling"]["chart_ms"])
+        self.assertEqual(weekend["phase"], "closed_day")
+        self.assertGreaterEqual(weekend["polling"]["chart_ms"], 120000)
+
+    def test_command_center_chart_payload_integrates_data_freshness(self) -> None:
+        with TemporaryDirectory() as temporary:
+            logs = Path(temporary)
+            candle_dir = logs / "candles" / "SPY"
+            candle_dir.mkdir(parents=True)
+            candles = pd.DataFrame(
+                [
+                    {"datetime": "2026-08-12T13:30:00Z", "open": 100, "high": 101, "low": 99, "close": 100.5, "volume": 1000},
+                    {"datetime": "2026-08-12T14:00:00Z", "open": 100.5, "high": 102, "low": 100, "close": 101.5, "volume": 1200},
+                ]
+            )
+            candles.to_csv(candle_dir / "M30.csv", index=False)
+            candles.to_csv(candle_dir / "M5.csv", index=False)
+            (logs / "data_freshness_audit.json").write_text(
+                json.dumps(
+                    {
+                        "matrix": {
+                            "SPY": {
+                                "M30": {
+                                    "status": "WATCH",
+                                    "latest_timestamp_et": "2026-08-12 10:00:00 EDT",
+                                    "expected_latest_timestamp_et": "2026-08-12 10:30:00 EDT",
+                                    "lag_minutes": 30,
+                                    "provider_final": True,
+                                    "explanation": "Provider appears to have omitted only the final tolerated bar.",
+                                }
+                            }
+                        },
+                        "last_successful_refresh": "2026-08-12 10:31:00 EDT",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(run_app, "LOGS_DIR", logs):
+                payload = run_app.founder_command_center_chart_payload("SPY", "M30")
+
+        self.assertEqual(payload["freshness"]["status"], "WATCH")
+        self.assertEqual(payload["freshness"]["last_refresh"], "2026-08-12 10:31:00 EDT")
+        self.assertEqual(payload["candle_state"], "PROVIDER FINAL")
 
     def test_command_center_frontend_uses_json_chart_endpoint_contract(self) -> None:
         script = Path("app/app.js").read_text(encoding="utf-8")
@@ -11752,7 +11814,7 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertIn("content-type", script)
         self.assertIn("application/json", script)
         self.assertIn("returned invalid JSON", script)
-        chart_loader = script.split("async function loadCommandCenterChart()", 1)[1].split("function inboxVisibleEvents", 1)[0]
+        chart_loader = script.split("async function loadCommandCenterChart", 1)[1].split("function inboxVisibleEvents", 1)[0]
         self.assertNotIn("response.json()", chart_loader)
 
     def test_command_center_frontend_keeps_full_market_selector_fallbacks(self) -> None:
@@ -11771,6 +11833,47 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertIn("No candidate events for this selection.", script)
         self.assertNotIn("Timeline unavailable.", script)
         self.assertNotIn("JSON.parse:", script)
+
+    def test_command_center_live_chart_frontend_polls_read_only_endpoints(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+
+        self.assertIn("scheduleCommandCenterPolling", script)
+        self.assertIn("scheduleCommandCenterChartPolling", script)
+        self.assertIn("defaultCommandCenterPollMs = 15_000", script)
+        self.assertIn("defaultCommandCenterChartPollMs = 7_000", script)
+        self.assertIn("commandCenterV1Url", script)
+        self.assertIn("commandCenterV1ChartUrl", script)
+        self.assertIn("chartPayloadSignature", script)
+        self.assertIn("dedupeTimelineEvents", script)
+        self.assertIn("lastCommandCenterChartSignature", script)
+        self.assertNotIn("refreshWebullDataActionUrl)", script.split("async function loadCommandCenterChart", 1)[1].split("function inboxVisibleEvents", 1)[0])
+        self.assertNotIn("paperCommandConfirmEntryUrl", script.split("async function loadCommandCenterChart", 1)[1].split("function inboxVisibleEvents", 1)[0])
+
+    def test_command_center_live_chart_frontend_displays_connection_source_and_stale_state(self) -> None:
+        html = Path("app/index.html").read_text(encoding="utf-8")
+        script = Path("app/app.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="cc-connection-status"', html)
+        self.assertIn('id="cc-source-identity"', html)
+        self.assertIn('id="cc-candle-state"', html)
+        self.assertIn('id="cc-chart-freshness"', html)
+        self.assertIn('id="cc-next-candle"', html)
+        self.assertIn("Command Center: CONNECTION LOST", script)
+        self.assertIn("Source:", script)
+        self.assertIn("LATEST COMPLETED CANDLE", script)
+        self.assertIn("STALE", script)
+        self.assertIn("Preserving last known", script)
+
+    def test_command_center_manual_refresh_remains_read_only(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+        refresh_block = script.split("async function refresh()", 1)[1].split('$("refresh-button").addEventListener', 1)[0]
+
+        self.assertIn("refreshCommandCenter()", refresh_block)
+        self.assertIn("loadState()", refresh_block)
+        self.assertNotIn("refreshWebullDataActionUrl", refresh_block)
+        self.assertNotIn("paperSessionConfirmEntryActionUrl", refresh_block)
+        self.assertNotIn("paperCommandConfirmEntryUrl", refresh_block)
+        self.assertNotIn("paperCommandAutoSelectContractUrl", refresh_block)
 
     def test_founder_command_center_payload_does_not_include_secret_environment_values(self) -> None:
         with patch.dict(os.environ, {"WEBULL_APP_SECRET": "TEST_SECRET_FIXTURE_DO_NOT_LEAK"}, clear=False):
@@ -11830,7 +11933,7 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
     def test_founder_command_center_uses_versioned_frontend_asset(self) -> None:
         html = Path("app/index.html").read_text(encoding="utf-8")
 
-        self.assertIn("/app.js?v=20260812-phase3-research-factory", html)
+        self.assertIn("/app.js?v=20260812-command-center-live-charts", html)
 
     def test_phase_3_strategy_lifecycle_constitution_is_documented(self) -> None:
         document = Path("docs/strategy-vault.md").read_text(encoding="utf-8")

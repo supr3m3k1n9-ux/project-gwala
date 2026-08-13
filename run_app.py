@@ -39,6 +39,7 @@ from indicators.session import add_opening_range, add_session_columns
 from indicators.trend import add_core_indicators
 from run_data_freshness_audit import build_audit as build_data_freshness_audit
 from run_data_freshness_audit import write_audit as write_data_freshness_audit
+from run_production_heartbeat import session_context
 from execution.paper_trader import (
     PAPER_ORDER_COLUMNS,
     filter_new_orders,
@@ -462,6 +463,113 @@ def artifact_is_stale(path: Path, max_age_seconds: int = 60) -> bool:
     except OSError:
         return True
     return age.total_seconds() > max_age_seconds
+
+
+def command_center_source_identity() -> dict:
+    """Return founder-readable identity for the dashboard data source."""
+
+    root_text = str(PROJECT_DIR)
+    if root_text.startswith("/app") or root_text.startswith("/srv/projects/gwala"):
+        label = "VPS PRODUCTION"
+    else:
+        label = "LOCAL WORKSTATION"
+    return {
+        "label": label,
+        "runtime_data_root": str(RUNTIME_DATA_DIR),
+        "logs_dir": str(LOGS_DIR),
+        "server_timestamp_et": datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+    }
+
+
+def command_center_session_payload(moment: datetime | None = None) -> dict:
+    """Return session and polling metadata for the read-only Command Center."""
+
+    now = moment or datetime.now(MARKET_TZ)
+    context = session_context(now)
+    phase = text_value(context.get("phase"), "unknown")
+    if phase == "regular_session":
+        command_center_ms = 15_000
+        chart_ms = 7_000
+    elif phase in {"premarket", "after_close"}:
+        command_center_ms = 60_000
+        chart_ms = 30_000
+    else:
+        command_center_ms = 120_000
+        chart_ms = 120_000
+    return {
+        "phase": phase,
+        "reason": text_value(context.get("reason"), ""),
+        "expected_artifact_date": str(context.get("expected_artifact_date", "")),
+        "requires_recency": bool(context.get("requires_recency")),
+        "polling": {
+            "command_center_ms": command_center_ms,
+            "chart_ms": chart_ms,
+        },
+    }
+
+
+def selected_freshness_payload(symbol: str, timeframe: str, logs_dir: Path | None = None) -> dict:
+    """Return the Data Freshness matrix cell for one symbol/timeframe."""
+
+    logs = logs_dir or LOGS_DIR
+    freshness = safe_read_json(logs / "data_freshness_audit.json")
+    if not freshness.get("_available"):
+        return {
+            "status": "UNAVAILABLE",
+            "latest_timestamp_et": "",
+            "expected_latest_timestamp_et": "",
+            "lag_minutes": None,
+            "last_refresh": "",
+            "explanation": "Data Freshness audit is unavailable.",
+        }
+    cell = freshness.get("matrix", {}).get(symbol.upper(), {}).get(timeframe.upper(), {})
+    if not isinstance(cell, dict):
+        return {
+            "status": "UNAVAILABLE",
+            "latest_timestamp_et": "",
+            "expected_latest_timestamp_et": "",
+            "lag_minutes": None,
+            "last_refresh": freshness.get("last_successful_refresh", ""),
+            "explanation": "No Data Freshness cell exists for this selection.",
+        }
+    payload = dict(cell)
+    payload["last_refresh"] = freshness.get("last_successful_refresh", "")
+    return payload
+
+
+def timeframe_minutes(timeframe: str) -> int | None:
+    """Return timeframe length in minutes for intraday chart labels."""
+
+    mapping = {"M1": 1, "M5": 5, "M15": 15, "M30": 30, "M60": 60}
+    return mapping.get(timeframe.upper())
+
+
+def next_candle_close_payload(timeframe: str, moment: datetime | None = None) -> dict:
+    """Return UI-only countdown metadata for the next completed candle."""
+
+    minutes = timeframe_minutes(timeframe)
+    now = (moment or datetime.now(MARKET_TZ)).astimezone(MARKET_TZ)
+    context = session_context(now)
+    if not minutes or context.get("phase") != "regular_session":
+        return {
+            "label": "LATEST COMPLETED CANDLE",
+            "close_et": "",
+            "seconds_remaining": None,
+            "active": False,
+        }
+    minute = (now.minute // minutes + 1) * minutes
+    close_time = now.replace(second=0, microsecond=0)
+    if minute >= 60:
+        close_time = close_time.replace(minute=0) + pd.Timedelta(hours=1)
+    else:
+        close_time = close_time.replace(minute=minute)
+    seconds = max(int((close_time - now).total_seconds()), 0)
+    return {
+        "label": f"NEXT {timeframe.upper()} CLOSE",
+        "close_et": close_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "seconds_remaining": seconds,
+        "active": True,
+    }
 
 
 def current_trading_date(moment: datetime | None = None) -> date:
@@ -905,9 +1013,13 @@ def founder_command_center_payload() -> dict:
     validation = founder_validation_scorecard()
     funnel = founder_today_funnel()
     system = founder_system_payload()
+    source = command_center_source_identity()
+    session = command_center_session_payload()
     production_status = next((card["status"] for card in system["cards"] if card["name"] == "Production Health"), "UNAVAILABLE")
     return {
         "generated_at_et": datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "source": source,
+        "session": session,
         "overview": {
             "production": production_status,
             "evidence": "CLEAN" if validation["completed_trades"] >= 30 else "PARTIAL",
@@ -936,6 +1048,26 @@ def founder_command_center_chart_payload(symbol: str = "SPY", timeframe: str = "
 
     payload = build_trading_workspace_data(LOGS_DIR, symbol, timeframe)
     payload["timeline"] = founder_candidate_timeline(LOGS_DIR, symbol)
+    freshness = selected_freshness_payload(symbol, timeframe, LOGS_DIR)
+    payload["freshness"] = freshness
+    payload["source_identity"] = command_center_source_identity()
+    payload["server_timestamp_et"] = datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
+    payload["bounded_candle_count"] = len(payload.get("candles", []))
+    payload["max_candles"] = {"M1": 120, "M5": 90, "M15": 96, "M30": 80, "M60": 90, "D": 130}.get(
+        timeframe.upper(),
+        80,
+    )
+    payload["next_candle"] = next_candle_close_payload(timeframe)
+    status = text_value(freshness.get("status"), "UNAVAILABLE").upper()
+    if status == "FAIL":
+        candle_state = "STALE"
+    elif bool(freshness.get("provider_final")):
+        candle_state = "PROVIDER FINAL"
+    elif status == "WATCH":
+        candle_state = "WATCH"
+    else:
+        candle_state = "LATEST COMPLETED CANDLE"
+    payload["candle_state"] = candle_state
     return payload
 
 
