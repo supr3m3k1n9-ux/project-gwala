@@ -20,6 +20,7 @@ from deploy.linux.verify_docker_runtime_boundary import (
 from deploy.linux.verify_vps_production import docker_boundary_check
 from deploy.linux.verify_vps_production import dashboard_http_check
 from deploy.linux.verify_vps_production import extract_json_line
+from deploy.linux.verify_vps_production import heartbeat_readiness_check
 from deploy.linux.verify_vps_production import parse_artifact_timestamp
 from deploy.linux.write_host_security_health import container_security_warnings
 from run_refresh_audit import default_audit_csv, parse_args as parse_refresh_audit_args
@@ -344,6 +345,41 @@ class RuntimePathTests(unittest.TestCase):
         payload = extract_json_line('Container Creating\n{"status": "GREEN", "reason": "ok"}\nContainer Removing')
 
         self.assertEqual(payload, {"status": "GREEN", "reason": "ok"})
+
+    def test_vps_readiness_allows_after_close_data_freshness_from_interrupted_session(self) -> None:
+        heartbeat = {
+            "status": "RED",
+            "reason": "Data freshness audit reports FAIL.",
+            "red_component": "Data freshness",
+            "runtime": {"market_phase": "after_close"},
+            "checks": [
+                {"component": "Current-candle capture", "status": "RED", "reason": "stale"},
+                {"component": "Data freshness", "status": "RED", "reason": "stale"},
+            ],
+        }
+        with TemporaryDirectory() as raw:
+            stack = Path(raw)
+            (stack / "run_in_docker.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+            with patch("deploy.linux.verify_vps_production.run", return_value=(0, f"noise\n{__import__('json').dumps(heartbeat)}\n")):
+                check = heartbeat_readiness_check(stack / "app", stack)
+
+        self.assertEqual(check.status, "PASS")
+
+    def test_vps_readiness_does_not_allow_regular_session_data_freshness_failure(self) -> None:
+        heartbeat = {
+            "status": "RED",
+            "reason": "Data freshness audit reports FAIL.",
+            "red_component": "Data freshness",
+            "runtime": {"market_phase": "regular_session"},
+            "checks": [{"component": "Data freshness", "status": "RED", "reason": "stale"}],
+        }
+        with TemporaryDirectory() as raw:
+            stack = Path(raw)
+            (stack / "run_in_docker.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+            with patch("deploy.linux.verify_vps_production.run", return_value=(0, f"noise\n{__import__('json').dumps(heartbeat)}\n")):
+                check = heartbeat_readiness_check(stack / "app", stack)
+
+        self.assertEqual(check.status, "FAIL")
 
     def test_host_security_ignores_no_new_privileges_warning_for_transient_run_container(self) -> None:
         warnings = container_security_warnings("gwala-gwala-run-abc123", {"SecurityOpt": []})
