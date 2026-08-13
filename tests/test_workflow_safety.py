@@ -570,14 +570,16 @@ class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
         audit = pd.DataFrame([refresh_audit_row(symbol=symbol, refresh_run_at_et=moment.strftime("%Y-%m-%d %H:%M:%S %Z"))])
         return inspect_data_freshness_stream(symbol, timeframe, data_dir, moment, audit)
 
-    def test_stale_m1_during_market_hours_fails(self) -> None:
+    def test_stale_m1_during_market_hours_is_watch_not_production_fail(self) -> None:
         with TemporaryDirectory() as temporary:
             data_dir = Path(temporary)
             moment = datetime(2026, 8, 12, 10, 7, tzinfo=MARKET_TZ)
             write_test_candles(data_dir, "SPY", "M1", regular_session_starts(moment.date(), "M1", "09:59"))
             result = self.inspect_one(data_dir, "SPY", "M1", moment)
-        self.assertEqual(result["status"], "FAIL")
-        self.assertIn("Missing", result["explanation"])
+        self.assertEqual(result["status"], "WATCH")
+        self.assertEqual(result["freshness_status"], "FAIL")
+        self.assertFalse(result["decision_critical"])
+        self.assertIn("missing", result["explanation"])
 
     def test_current_m1_during_market_hours_passes(self) -> None:
         with TemporaryDirectory() as temporary:
@@ -594,6 +596,26 @@ class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
             write_test_candles(data_dir, "SPY", "M30", regular_session_starts(moment.date(), "M30", "11:30"))
             result = self.inspect_one(data_dir, "SPY", "M30", moment)
         self.assertEqual(result["status"], "FAIL")
+        self.assertTrue(result["decision_critical"])
+
+    def test_stale_m5_during_market_hours_fails_as_exit_management_data(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 12, 35, tzinfo=MARKET_TZ)
+            write_test_candles(data_dir, "SPY", "M5", regular_session_starts(moment.date(), "M5", "12:00"))
+            result = self.inspect_one(data_dir, "SPY", "M5", moment)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertTrue(result["exit_management_required"])
+
+    def test_regular_session_daily_uses_prior_completed_daily_bar(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 13, 12, 35, tzinfo=MARKET_TZ)
+            write_test_candles(data_dir, "SPY", "D", [datetime.combine(date(2026, 8, 12), time(0, 0), tzinfo=MARKET_TZ)])
+            result = self.inspect_one(data_dir, "SPY", "D", moment)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["expected_latest_timestamp_et"], "2026-08-12 00:00:00 EDT")
+        self.assertFalse(result["decision_critical"])
 
     def test_after_close_same_session_final_bar_passes(self) -> None:
         with TemporaryDirectory() as temporary:
@@ -668,9 +690,25 @@ class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
                 write_test_candles(data_dir, symbol, "D", [datetime.combine(moment.date(), time(0, 0), tzinfo=MARKET_TZ)])
             pd.DataFrame([refresh_audit_row(symbol=symbol, refresh_run_at_et="2026-08-12 16:00:00 EDT") for symbol in ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]]).to_csv(data_dir / "market_refresh_audit.csv", index=False)
             payload = build_data_freshness_audit(data_dir, moment)
+        self.assertEqual(payload["data_continuity"], "WATCH")
+        self.assertEqual(payload["session_evidence"], "PARTIAL")
+        self.assertTrue(any(item["symbol"] == "QQQ" and item["timeframe"] == "M1" for item in payload["needs_attention"]))
+
+    def test_m30_failure_still_invalidates_session_evidence(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 12, 35, tzinfo=MARKET_TZ)
+            for symbol in ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]:
+                for timeframe, through in {"M1": "12:33", "M5": "12:25", "M15": "12:15", "M30": "12:00", "M60": "11:30"}.items():
+                    if symbol == "QQQ" and timeframe == "M30":
+                        through = "11:30"
+                    write_test_candles(data_dir, symbol, timeframe, regular_session_starts(moment.date(), timeframe, through))
+                write_test_candles(data_dir, symbol, "D", [datetime.combine(date(2026, 8, 11), time(0, 0), tzinfo=MARKET_TZ)])
+            pd.DataFrame([refresh_audit_row(symbol=symbol, refresh_run_at_et="2026-08-12 12:30:00 EDT") for symbol in ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]]).to_csv(data_dir / "market_refresh_audit.csv", index=False)
+            payload = build_data_freshness_audit(data_dir, moment)
         self.assertEqual(payload["data_continuity"], "FAIL")
         self.assertEqual(payload["session_evidence"], "INVALID")
-        self.assertTrue(any(item["symbol"] == "QQQ" and item["timeframe"] == "M1" for item in payload["needs_attention"]))
+        self.assertTrue(any(item["symbol"] == "QQQ" and item["timeframe"] == "M30" for item in payload["needs_attention"]))
 
     def test_heartbeat_propagates_failing_data_freshness_artifact(self) -> None:
         with TemporaryDirectory() as temporary:

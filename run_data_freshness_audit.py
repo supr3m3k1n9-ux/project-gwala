@@ -19,7 +19,7 @@ from config.market_calendar import MARKET_TZ, market_session_for_date
 from config.runtime_paths import runtime_data_root
 from config.settings import STRATEGY
 from data.candle_cache import preferred_candle_path
-from run_production_heartbeat import session_context
+from run_production_heartbeat import previous_market_session_date, session_context
 
 
 SYMBOLS = ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]
@@ -27,6 +27,62 @@ TIMEFRAMES = ["M1", "M5", "M15", "M30", "M60", "D"]
 TIMEFRAME_MINUTES = {"M1": 1, "M5": 5, "M15": 15, "M30": 30, "M60": 60}
 REQUIRED_COLUMNS = ["datetime", "open", "high", "low", "close", "volume"]
 PROVIDER_FINAL_TOLERANCE_MINUTES = 5
+TIMEFRAME_DEPENDENCIES = {
+    "M1": {
+        "production_role": "display_chart",
+        "component": "Command Center chart lookback",
+        "entry_decision": False,
+        "exit_management": False,
+        "context_only": False,
+        "chart_display": True,
+        "decision_critical": False,
+    },
+    "M5": {
+        "production_role": "exit_management",
+        "component": "paper lifecycle exit management",
+        "entry_decision": False,
+        "exit_management": True,
+        "context_only": False,
+        "chart_display": False,
+        "decision_critical": True,
+    },
+    "M15": {
+        "production_role": "display_chart",
+        "component": "Command Center chart lookback",
+        "entry_decision": False,
+        "exit_management": False,
+        "context_only": False,
+        "chart_display": True,
+        "decision_critical": False,
+    },
+    "M30": {
+        "production_role": "entry_decision",
+        "component": "scanner/current-candle entry decisions",
+        "entry_decision": True,
+        "exit_management": False,
+        "context_only": False,
+        "chart_display": False,
+        "decision_critical": True,
+    },
+    "M60": {
+        "production_role": "supporting_context",
+        "component": "higher-timeframe review context",
+        "entry_decision": False,
+        "exit_management": False,
+        "context_only": True,
+        "chart_display": True,
+        "decision_critical": False,
+    },
+    "D": {
+        "production_role": "completed_daily_context",
+        "component": "daily context/display only",
+        "entry_decision": False,
+        "exit_management": False,
+        "context_only": True,
+        "chart_display": True,
+        "decision_critical": False,
+    },
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,7 +117,11 @@ def expected_latest_bucket(moment: datetime, timeframe: str, expected_date: obje
     """Return the expected latest completed candle start for the session context."""
 
     if timeframe == "D":
-        return datetime.combine(expected_date, datetime.min.time()).replace(tzinfo=MARKET_TZ)
+        context = session_context(moment)
+        expected_daily_date = expected_date
+        if context["phase"] in {"premarket", "regular_session"}:
+            expected_daily_date = previous_market_session_date(moment)
+        return datetime.combine(expected_daily_date, datetime.min.time()).replace(tzinfo=MARKET_TZ)
     minutes = TIMEFRAME_MINUTES[timeframe]
     session = market_session_for_date(
         expected_date,
@@ -151,6 +211,7 @@ def inspect_stream(
     context = session_context(moment)
     expected_date = context["expected_artifact_date"]
     path = preferred_candle_path(candle_dir, symbol, timeframe)
+    dependency = TIMEFRAME_DEPENDENCIES[timeframe]
     base: dict[str, Any] = {
         "symbol": symbol,
         "timeframe": timeframe,
@@ -170,6 +231,14 @@ def inspect_stream(
         "file_mtime_et": "",
         "refresh_audit_status": "",
         "explanation": "",
+        "freshness_status": "FAIL",
+        "production_role": dependency["production_role"],
+        "consumer_component": dependency["component"],
+        "entry_decision_required": dependency["entry_decision"],
+        "exit_management_required": dependency["exit_management"],
+        "context_only": dependency["context_only"],
+        "chart_display_only": dependency["chart_display"],
+        "decision_critical": dependency["decision_critical"],
     }
     if path.exists():
         mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=MARKET_TZ)
@@ -210,8 +279,15 @@ def inspect_stream(
         return {**base, "explanation": "Candle timestamps are out of order."}
     if malformed:
         return {**base, "explanation": "Malformed timestamp or OHLCV rows found."}
-    if latest.date() != expected_date:
-        return {**base, "explanation": f"Latest candle belongs to {latest.date()}, expected {expected_date}."}
+    expected_latest_date = expected_latest.date() if expected_latest is not None else expected_date
+    if latest.date() != expected_latest_date:
+        status = "FAIL" if dependency["decision_critical"] else "WATCH"
+        return {
+            **base,
+            "status": status,
+            "freshness_status": "FAIL",
+            "explanation": f"Latest candle belongs to {latest.date()}, expected {expected_latest_date}.",
+        }
 
     if timeframe != "D":
         session_times = local_times[local_times.dt.date == expected_date]
@@ -221,9 +297,15 @@ def inspect_stream(
         base["missing_count"] = len(missing)
         base["missing_intervals"] = [bucket.strftime("%H:%M") for bucket in missing[:40]]
         if missing:
+            if not dependency["decision_critical"]:
+                base["status"] = "WATCH"
+                base["freshness_status"] = "FAIL"
+                base["explanation"] = f"Non-decision {timeframe} stream is missing {len(missing)} expected interval(s)."
+                return base
             final_tolerance = context["phase"] in {"after_close", "closed_day"} and latest >= (expected_latest - timedelta(minutes=PROVIDER_FINAL_TOLERANCE_MINUTES))
             if final_tolerance and len(missing) <= 1:
                 base["status"] = "WATCH"
+                base["freshness_status"] = "WATCH"
                 base["provider_final"] = True
                 base["explanation"] = "Provider appears to have omitted only the final tolerated bar."
                 return base
@@ -231,19 +313,29 @@ def inspect_stream(
 
     lag = float(base["lag_minutes"] or 0)
     if context["phase"] == "regular_session" and context["requires_recency"] and lag > max(TIMEFRAME_MINUTES.get(timeframe, 1), 2):
+        if not dependency["decision_critical"]:
+            return {
+                **base,
+                "status": "WATCH",
+                "freshness_status": "FAIL",
+                "explanation": f"Non-decision {timeframe} stream is stale by {lag:g} minutes during market hours.",
+            }
         return {**base, "explanation": f"{timeframe} is stale by {lag:g} minutes during market hours."}
     if str(refresh["status"]).lower() in {"fail", "failed", "red"}:
         return {**base, "explanation": f"Refresh audit reports failure: {refresh['detail']}."}
     base["status"] = "PASS"
+    base["freshness_status"] = "PASS"
     base["explanation"] = "Candle stream is structurally valid for the expected session."
     return base
 
 
 def aggregate_streams(streams: list[dict[str, Any]]) -> tuple[str, str]:
-    statuses = {stream["status"] for stream in streams}
-    if "FAIL" in statuses:
+    critical_statuses = {stream["status"] for stream in streams if stream.get("decision_critical")}
+    all_statuses = {stream["status"] for stream in streams}
+    raw_statuses = {stream.get("freshness_status", stream["status"]) for stream in streams}
+    if "FAIL" in critical_statuses:
         return "FAIL", "INVALID"
-    if "WATCH" in statuses:
+    if "FAIL" in raw_statuses or "WATCH" in all_statuses:
         return "WATCH", "PARTIAL"
     return "PASS", "CLEAN"
 
@@ -260,6 +352,7 @@ def build_audit(data_dir: Path, moment: datetime | None = None, candle_dir: Path
     ]
     continuity, evidence = aggregate_streams(streams)
     non_green = [stream for stream in streams if stream["status"] != "PASS"]
+    raw_non_green = [stream for stream in streams if stream.get("freshness_status", stream["status"]) != "PASS"]
     return {
         "generated_at_et": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
         "status": continuity,
@@ -269,6 +362,7 @@ def build_audit(data_dir: Path, moment: datetime | None = None, candle_dir: Path
         "expected_session_date": str(context["expected_artifact_date"]),
         "symbols": SYMBOLS,
         "timeframes": TIMEFRAMES,
+        "timeframe_dependencies": TIMEFRAME_DEPENDENCIES,
         "streams": streams,
         "matrix": {
             symbol: {stream["timeframe"]: stream for stream in streams if stream["symbol"] == symbol}
@@ -279,10 +373,26 @@ def build_audit(data_dir: Path, moment: datetime | None = None, candle_dir: Path
                 "symbol": stream["symbol"],
                 "timeframe": stream["timeframe"],
                 "status": stream["status"],
+                "freshness_status": stream.get("freshness_status", stream["status"]),
+                "production_role": stream.get("production_role", ""),
+                "decision_critical": stream.get("decision_critical", False),
                 "explanation": stream["explanation"],
                 "lag_minutes": stream["lag_minutes"],
             }
             for stream in non_green[:20]
+        ],
+        "raw_freshness_attention": [
+            {
+                "symbol": stream["symbol"],
+                "timeframe": stream["timeframe"],
+                "status": stream.get("freshness_status", stream["status"]),
+                "production_status": stream["status"],
+                "production_role": stream.get("production_role", ""),
+                "decision_critical": stream.get("decision_critical", False),
+                "explanation": stream["explanation"],
+                "lag_minutes": stream["lag_minutes"],
+            }
+            for stream in raw_non_green[:40]
         ],
         "last_successful_refresh": latest_refresh_timestamp(refresh_audit),
         "last_full_continuity_pass": now.strftime("%Y-%m-%d %H:%M:%S %Z") if continuity == "PASS" else "",
