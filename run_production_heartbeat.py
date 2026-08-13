@@ -590,7 +590,7 @@ def aggregate_status(checks: list[dict[str, Any]]) -> str:
     return "GREEN"
 
 
-def data_freshness_artifact_check(path: Path) -> dict[str, Any] | None:
+def data_freshness_artifact_check(path: Path, *, moment: datetime | None = None, max_age_minutes: int = 12) -> dict[str, Any] | None:
     """Reflect the read-only market-data freshness audit when it exists."""
 
     if not path.exists():
@@ -601,6 +601,16 @@ def data_freshness_artifact_check(path: Path) -> dict[str, Any] | None:
             "status": "YELLOW",
             "component": "Data freshness",
             "reason": "Data freshness audit artifact is unreadable.",
+            "details": str(path),
+        }
+    generated = parse_et_datetime(payload.get("generated_at_et"))
+    current_time = moment or now_et()
+    if not recent_enough(generated, current_time, max_age_minutes):
+        generated_text = payload.get("generated_at_et", "unknown")
+        return {
+            "status": "YELLOW",
+            "component": "Data freshness",
+            "reason": f"Data freshness audit artifact is stale or not timestamped; latest audit {generated_text}.",
             "details": str(path),
         }
     status = str(payload.get("data_continuity") or payload.get("status") or "").upper()
@@ -708,7 +718,11 @@ def build_heartbeat(
     ]
     if context["phase"] == "after_close":
         checks.append(after_close_supervisor_check(output_dir, expected_session_date))
-    freshness_check = data_freshness_artifact_check(output_dir / "data_freshness_audit.json")
+    freshness_check = data_freshness_artifact_check(
+        output_dir / "data_freshness_audit.json",
+        moment=current_time,
+        max_age_minutes=max_age_minutes,
+    )
     if freshness_check is not None:
         checks.append(freshness_check)
     if system_name == "Linux" and (containerized or str((env or os.environ).get("GWALA_DEPLOYMENT_MODE", "")).lower() == "shadow"):

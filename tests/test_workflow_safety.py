@@ -740,6 +740,36 @@ class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
         self.assertEqual(heartbeat["red_component"], "Data freshness")
         self.assertIn("QQQ M1 stale", heartbeat["red_reason"])
 
+    def test_heartbeat_treats_stale_data_freshness_artifact_as_watch(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs_dir = root / "logs"
+            data_dir = root / "data"
+            logs_dir.mkdir()
+            data_dir.mkdir()
+            moment = datetime(2026, 5, 26, 10, 30, tzinfo=MARKET_TZ)
+            write_healthy_heartbeat_artifacts(logs_dir, data_dir, moment)
+            write_data_freshness_audit(
+                {
+                    "generated_at_et": "2026-05-26 09:30:00 EDT",
+                    "data_continuity": "FAIL",
+                    "session_evidence": "INVALID",
+                    "status": "FAIL",
+                    "needs_attention": [{"symbol": "QQQ", "timeframe": "M1", "explanation": "old RED"}],
+                },
+                logs_dir,
+            )
+            heartbeat = build_production_heartbeat(
+                logs_dir,
+                data_dir=data_dir,
+                moment=moment,
+                launchctl_output="state = not running\nlast exit code = 0\n",
+                **MACOS_NATIVE_RUNTIME,
+            )
+        self.assertEqual(heartbeat["status"], "YELLOW")
+        self.assertEqual(heartbeat["red_component"], "")
+        self.assertIn("stale", heartbeat["reason"])
+
     def test_command_center_system_payload_includes_freshness_matrix(self) -> None:
         with TemporaryDirectory() as temporary:
             logs_dir = Path(temporary)
