@@ -279,6 +279,53 @@ body {
   border-radius: 6px;
 }
 
+.cc-freshness-panel {
+  margin-top: 14px;
+}
+
+.cc-freshness-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.cc-freshness-grid {
+  display: grid;
+  grid-template-columns: minmax(54px, 0.8fr) repeat(var(--freshness-columns), minmax(54px, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+  align-items: stretch;
+}
+
+.cc-freshness-grid strong,
+.cc-freshness-cell {
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.cc-freshness-cell.pass {
+  color: var(--pass);
+  background: rgba(50, 213, 131, 0.08);
+}
+
+.cc-freshness-cell.watch {
+  color: var(--watch);
+  background: rgba(253, 176, 34, 0.08);
+}
+
+.cc-freshness-cell.fail {
+  color: var(--fail);
+  background: rgba(249, 112, 102, 0.08);
+}
+
 .cc-inbox-list {
   display: grid;
   gap: 12px;

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 import json
 import os
 import plistlib
@@ -48,6 +48,9 @@ from run_data_flow_sentinel import build_data_flow_sentinel
 from run_dashboard_data_preflight import build_checks as build_dashboard_data_preflight
 from run_historical_bucket_sync import build_historical_bucket_sync
 from run_data_integrity import inspect_file
+from run_data_freshness_audit import build_audit as build_data_freshness_audit
+from run_data_freshness_audit import inspect_stream as inspect_data_freshness_stream
+from run_data_freshness_audit import write_audit as write_data_freshness_audit
 from run_daily_scanner import (
     entry_direction,
     playbook_entries_for_scan,
@@ -456,6 +459,40 @@ def write_healthy_heartbeat_artifacts(logs_dir: Path, data_dir: Path, moment: da
         os.utime(path, (timestamp, timestamp))
 
 
+def write_test_candles(data_dir: Path, symbol: str, timeframe: str, starts: list[datetime]) -> None:
+    """Write deterministic OHLCV candles through the production cache helper."""
+
+    rows = []
+    for index, start in enumerate(starts):
+        local = start.astimezone(MARKET_TZ)
+        rows.append(
+            {
+                "datetime": local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "open": 100 + index,
+                "high": 101 + index,
+                "low": 99 + index,
+                "close": 100.5 + index,
+                "volume": 1000 + index,
+            }
+        )
+    save_candle_cache(pd.DataFrame(rows), data_dir, symbol, timeframe, write_legacy_alias=True)
+
+
+def regular_session_starts(session_date: date, timeframe: str, through: str) -> list[datetime]:
+    """Return candle starts from regular open through a HH:MM ET endpoint."""
+
+    minutes = {"M1": 1, "M5": 5, "M15": 15, "M30": 30, "M60": 60}[timeframe]
+    start = datetime.combine(session_date, time(9, 30), tzinfo=MARKET_TZ)
+    hour, minute = [int(part) for part in through.split(":", 1)]
+    end = datetime.combine(session_date, time(hour, minute), tzinfo=MARKET_TZ)
+    values = []
+    current = start
+    while current <= end:
+        values.append(current)
+        current += timedelta(minutes=minutes)
+    return values
+
+
 def write_after_close_supervisor_artifact(logs_dir: Path, moment: datetime) -> None:
     """Write a successful after-close autonomous supervisor status."""
 
@@ -524,6 +561,165 @@ def heartbeat_fixture(status: str, *, component: str = "", reason: str = "") -> 
         ],
         "guardrail": "Status-only production heartbeat. No strategy, gate, or trading behavior changes.",
     }
+
+
+class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
+    """Production market-data freshness and continuity guardrail tests."""
+
+    def inspect_one(self, data_dir: Path, symbol: str, timeframe: str, moment: datetime) -> dict:
+        audit = pd.DataFrame([refresh_audit_row(symbol=symbol, refresh_run_at_et=moment.strftime("%Y-%m-%d %H:%M:%S %Z"))])
+        return inspect_data_freshness_stream(symbol, timeframe, data_dir, moment, audit)
+
+    def test_stale_m1_during_market_hours_fails(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 10, 7, tzinfo=MARKET_TZ)
+            write_test_candles(data_dir, "SPY", "M1", regular_session_starts(moment.date(), "M1", "09:59"))
+            result = self.inspect_one(data_dir, "SPY", "M1", moment)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("Missing", result["explanation"])
+
+    def test_current_m1_during_market_hours_passes(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 10, 7, tzinfo=MARKET_TZ)
+            write_test_candles(data_dir, "SPY", "M1", regular_session_starts(moment.date(), "M1", "10:06"))
+            result = self.inspect_one(data_dir, "SPY", "M1", moment)
+        self.assertEqual(result["status"], "PASS")
+
+    def test_stale_m30_during_market_hours_fails(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 12, 35, tzinfo=MARKET_TZ)
+            write_test_candles(data_dir, "SPY", "M30", regular_session_starts(moment.date(), "M30", "11:30"))
+            result = self.inspect_one(data_dir, "SPY", "M30", moment)
+        self.assertEqual(result["status"], "FAIL")
+
+    def test_after_close_same_session_final_bar_passes(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 17, 0, tzinfo=MARKET_TZ)
+            write_test_candles(data_dir, "SPY", "M30", regular_session_starts(moment.date(), "M30", "15:30"))
+            result = self.inspect_one(data_dir, "SPY", "M30", moment)
+        self.assertEqual(result["status"], "PASS")
+
+    def test_after_close_prior_day_data_fails(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 17, 0, tzinfo=MARKET_TZ)
+            write_test_candles(data_dir, "SPY", "M30", regular_session_starts(date(2026, 8, 11), "M30", "15:30"))
+            result = self.inspect_one(data_dir, "SPY", "M30", moment)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("expected 2026-08-12", result["explanation"])
+
+    def test_premarket_prior_day_history_does_not_count_as_current_session(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 8, 30, tzinfo=MARKET_TZ)
+            write_test_candles(data_dir, "SPY", "M5", regular_session_starts(date(2026, 8, 11), "M5", "15:55"))
+            result = self.inspect_one(data_dir, "SPY", "M5", moment)
+        self.assertEqual(result["status"], "FAIL")
+
+    def test_weekend_uses_most_recent_completed_session(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 15, 12, 0, tzinfo=MARKET_TZ)
+            write_test_candles(data_dir, "SPY", "M30", regular_session_starts(date(2026, 8, 14), "M30", "15:30"))
+            result = self.inspect_one(data_dir, "SPY", "M30", moment)
+        self.assertEqual(result["status"], "PASS")
+
+    def test_duplicate_bars_fail(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 10, 7, tzinfo=MARKET_TZ)
+            starts = regular_session_starts(moment.date(), "M1", "10:06")
+            write_test_candles(data_dir, "SPY", "M1", starts + [starts[-1]])
+            result = self.inspect_one(data_dir, "SPY", "M1", moment)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("Duplicate", result["explanation"])
+
+    def test_out_of_order_bars_fail(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 10, 7, tzinfo=MARKET_TZ)
+            starts = regular_session_starts(moment.date(), "M1", "10:06")
+            write_test_candles(data_dir, "SPY", "M1", starts[:-2] + [starts[-1], starts[-2]])
+            result = self.inspect_one(data_dir, "SPY", "M1", moment)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("out of order", result["explanation"])
+
+    def test_missing_final_provider_bar_is_watch_after_close(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 17, 0, tzinfo=MARKET_TZ)
+            write_test_candles(data_dir, "SPY", "M5", regular_session_starts(moment.date(), "M5", "15:50"))
+            result = self.inspect_one(data_dir, "SPY", "M5", moment)
+        self.assertEqual(result["status"], "WATCH")
+        self.assertTrue(result["provider_final"])
+
+    def test_one_stale_symbol_while_others_healthy_marks_audit_fail(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 17, 0, tzinfo=MARKET_TZ)
+            for symbol in ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]:
+                for timeframe, through in {"M1": "15:59", "M5": "15:55", "M15": "15:45", "M30": "15:30", "M60": "15:00"}.items():
+                    session_date = date(2026, 8, 11) if symbol == "QQQ" and timeframe == "M1" else moment.date()
+                    write_test_candles(data_dir, symbol, timeframe, regular_session_starts(session_date, timeframe, through))
+                write_test_candles(data_dir, symbol, "D", [datetime.combine(moment.date(), time(0, 0), tzinfo=MARKET_TZ)])
+            pd.DataFrame([refresh_audit_row(symbol=symbol, refresh_run_at_et="2026-08-12 16:00:00 EDT") for symbol in ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]]).to_csv(data_dir / "market_refresh_audit.csv", index=False)
+            payload = build_data_freshness_audit(data_dir, moment)
+        self.assertEqual(payload["data_continuity"], "FAIL")
+        self.assertEqual(payload["session_evidence"], "INVALID")
+        self.assertTrue(any(item["symbol"] == "QQQ" and item["timeframe"] == "M1" for item in payload["needs_attention"]))
+
+    def test_heartbeat_propagates_failing_data_freshness_artifact(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs_dir = root / "logs"
+            data_dir = root / "data"
+            logs_dir.mkdir()
+            data_dir.mkdir()
+            moment = datetime(2026, 5, 26, 10, 0, tzinfo=MARKET_TZ)
+            write_healthy_heartbeat_artifacts(logs_dir, data_dir, moment)
+            write_data_freshness_audit(
+                {
+                    "generated_at_et": moment.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                    "data_continuity": "FAIL",
+                    "session_evidence": "INVALID",
+                    "status": "FAIL",
+                    "needs_attention": [{"symbol": "QQQ", "timeframe": "M1", "explanation": "QQQ M1 stale by 7 minutes"}],
+                },
+                logs_dir,
+            )
+            heartbeat = build_production_heartbeat(
+                logs_dir,
+                data_dir=data_dir,
+                moment=moment,
+                launchctl_output="state = not running\nlast exit code = 0\n",
+                **MACOS_NATIVE_RUNTIME,
+            )
+        self.assertEqual(heartbeat["status"], "RED")
+        self.assertEqual(heartbeat["red_component"], "Data freshness")
+        self.assertIn("QQQ M1 stale", heartbeat["red_reason"])
+
+    def test_command_center_system_payload_includes_freshness_matrix(self) -> None:
+        with TemporaryDirectory() as temporary:
+            logs_dir = Path(temporary)
+            payload = {
+                "generated_at_et": "2026-08-12 16:05:00 EDT",
+                "status": "WATCH",
+                "data_continuity": "WATCH",
+                "session_evidence": "PARTIAL",
+                "symbols": ["SPY"],
+                "timeframes": ["M30"],
+                "matrix": {"SPY": {"M30": {"status": "WATCH", "latest_timestamp_et": "2026-08-12 15:30:00 EDT", "expected_latest_timestamp_et": "2026-08-12 15:30:00 EDT", "lag_minutes": 0, "missing_count": 0, "explanation": "Provider-final."}}},
+                "needs_attention": [{"symbol": "SPY", "timeframe": "M30", "status": "WATCH", "explanation": "Provider-final.", "lag_minutes": 0}],
+            }
+            (logs_dir / "data_freshness_audit.json").write_text(json.dumps(payload), encoding="utf-8")
+            system = run_app.founder_system_payload(logs_dir)
+        self.assertIn("data_freshness", system)
+        self.assertEqual(system["data_freshness"]["matrix"]["SPY"]["M30"]["status"], "WATCH")
+        self.assertTrue(any(card["name"] == "Data Freshness" and card["status"] == "WATCH" for card in system["cards"]))
 
 
 class MarketCalendarTests(unittest.TestCase):
@@ -11634,7 +11830,7 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
     def test_founder_command_center_uses_versioned_frontend_asset(self) -> None:
         html = Path("app/index.html").read_text(encoding="utf-8")
 
-        self.assertIn("/app.js?v=20260812-command-center-startup-refresh", html)
+        self.assertIn("/app.js?v=20260812-data-freshness-auditor", html)
 
 
 if __name__ == "__main__":

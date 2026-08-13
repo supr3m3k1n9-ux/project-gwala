@@ -36,6 +36,8 @@ from data.market_data import load_candles_from_csv
 from data.market_data_sources import latest_source_for
 from indicators.session import add_opening_range, add_session_columns
 from indicators.trend import add_core_indicators
+from run_data_freshness_audit import build_audit as build_data_freshness_audit
+from run_data_freshness_audit import write_audit as write_data_freshness_audit
 from execution.paper_trader import (
     PAPER_ORDER_COLUMNS,
     filter_new_orders,
@@ -140,6 +142,7 @@ ALLOWED_REPORTS = {
     "readiness": "readiness_check.md",
     "checkpoint": "paper_validation_checkpoint.md",
     "refresh_status": "refresh_status.md",
+    "data_freshness_audit": "data_freshness_audit.md",
     "provider_stability_audit": "provider_stability_audit.md",
     "provider_acceptance": "provider_acceptance.md",
     "accelerated_paper_validation": "accelerated_paper_validation.md",
@@ -607,8 +610,16 @@ def founder_system_payload(logs_dir: Path | None = None) -> dict:
     """Return infrastructure status from existing authoritative artifacts."""
 
     logs = logs_dir or LOGS_DIR
+    freshness_path = logs / "data_freshness_audit.json"
+    if not freshness_path.exists():
+        try:
+            write_data_freshness_audit(build_data_freshness_audit(RUNTIME_DATA_DIR), logs)
+        except Exception:
+            pass
+    freshness = safe_read_json(logs / "data_freshness_audit.json")
     artifacts = {
         "Production Health": safe_read_json(logs / "production_heartbeat.json"),
+        "Data Freshness": freshness,
         "Host systemd": safe_read_json(logs / "host_systemd_health.json"),
         "Docker": safe_read_json(logs / "host_docker_health.json"),
         "Host Security": safe_read_json(logs / "host_security_health.json"),
@@ -635,6 +646,7 @@ def founder_system_payload(logs_dir: Path | None = None) -> dict:
         )
     return {
         "cards": cards,
+        "data_freshness": freshness if freshness.get("_available") else {},
         "deployment_commit": text_value(safe_read_json(logs / "production_readiness.json").get("commit"), ""),
         "logs_dir": str(logs),
         "runtime_data_dir": str(RUNTIME_DATA_DIR),

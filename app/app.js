@@ -2975,8 +2975,14 @@ function renderCommandCenterValidation(validation) {
 function renderCommandCenterNeedsAttention(payload) {
   const cards = payload.system?.cards || [];
   const attention = cards.filter((card) => card.status !== "PASS" && card.status !== "GREEN" && card.status !== "AVAILABLE");
+  const freshnessItems = payload.system?.data_freshness?.needs_attention || [];
   const funnelIssues = (payload.today?.stages || []).filter((stage) => ["UNAVAILABLE", "PARTIAL", "STALE"].includes(stage.status));
   const items = [
+    ...freshnessItems.map((item) => ({
+      title: `${item.symbol} ${item.timeframe}`,
+      detail: item.explanation || `Lag ${minutesLabel(item.lag_minutes || 0)}.`,
+      status: item.status,
+    })),
     ...attention.map((item) => ({ title: item.name, detail: item.detail, status: item.status })),
     ...funnelIssues.map((item) => ({ title: item.name, detail: "Evidence funnel artifact needs review.", status: item.status })),
   ].slice(0, 8);
@@ -3152,6 +3158,49 @@ function renderCommandCenterSystem(system) {
       `,
     )
     .join("");
+  const freshness = system?.data_freshness || {};
+  const symbols = freshness.symbols || commandCenterMarketSymbols;
+  const timeframes = freshness.timeframes || commandCenterMarketTimeframes;
+  const matrix = freshness.matrix || {};
+  if ($("cc-data-freshness-matrix")) {
+    $("cc-data-freshness-matrix").innerHTML = `
+      <header>
+        <div>
+          <h3>Data Freshness</h3>
+          <p>Continuity ${escapeHtml(freshness.data_continuity || "UNAVAILABLE")} / Session evidence ${escapeHtml(freshness.session_evidence || "UNAVAILABLE")}</p>
+        </div>
+        ${statusBadge(freshness.data_continuity || "UNAVAILABLE")}
+      </header>
+      <div class="cc-freshness-meta">
+        <span>Last successful refresh: ${escapeHtml(freshness.last_successful_refresh || "--")}</span>
+        <span>Last full continuity pass: ${escapeHtml(freshness.last_full_continuity_pass || "--")}</span>
+        <span>Expected session: ${escapeHtml(freshness.expected_session_date || "--")}</span>
+      </div>
+      <div class="cc-freshness-grid" style="--freshness-columns: ${timeframes.length}">
+        <strong></strong>
+        ${timeframes.map((timeframe) => `<strong>${escapeHtml(timeframe)}</strong>`).join("")}
+        ${symbols
+          .map((symbol) => {
+            const cells = timeframes
+              .map((timeframe) => {
+                const cell = matrix?.[symbol]?.[timeframe] || {};
+                const status = cell.status || "UNAVAILABLE";
+                const title = [
+                  `Latest: ${cell.latest_timestamp_et || "--"}`,
+                  `Expected: ${cell.expected_latest_timestamp_et || "--"}`,
+                  `Lag: ${minutesLabel(cell.lag_minutes || 0)}`,
+                  `Missing: ${cell.missing_count ?? "--"}`,
+                  cell.explanation || "",
+                ].join("\\n");
+                return `<span class="cc-freshness-cell ${statusTone(status)}" title="${escapeHtml(title)}">${escapeHtml(status)}</span>`;
+              })
+              .join("");
+            return `<strong>${escapeHtml(symbol)}</strong>${cells}`;
+          })
+          .join("")}
+      </div>
+    `;
+  }
   setText("cc-runtime-paths", `Runtime data: ${system?.runtime_data_dir || "--"} / Logs: ${system?.logs_dir || "--"}`);
 }
 

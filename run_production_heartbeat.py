@@ -31,6 +31,7 @@ LAUNCH_AGENT_LABEL = "com.project-gwala.autonomous-paper"
 SYSTEMD_SERVICE = "project-gwala-autonomous-paper.service"
 SCANNER_TRANSIENT_TOLERANCE_SECONDS = 90
 HOST_SYSTEMD_HEALTH_PATH = Path(os.environ.get("GWALA_HOST_SYSTEMD_HEALTH_JSON", "logs/host_systemd_health.json"))
+DATA_FRESHNESS_AUDIT_PATH = Path("logs/data_freshness_audit.json")
 REQUIRED_SHADOW_ENV = {
     "GWALA_DEPLOYMENT_MODE": "shadow",
     "GWALA_SHADOW_MODE": "true",
@@ -589,6 +590,53 @@ def aggregate_status(checks: list[dict[str, Any]]) -> str:
     return "GREEN"
 
 
+def data_freshness_artifact_check(path: Path) -> dict[str, Any] | None:
+    """Reflect the read-only market-data freshness audit when it exists."""
+
+    if not path.exists():
+        return None
+    payload = read_json_or_empty(path)
+    if not payload:
+        return {
+            "status": "YELLOW",
+            "component": "Data freshness",
+            "reason": "Data freshness audit artifact is unreadable.",
+            "details": str(path),
+        }
+    status = str(payload.get("data_continuity") or payload.get("status") or "").upper()
+    if status == "PASS":
+        return {
+            "status": "GREEN",
+            "component": "Data freshness",
+            "reason": "Market-data freshness and continuity audit passed.",
+            "details": str(path),
+        }
+    if status == "WATCH":
+        attention = payload.get("needs_attention") or []
+        detail = attention[0].get("explanation", "") if attention and isinstance(attention[0], dict) else ""
+        return {
+            "status": "YELLOW",
+            "component": "Data freshness",
+            "reason": detail or "Market-data freshness audit reports WATCH.",
+            "details": str(path),
+        }
+    if status == "FAIL":
+        attention = payload.get("needs_attention") or []
+        detail = attention[0].get("explanation", "") if attention and isinstance(attention[0], dict) else ""
+        return {
+            "status": "RED",
+            "component": "Data freshness",
+            "reason": detail or "Market-data freshness audit reports FAIL.",
+            "details": str(path),
+        }
+    return {
+        "status": "YELLOW",
+        "component": "Data freshness",
+        "reason": "Data freshness audit status is unknown.",
+        "details": str(path),
+    }
+
+
 def build_heartbeat(
     output_dir: Path,
     *,
@@ -660,6 +708,9 @@ def build_heartbeat(
     ]
     if context["phase"] == "after_close":
         checks.append(after_close_supervisor_check(output_dir, expected_session_date))
+    freshness_check = data_freshness_artifact_check(output_dir / "data_freshness_audit.json")
+    if freshness_check is not None:
+        checks.append(freshness_check)
     if system_name == "Linux" and (containerized or str((env or os.environ).get("GWALA_DEPLOYMENT_MODE", "")).lower() == "shadow"):
         checks.append(shadow_safety_check(env))
     status = aggregate_status(checks)
@@ -757,6 +808,11 @@ Experiment Valid Today: {payload["experiment_valid_today"]}
 
 def main() -> None:
     args = parse_args()
+    from run_data_freshness_audit import build_audit as build_data_freshness_audit
+    from run_data_freshness_audit import write_audit as write_data_freshness_audit
+
+    freshness_payload = build_data_freshness_audit(args.data_dir)
+    write_data_freshness_audit(freshness_payload, args.output_dir)
     payload = build_heartbeat(
         args.output_dir,
         data_dir=args.data_dir,
