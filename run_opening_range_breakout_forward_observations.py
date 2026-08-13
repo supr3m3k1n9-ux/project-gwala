@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from config.runtime_paths import runtime_data_path
 from config.symbol_playbook import playbook_symbols
 from run_opening_range_breakout_shadow_samples import SPEC
 from run_research_strategy_sample_lane import run_forward_lane
@@ -18,7 +19,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS, help="Symbols to inspect.")
     parser.add_argument("--data-dir", type=Path, default=Path("logs"), help="Where saved Webull candles live.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
-    parser.add_argument("--observations-csv", type=Path, default=Path("data/opening_range_breakout_forward_observations.csv"))
+    parser.add_argument(
+        "--observations-csv",
+        type=Path,
+        default=runtime_data_path("opening_range_breakout_forward_observations.csv"),
+    )
     parser.add_argument("--entry-timeframe", default="M30")
     parser.add_argument("--exit-timeframe", default="M5")
     parser.add_argument("--target-r-multiple", type=float, default=1.20)

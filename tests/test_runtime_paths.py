@@ -130,11 +130,17 @@ class RuntimePathTests(unittest.TestCase):
             self.assertEqual(orb_audit_csv(), expected)
 
             from run_opening_range_breakout_shadow_samples import parse_args as parse_orb_shadow_args
+            from run_opening_range_breakout_forward_observations import parse_args as parse_orb_forward_args
 
             with patch("sys.argv", ["run_opening_range_breakout_shadow_samples.py"]):
                 self.assertEqual(
                     parse_orb_shadow_args().shadow_csv,
                     Path("/app/runtime_data/opening_range_breakout_shadow_samples.csv"),
+                )
+            with patch("sys.argv", ["run_opening_range_breakout_forward_observations.py"]):
+                self.assertEqual(
+                    parse_orb_forward_args().observations_csv,
+                    Path("/app/runtime_data/opening_range_breakout_forward_observations.csv"),
                 )
 
             with patch(
