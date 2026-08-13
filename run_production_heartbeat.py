@@ -811,7 +811,7 @@ def main() -> None:
     from run_data_freshness_audit import build_audit as build_data_freshness_audit
     from run_data_freshness_audit import write_audit as write_data_freshness_audit
 
-    freshness_payload = build_data_freshness_audit(args.data_dir)
+    freshness_payload = build_data_freshness_audit(args.data_dir, candle_dir=args.output_dir)
     write_data_freshness_audit(freshness_payload, args.output_dir)
     payload = build_heartbeat(
         args.output_dir,

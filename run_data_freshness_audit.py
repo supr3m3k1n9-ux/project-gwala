@@ -32,6 +32,7 @@ PROVIDER_FINAL_TOLERANCE_MINUTES = 5
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit saved market-data freshness and continuity.")
     parser.add_argument("--data-dir", type=Path, default=runtime_data_root(), help="Durable runtime data directory.")
+    parser.add_argument("--candle-dir", type=Path, default=Path("logs"), help="Directory containing saved candle cache files.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Directory for audit artifacts.")
     parser.add_argument("--now", default="", help="Optional ET timestamp for deterministic audits/tests.")
     return parser.parse_args()
@@ -143,13 +144,13 @@ def read_candle_frame(path: Path) -> tuple[pd.DataFrame, str]:
 def inspect_stream(
     symbol: str,
     timeframe: str,
-    data_dir: Path,
+    candle_dir: Path,
     moment: datetime,
     refresh_audit: pd.DataFrame,
 ) -> dict[str, Any]:
     context = session_context(moment)
     expected_date = context["expected_artifact_date"]
-    path = preferred_candle_path(data_dir, symbol, timeframe)
+    path = preferred_candle_path(candle_dir, symbol, timeframe)
     base: dict[str, Any] = {
         "symbol": symbol,
         "timeframe": timeframe,
@@ -247,12 +248,13 @@ def aggregate_streams(streams: list[dict[str, Any]]) -> tuple[str, str]:
     return "PASS", "CLEAN"
 
 
-def build_audit(data_dir: Path, moment: datetime | None = None) -> dict[str, Any]:
+def build_audit(data_dir: Path, moment: datetime | None = None, candle_dir: Path | None = None) -> dict[str, Any]:
     now = (moment or datetime.now(MARKET_TZ)).astimezone(MARKET_TZ)
     context = session_context(now)
     refresh_audit = load_refresh_audit(data_dir)
+    candles = candle_dir or data_dir
     streams = [
-        inspect_stream(symbol, timeframe, data_dir, now, refresh_audit)
+        inspect_stream(symbol, timeframe, candles, now, refresh_audit)
         for symbol in SYMBOLS
         for timeframe in TIMEFRAMES
     ]
@@ -329,7 +331,7 @@ def write_audit(payload: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
 
 def main() -> None:
     args = parse_args()
-    payload = build_audit(args.data_dir, parse_moment(args.now))
+    payload = build_audit(args.data_dir, parse_moment(args.now), candle_dir=args.candle_dir)
     json_path, md_path = write_audit(payload, args.output_dir)
     print(f"DATA CONTINUITY: {payload['data_continuity']}")
     print(f"SESSION EVIDENCE: {payload['session_evidence']}")

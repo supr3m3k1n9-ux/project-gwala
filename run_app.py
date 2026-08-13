@@ -613,7 +613,7 @@ def founder_system_payload(logs_dir: Path | None = None) -> dict:
     freshness_path = logs / "data_freshness_audit.json"
     if not freshness_path.exists():
         try:
-            write_data_freshness_audit(build_data_freshness_audit(RUNTIME_DATA_DIR), logs)
+            write_data_freshness_audit(build_data_freshness_audit(RUNTIME_DATA_DIR, candle_dir=logs), logs)
         except Exception:
             pass
     freshness = safe_read_json(logs / "data_freshness_audit.json")
