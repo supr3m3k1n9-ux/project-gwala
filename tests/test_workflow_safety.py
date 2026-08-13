@@ -607,6 +607,26 @@ class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertTrue(result["exit_management_required"])
 
+    def test_stale_m5_without_open_positions_is_watch_not_exit_critical(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            candle_dir = data_dir / "candles"
+            candle_dir.mkdir()
+            moment = datetime(2026, 8, 12, 12, 35, tzinfo=MARKET_TZ)
+            for symbol in ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]:
+                for timeframe, through in {"M1": "12:33", "M5": "12:00", "M15": "12:15", "M30": "12:00", "M60": "11:30"}.items():
+                    write_test_candles(candle_dir, symbol, timeframe, regular_session_starts(moment.date(), timeframe, through))
+                write_test_candles(candle_dir, symbol, "D", [datetime.combine(date(2026, 8, 11), time(0, 0), tzinfo=MARKET_TZ)])
+            pd.DataFrame([refresh_audit_row(symbol=symbol, refresh_run_at_et="2026-08-12 12:30:00 EDT") for symbol in ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]]).to_csv(data_dir / "market_refresh_audit.csv", index=False)
+
+            payload = build_data_freshness_audit(data_dir, moment, candle_dir=candle_dir)
+
+        self.assertEqual(payload["data_continuity"], "WATCH")
+        self.assertEqual(payload["session_evidence"], "PARTIAL")
+        m5_items = [item for item in payload["needs_attention"] if item["timeframe"] == "M5"]
+        self.assertTrue(m5_items)
+        self.assertFalse(any(item["decision_critical"] for item in m5_items))
+
     def test_regular_session_daily_uses_prior_completed_daily_bar(self) -> None:
         with TemporaryDirectory() as temporary:
             data_dir = Path(temporary)
@@ -4396,6 +4416,7 @@ class MarketCalendarTests(unittest.TestCase):
     def test_host_systemd_health_keeps_scheduled_timers_required(self) -> None:
         required_timers = {
             "project-gwala-autonomous-paper.timer",
+            "project-gwala-market-async-lane.timer",
             "project-gwala-production-alert.timer",
             "project-gwala-opening-executive-report.timer",
             "project-gwala-eod-executive-report.timer",
@@ -7765,7 +7786,7 @@ class PaperGuardrailTests(unittest.TestCase):
         self.assertIn("run_candidate_window_ledger.py", flat)
         self.assertNotIn("run_option_chain_import.py", flat)
         self.assertNotIn("run_options_chain_review.py", flat)
-        self.assertNotIn("run_options_contract_gate.py", flat)
+        self.assertIn("run_options_contract_gate.py", flat)
         self.assertIn("run_opening_range_breakout_shadow_samples.py", flat)
         self.assertIn("run_opening_range_breakout_forward_observations.py", flat)
         self.assertIn("run_opening_range_breakout_paper_watch_gate.py", flat)
@@ -7778,6 +7799,110 @@ class PaperGuardrailTests(unittest.TestCase):
         self.assertNotIn("run_paper_import.py", flat)
         self.assertNotIn("--confirm-samples", flat)
         self.assertNotIn("--confirm-local-paper", flat)
+
+    def test_trading_critical_path_excludes_async_research_and_reporting(self) -> None:
+        with TemporaryDirectory() as temporary:
+            args = argparse.Namespace(
+                output_dir=Path(temporary),
+                data_dir=Path(temporary),
+                symbols=["SPY", "QQQ"],
+                skip_refresh=False,
+                critical_path_only=True,
+                entry_count=1200,
+                exit_count=1200,
+                entry_pages=1,
+                exit_pages=1,
+                chart_m1_count=0,
+                chart_m15_count=0,
+                chart_m60_count=0,
+                chart_d_count=0,
+                pause=5.0,
+                account_size=10_000.0,
+                risk_per_trade_pct=0.005,
+                auto_confirm_paper_exits=True,
+            )
+
+            commands = build_current_candle_capture_commands(args, python="python")
+
+        steps = [step for step, _ in commands]
+        flat = " ".join(" ".join(command) for _, command in commands)
+        self.assertIn("Scanner", steps)
+        self.assertIn("Options Contract Gate", steps)
+        self.assertIn("Validation Import Preview", steps)
+        self.assertNotIn("Daily Ship Report", steps)
+        self.assertNotIn("Opening Range Breakout Shadow Evidence", steps)
+        self.assertNotIn("Dashboard Data Preflight", steps)
+        self.assertNotIn("Data Flow Sentinel", steps)
+        self.assertIn("--chart-m1-count 0", flat)
+
+    def test_invalid_open_validation_rows_do_not_trigger_m5_exit_priority(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "logs"
+            data = root / "data"
+            logs.mkdir()
+            data.mkdir()
+            pd.DataFrame(
+                [
+                    {
+                        "trade_date": "2026-07-14",
+                        "entry_time_et": "15:00",
+                        "exit_time_et": "",
+                        "actual_exit": "",
+                        "invalid_for_validation": "True",
+                    }
+                ]
+            ).to_csv(data / "paper_trades.csv", index=False)
+            args = argparse.Namespace(
+                output_dir=logs,
+                data_dir=data,
+                symbols=["SPY"],
+                skip_refresh=True,
+                critical_path_only=True,
+                account_size=10_000.0,
+                risk_per_trade_pct=0.005,
+                auto_confirm_paper_exits=True,
+            )
+
+            commands = build_current_candle_capture_commands(args, python="python")
+
+        steps = [step for step, _ in commands]
+        self.assertNotIn("Open Paper Monitor", steps[:2])
+
+    def test_valid_open_paper_trade_prioritizes_m5_exit_management(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "logs"
+            data = root / "data"
+            logs.mkdir()
+            data.mkdir()
+            pd.DataFrame(
+                [
+                    {
+                        "trade_date": "2026-08-13",
+                        "entry_time_et": "10:00",
+                        "exit_time_et": "",
+                        "actual_exit": "",
+                        "invalid_for_validation": "",
+                    }
+                ]
+            ).to_csv(data / "paper_trades.csv", index=False)
+            args = argparse.Namespace(
+                output_dir=logs,
+                data_dir=data,
+                symbols=["SPY"],
+                skip_refresh=True,
+                critical_path_only=True,
+                account_size=10_000.0,
+                risk_per_trade_pct=0.005,
+                auto_confirm_paper_exits=True,
+            )
+
+            commands = build_current_candle_capture_commands(args, python="python")
+
+        steps = [step for step, _ in commands]
+        self.assertEqual(steps[:2], ["Open Paper Monitor", "Paper Review"])
+        self.assertLess(steps.index("Open Paper Monitor"), steps.index("Scanner"))
 
     def test_current_candle_capture_writes_artifact_when_late_step_fails(self) -> None:
         with TemporaryDirectory() as tmp:

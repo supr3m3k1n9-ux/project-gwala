@@ -19,10 +19,12 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 import pandas as pd
 
 from config.market_calendar import MARKET_TZ
+from config.runtime_paths import runtime_data_root
 from config.symbol_playbook import playbook_symbols
 from run_playbook import markdown_table
 
@@ -39,13 +41,26 @@ class StepResult:
     status: str
     command: str
     output: str
+    started_at_et: str = ""
+    completed_at_et: str = ""
+    duration_seconds: float = 0.0
+    decision_critical: bool = False
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the fast current-candle capture pass.")
     parser.add_argument("--output-dir", type=Path, default=Path("logs"), help="Where reports are saved.")
+    parser.add_argument("--data-dir", type=Path, default=runtime_data_root(), help="Durable runtime data directory.")
     parser.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS, help="Symbols to refresh and scan.")
     parser.add_argument("--skip-refresh", action="store_true", help="Use existing candle CSVs instead of refreshing.")
+    parser.add_argument(
+        "--critical-path-only",
+        action="store_true",
+        help="Run only trading decision-critical refresh, gate, and lifecycle work.",
+    )
+    parser.add_argument("--workflow-run-id", default="", help="Optional stable cycle id for timing/audit correlation.")
+    parser.add_argument("--entry-budget-seconds", type=float, default=240.0, help="Entry critical-path timing budget.")
+    parser.add_argument("--exit-budget-seconds", type=float, default=120.0, help="Exit management timing budget.")
     parser.add_argument("--entry-count", type=int, default=1200, help="30m candles per Webull page.")
     parser.add_argument("--exit-count", type=int, default=1200, help="5m candles per Webull page.")
     parser.add_argument("--entry-pages", type=int, default=1, help="30m history pages for refresh.")
@@ -69,6 +84,30 @@ def normalized_symbols(symbols: list[str]) -> list[str]:
     """Return stable uppercase symbols."""
 
     return [symbol.upper() for symbol in symbols]
+
+
+def truthy(value: object) -> bool:
+    """Return True for common truthy CSV values."""
+
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y"}
+
+
+def legitimate_open_paper_positions(data_dir: Path) -> pd.DataFrame:
+    """Return valid runtime paper positions that still require lifecycle management."""
+
+    path = data_dir / "paper_trades.csv"
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        rows = pd.read_csv(path, dtype=str).fillna("")
+    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        return pd.DataFrame()
+    if rows.empty:
+        return rows
+    invalid = rows.get("invalid_for_validation", pd.Series([""] * len(rows))).map(truthy)
+    exit_time = rows.get("exit_time_et", pd.Series([""] * len(rows))).astype(str).str.strip()
+    actual_exit = rows.get("actual_exit", pd.Series([""] * len(rows))).astype(str).str.strip()
+    return rows[(~invalid) & exit_time.eq("") & actual_exit.eq("")].copy()
 
 
 def refresh_commands(args: argparse.Namespace, python: str) -> list[tuple[str, list[str]]]:
@@ -195,8 +234,23 @@ def gate_commands(args: argparse.Namespace, python: str) -> list[tuple[str, list
                 str(args.account_size),
             ],
         ),
+        ("Options Contract Gate", [python, "run_options_contract_gate.py", "--output-dir", str(args.output_dir)]),
         ("Candidate-Window Ledger + Event Dispatch", [python, "run_candidate_window_ledger.py", "--output-dir", str(args.output_dir)]),
         ("Validation Import Preview", [python, "run_paper_validation_sample_import.py", "--output-dir", str(args.output_dir)]),
+    ]
+    critical_path_only = bool(getattr(args, "critical_path_only", False))
+    data_dir = getattr(args, "data_dir", runtime_data_root())
+    active_open_positions = not legitimate_open_paper_positions(data_dir).empty
+    if critical_path_only and args.auto_confirm_paper_exits and active_open_positions:
+        commands = [
+            ("Open Paper Monitor", [python, "run_open_paper_monitor.py", "--output-dir", str(args.output_dir), "--confirm-updates"]),
+            ("Paper Review", [python, "run_paper_review.py", "--output-dir", str(args.output_dir)]),
+            *commands,
+        ]
+    if critical_path_only:
+        return commands
+    commands.extend(
+        [
         ("Daily Ship Report", [python, "run_daily_ship_report.py", "--output-dir", str(args.output_dir)]),
         ("Filter Rejection Report", [python, "run_filter_rejection_report.py", "--output-dir", str(args.output_dir)]),
         ("Historical Bucket Sync", [python, "run_historical_bucket_sync.py", "--output-dir", str(args.output_dir)]),
@@ -236,7 +290,8 @@ def gate_commands(args: argparse.Namespace, python: str) -> list[tuple[str, list
             "Morning Index ORB Manual Paper-Watch",
             [python, "run_morning_index_orb_manual_paper_watch.py", "--output-dir", str(args.output_dir)],
         ),
-    ]
+        ]
+    )
     if args.auto_confirm_paper_exits:
         commands.append(
             (
@@ -435,18 +490,57 @@ def capture_count_summary(output_dir: Path) -> dict[str, object]:
     }
 
 
-def failed_step_result(step: str, command: list[str], error: subprocess.CalledProcessError) -> StepResult:
+DECISION_CRITICAL_STEPS = {
+    "Refresh Webull best/market setups",
+    "Reuse Webull candles for Setup B",
+    "Reuse Webull candles for full-session setups",
+    "Repair M30 from lower timeframe",
+    "Record refresh audit",
+    "Scanner",
+    "Open Paper Monitor",
+    "Paper Review",
+    "Position Sizing",
+    "Market Regime Router",
+    "Pre-Entry Review",
+    "Paper Entry Packet",
+    "Paper Gate v2",
+    "Options Contract Gate",
+    "Candidate-Window Ledger + Event Dispatch",
+    "Validation Import Preview",
+}
+
+
+def failed_step_result(
+    step: str,
+    command: list[str],
+    error: subprocess.CalledProcessError,
+    *,
+    started_at_et: str = "",
+    completed_at_et: str = "",
+    duration_seconds: float = 0.0,
+) -> StepResult:
     """Return a bounded failed step result for the capture report."""
 
     output = "\n".join(part.strip() for part in [error.stdout, error.stderr] if part and str(part).strip())
     if not output:
         output = f"Command exited with status {error.returncode}."
-    return StepResult(step=step, status=f"failed:{error.returncode}", command=" ".join(command), output=output[-8000:])
+    return StepResult(
+        step=step,
+        status=f"failed:{error.returncode}",
+        command=" ".join(command),
+        output=output[-8000:],
+        started_at_et=started_at_et,
+        completed_at_et=completed_at_et,
+        duration_seconds=round(duration_seconds, 3),
+        decision_critical=step in DECISION_CRITICAL_STEPS,
+    )
 
 
 def run_step(step: str, command: list[str]) -> StepResult:
     """Run one local capture command."""
 
+    started = datetime.now(MARKET_TZ)
+    monotonic_start = time.monotonic()
     completed = subprocess.run(
         command,
         cwd=PROJECT_DIR,
@@ -455,8 +549,60 @@ def run_step(step: str, command: list[str]) -> StepResult:
         text=True,
         timeout=900,
     )
+    finished = datetime.now(MARKET_TZ)
     output = "\n".join(part.strip() for part in [completed.stdout, completed.stderr] if part.strip())
-    return StepResult(step=step, status="ok", command=" ".join(command), output=output)
+    return StepResult(
+        step=step,
+        status="ok",
+        command=" ".join(command),
+        output=output,
+        started_at_et=started.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        completed_at_et=finished.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        duration_seconds=round(time.monotonic() - monotonic_start, 3),
+        decision_critical=step in DECISION_CRITICAL_STEPS,
+    )
+
+
+def timing_summary(results: list[StepResult], args: argparse.Namespace) -> dict[str, object]:
+    """Return explicit latency budget status for the trading decision path."""
+
+    critical = [result for result in results if result.decision_critical]
+    entry_steps = [
+        result
+        for result in critical
+        if result.step not in {"Open Paper Monitor", "Paper Review"}
+    ]
+    exit_steps = [
+        result
+        for result in critical
+        if result.step in {"Open Paper Monitor", "Paper Review"}
+    ]
+    entry_total = round(sum(result.duration_seconds for result in entry_steps), 3)
+    exit_total = round(sum(result.duration_seconds for result in exit_steps), 3)
+    entry_budget = float(getattr(args, "entry_budget_seconds", 240.0))
+    exit_budget = float(getattr(args, "exit_budget_seconds", 120.0))
+    entry_margin = round(entry_budget - entry_total, 3)
+    exit_margin = round(exit_budget - exit_total, 3)
+    active_positions = int(len(legitimate_open_paper_positions(getattr(args, "data_dir", runtime_data_root()))))
+    deadline_misses = []
+    if entry_margin < 0:
+        deadline_misses.append("ENTRY_DECISION_LATE")
+    if active_positions and exit_margin < 0:
+        deadline_misses.append("EXIT_MANAGEMENT_LATE")
+    return {
+        "entry_critical_path_seconds": entry_total,
+        "entry_budget_seconds": entry_budget,
+        "entry_timing_margin_seconds": entry_margin,
+        "entry_timing_status": "FAIL" if entry_margin < 0 else "PASS",
+        "exit_critical_path_seconds": exit_total,
+        "exit_budget_seconds": exit_budget,
+        "exit_timing_margin_seconds": exit_margin,
+        "exit_timing_status": "FAIL" if active_positions and exit_margin < 0 else "PASS",
+        "legitimate_open_positions": active_positions,
+        "deadline_misses": deadline_misses,
+        "p95_latency_seconds": "",
+        "p95_note": "Insufficient post-refactor samples for P95.",
+    }
 
 
 def write_report(output_dir: Path, results: list[StepResult], payload: dict[str, object], args: argparse.Namespace) -> Path:
@@ -466,11 +612,15 @@ def write_report(output_dir: Path, results: list[StepResult], payload: dict[str,
     generated_at = datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
     json_payload = {
         "generated_at_et": generated_at,
+        "workflow_run_id": args.workflow_run_id or f"critical-{datetime.now(MARKET_TZ).strftime('%Y%m%dT%H%M%S')}",
         "symbols": normalized_symbols(args.symbols),
         "refresh_ran": not args.skip_refresh,
+        "critical_path_only": bool(getattr(args, "critical_path_only", False)),
         "auto_confirm_paper_exits": bool(args.auto_confirm_paper_exits),
+        "legitimate_open_positions": int(len(legitimate_open_paper_positions(getattr(args, "data_dir", runtime_data_root())))),
         "capture_status": "failed" if any(result.status.startswith("failed") for result in results) else "ok",
         "failed_step": next((result.step for result in results if result.status.startswith("failed")), ""),
+        "timing": timing_summary(results, args),
         **payload,
         "guardrail": (
             "A/current + B/grace capture is local paper-validation only. It never places broker orders, "
@@ -479,7 +629,18 @@ def write_report(output_dir: Path, results: list[StepResult], payload: dict[str,
     }
     (output_dir / "current_candle_capture.json").write_text(json.dumps(json_payload, indent=2), encoding="utf-8")
 
-    steps = pd.DataFrame([{"step": result.step, "status": result.status, "command": result.command} for result in results])
+    steps = pd.DataFrame(
+        [
+            {
+                "step": result.step,
+                "status": result.status,
+                "duration_seconds": result.duration_seconds,
+                "decision_critical": result.decision_critical,
+                "command": result.command,
+            }
+            for result in results
+        ]
+    )
     counts = pd.DataFrame(
         [
             {"stage": "Scanner rows", "count": payload["scanner_rows"]},

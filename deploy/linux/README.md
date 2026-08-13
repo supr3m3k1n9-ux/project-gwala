@@ -24,7 +24,9 @@ shadow mode. It does not replace or disable the current macOS LaunchAgents.
 The Linux services and timers mirror the current macOS production roles:
 
 - Dashboard runs as an always-on systemd service.
-- Autonomous paper workflow runs each scheduled market-cycle decision with `--once`.
+- The trading critical path runs each scheduled market-cycle decision.
+- The async market lane runs chart/context, research, dashboard, and diagnostic
+  work separately so it cannot block entry/exit decisions.
 - Production alert checks run on the offset alert cadence.
 - Opening Executive Report runs at `06:20`.
 - EOD Executive Report checks run at `13:05`, `13:10`, `13:15`, `13:20`, and `13:30`.
@@ -66,6 +68,7 @@ Only after preflight passes:
 ```bash
 sudo systemctl enable --now project-gwala-dashboard.service
 sudo systemctl enable --now project-gwala-autonomous-paper.timer
+sudo systemctl enable --now project-gwala-market-async-lane.timer
 sudo systemctl enable --now project-gwala-production-alert.timer
 sudo systemctl enable --now project-gwala-opening-executive-report.timer
 sudo systemctl enable --now project-gwala-eod-executive-report.timer
@@ -76,7 +79,8 @@ sudo systemctl enable --now project-gwala-eod-executive-report.timer
 ```bash
 cd /srv/projects/gwala/app
 .venv-webull/bin/python run_app.py --host 127.0.0.1 --port 8765
-.venv-webull/bin/python run_autonomous_paper_workflow.py --interval-minutes 5 --auto-confirm-paper-exits --once
+.venv-webull/bin/python run_trading_critical_path.py --interval-minutes 5 --auto-confirm-paper-exits
+.venv-webull/bin/python run_market_async_lane.py --output-dir logs
 .venv-webull/bin/python run_production_alert.py --output-dir logs --data-dir "${GWALA_DATA_DIR:-data}" --interval-minutes 5 --cooldown-minutes 30 --recheck-seconds 25 --outage-threshold-minutes 5 --down-confirmation-failures 2
 .venv-webull/bin/python run_executive_report.py --report-type opening --output-dir logs --data-dir "${GWALA_DATA_DIR:-data}" --reports-dir logs/executive_reports --deliver
 .venv-webull/bin/python run_executive_report.py --report-type eod --output-dir logs --data-dir "${GWALA_DATA_DIR:-data}" --reports-dir logs/executive_reports --deliver

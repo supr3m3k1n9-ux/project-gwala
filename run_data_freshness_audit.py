@@ -189,6 +189,30 @@ def refresh_status_for(audit: pd.DataFrame, symbol: str, timeframe: str) -> dict
     return {"status": status, "detail": detail}
 
 
+def truthy(value: object) -> bool:
+    """Return True for common truthy CSV values."""
+
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y"}
+
+
+def has_legitimate_open_paper_positions(data_dir: Path) -> bool:
+    """Return whether M5 exit management has live paper work to perform."""
+
+    path = data_dir / "paper_trades.csv"
+    if not path.exists():
+        return False
+    try:
+        frame = pd.read_csv(path, dtype=str).fillna("")
+    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        return False
+    if frame.empty:
+        return False
+    invalid = frame.get("invalid_for_validation", pd.Series([""] * len(frame))).map(truthy)
+    exit_time = frame.get("exit_time_et", pd.Series([""] * len(frame))).astype(str).str.strip()
+    actual_exit = frame.get("actual_exit", pd.Series([""] * len(frame))).astype(str).str.strip()
+    return bool(((~invalid) & exit_time.eq("") & actual_exit.eq("")).any())
+
+
 def read_candle_frame(path: Path) -> tuple[pd.DataFrame, str]:
     if not path.exists():
         return pd.DataFrame(), "missing"
@@ -207,11 +231,17 @@ def inspect_stream(
     candle_dir: Path,
     moment: datetime,
     refresh_audit: pd.DataFrame,
+    *,
+    m5_exit_management_active: bool = True,
 ) -> dict[str, Any]:
     context = session_context(moment)
     expected_date = context["expected_artifact_date"]
     path = preferred_candle_path(candle_dir, symbol, timeframe)
-    dependency = TIMEFRAME_DEPENDENCIES[timeframe]
+    dependency = dict(TIMEFRAME_DEPENDENCIES[timeframe])
+    if timeframe == "M5" and not m5_exit_management_active:
+        dependency["decision_critical"] = False
+        dependency["production_role"] = "exit_management_standby"
+        dependency["component"] = "paper lifecycle exit management standby"
     base: dict[str, Any] = {
         "symbol": symbol,
         "timeframe": timeframe,
@@ -346,7 +376,14 @@ def build_audit(data_dir: Path, moment: datetime | None = None, candle_dir: Path
     refresh_audit = load_refresh_audit(data_dir)
     candles = candle_dir or data_dir
     streams = [
-        inspect_stream(symbol, timeframe, candles, now, refresh_audit)
+        inspect_stream(
+            symbol,
+            timeframe,
+            candles,
+            now,
+            refresh_audit,
+            m5_exit_management_active=has_legitimate_open_paper_positions(data_dir),
+        )
         for symbol in SYMBOLS
         for timeframe in TIMEFRAMES
     ]

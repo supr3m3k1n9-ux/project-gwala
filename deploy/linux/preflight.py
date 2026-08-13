@@ -32,6 +32,8 @@ UNIT_FILES = [
     "project-gwala-dashboard.service",
     "project-gwala-autonomous-paper.service",
     "project-gwala-autonomous-paper.timer",
+    "project-gwala-market-async-lane.service",
+    "project-gwala-market-async-lane.timer",
     "project-gwala-production-alert.service",
     "project-gwala-production-alert.timer",
     "project-gwala-opening-executive-report.service",

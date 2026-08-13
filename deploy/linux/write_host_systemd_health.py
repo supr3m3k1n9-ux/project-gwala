@@ -22,6 +22,8 @@ DEFAULT_UNITS = [
     "project-gwala-dashboard.service",
     "project-gwala-autonomous-paper.service",
     "project-gwala-autonomous-paper.timer",
+    "project-gwala-market-async-lane.service",
+    "project-gwala-market-async-lane.timer",
     "project-gwala-production-alert.service",
     "project-gwala-production-alert.timer",
     "project-gwala-opening-executive-report.service",
@@ -32,6 +34,7 @@ DEFAULT_UNITS = [
 ALWAYS_ON_SERVICES = {"project-gwala-dashboard.service"}
 ONESHOT_SERVICES = {
     "project-gwala-autonomous-paper.service",
+    "project-gwala-market-async-lane.service",
     "project-gwala-production-alert.service",
     "project-gwala-opening-executive-report.service",
     "project-gwala-eod-executive-report.service",

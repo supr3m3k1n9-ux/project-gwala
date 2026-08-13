@@ -186,6 +186,11 @@ def parse_args() -> argparse.Namespace:
         help="Skip Webull downloads and reuse existing logs/webull_SYMBOL_M30/M5 CSV files.",
     )
     parser.add_argument(
+        "--chart-only",
+        action="store_true",
+        help="Fetch chart/context-only M1/M15/M60/D candles and skip strategy backtests.",
+    )
+    parser.add_argument(
         "--candidate-preset",
         choices=sorted(CANDIDATE_PRESETS),
         help="Use a curated set of variant/exit combinations, such as 'best'.",
@@ -784,6 +789,14 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     data_client = None if args.reuse_csv else build_data_client()
+    if args.chart_only:
+        if args.reuse_csv:
+            print("Chart-only refresh skipped because --reuse-csv was supplied.")
+            return
+        for symbol in [item.upper() for item in args.symbols]:
+            fetch_chart_only_timeframes(data_client, symbol, args, output_dir)
+        print("Chart-only Webull refresh complete.")
+        return
     results = []
     candidate_pairs = None
     if args.candidate_preset:

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Project Gwala async market lane in shadow mode
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 07..12:04,19,34,49:00
+Unit=project-gwala-market-async-lane.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

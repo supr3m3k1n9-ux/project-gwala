@@ -1,9 +1,9 @@
 [Unit]
-Description=Project Gwala autonomous paper workflow - Docker shadow
+Description=Project Gwala trading critical path - Docker shadow
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/srv/projects/gwala/run_in_docker.sh python run_autonomous_paper_workflow.py --interval-minutes 5 --auto-confirm-paper-exits --once
+ExecStart=/srv/projects/gwala/run_in_docker.sh python run_trading_critical_path.py --interval-minutes 5 --auto-confirm-paper-exits

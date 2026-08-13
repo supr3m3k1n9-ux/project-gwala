@@ -1,0 +1,9 @@
+[Unit]
+Description=Project Gwala async market lane - Docker shadow
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/projects/gwala/run_in_docker.sh python run_market_async_lane.py --output-dir logs
