@@ -359,15 +359,30 @@ def inspect_stream(
     return base
 
 
-def aggregate_streams(streams: list[dict[str, Any]]) -> tuple[str, str]:
+def aggregate_streams(streams: list[dict[str, Any]]) -> tuple[str, str, str, str]:
     critical_statuses = {stream["status"] for stream in streams if stream.get("decision_critical")}
+    supporting_statuses = {stream["status"] for stream in streams if not stream.get("decision_critical")}
     all_statuses = {stream["status"] for stream in streams}
     raw_statuses = {stream.get("freshness_status", stream["status"]) for stream in streams}
     if "FAIL" in critical_statuses:
-        return "FAIL", "INVALID"
-    if "FAIL" in raw_statuses or "WATCH" in all_statuses:
-        return "WATCH", "PARTIAL"
-    return "PASS", "CLEAN"
+        trading_readiness = "FAIL"
+        session_evidence = "INVALID"
+    else:
+        trading_readiness = "PASS"
+        session_evidence = "CLEAN"
+    if "FAIL" in supporting_statuses:
+        supporting_quality = "WATCH"
+    elif "WATCH" in supporting_statuses:
+        supporting_quality = "WATCH"
+    else:
+        supporting_quality = "PASS"
+    if trading_readiness == "FAIL":
+        data_continuity = "FAIL"
+    elif "FAIL" in raw_statuses or "WATCH" in all_statuses:
+        data_continuity = "WATCH"
+    else:
+        data_continuity = "PASS"
+    return data_continuity, session_evidence, trading_readiness, supporting_quality
 
 
 def build_audit(data_dir: Path, moment: datetime | None = None, candle_dir: Path | None = None) -> dict[str, Any]:
@@ -387,13 +402,15 @@ def build_audit(data_dir: Path, moment: datetime | None = None, candle_dir: Path
         for symbol in SYMBOLS
         for timeframe in TIMEFRAMES
     ]
-    continuity, evidence = aggregate_streams(streams)
+    continuity, evidence, trading_readiness, supporting_quality = aggregate_streams(streams)
     non_green = [stream for stream in streams if stream["status"] != "PASS"]
     raw_non_green = [stream for stream in streams if stream.get("freshness_status", stream["status"]) != "PASS"]
     return {
         "generated_at_et": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
         "status": continuity,
         "data_continuity": continuity,
+        "trading_evidence_readiness": trading_readiness,
+        "supporting_data_quality": supporting_quality,
         "session_evidence": evidence,
         "market_phase": context["phase"],
         "expected_session_date": str(context["expected_artifact_date"]),

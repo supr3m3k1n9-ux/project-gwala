@@ -370,6 +370,12 @@ result_dir = Path(sys.argv[2])
 commit = sys.argv[3]
 
 rows = list(csv.DictReader(checks_path.open(newline=""), delimiter="\t"))
+logs_dir = result_dir.parent.parent
+freshness_payload = {}
+try:
+    freshness_payload = json.loads((logs_dir / "data_freshness_audit.json").read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    freshness_payload = {}
 areas = {
     "Trading Critical Path": ["Open-position M5 fixtures"],
     "Entry Timing Margin": ["Open-position M5 fixtures"],
@@ -412,6 +418,16 @@ payload = {
     "status": "PASS" if ready else ("FAIL" if any(v == "FAIL" for v in scoreboard.values()) else "WATCH"),
     "scoreboard": scoreboard,
     "ready_for_clean_session": ready,
+    "trading_evidence_readiness": freshness_payload.get("trading_evidence_readiness", "UNKNOWN"),
+    "supporting_data_quality": freshness_payload.get("supporting_data_quality", "UNKNOWN"),
+    "m1_data_quality": next(
+        (
+            stream.get("status", "UNKNOWN")
+            for stream in freshness_payload.get("streams", [])
+            if isinstance(stream, dict) and stream.get("timeframe") == "M1" and stream.get("status") != "PASS"
+        ),
+        "PASS",
+    ),
     "roy_action_required": not ready,
     "known_risks": known_risks,
     "checks": rows,
@@ -437,6 +453,9 @@ lines.extend(
     [
         "",
         f"READY FOR CLEAN SESSION: {'YES' if ready else 'NO'}",
+        f"TRADING / EVIDENCE READINESS: {payload['trading_evidence_readiness']}",
+        f"SUPPORTING DATA QUALITY: {payload['supporting_data_quality']}",
+        f"M1 DATA QUALITY: {payload['m1_data_quality']}",
         f"ROY ACTION REQUIRED: {'YES' if not ready else 'NO'}",
         "",
         "## Known Risks",

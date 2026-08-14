@@ -614,6 +614,28 @@ def data_freshness_artifact_check(path: Path, *, moment: datetime | None = None,
             "details": str(path),
         }
     status = str(payload.get("data_continuity") or payload.get("status") or "").upper()
+    trading_readiness = str(payload.get("trading_evidence_readiness") or "").upper()
+    supporting_quality = str(payload.get("supporting_data_quality") or "").upper()
+    if trading_readiness == "PASS":
+        attention = payload.get("needs_attention") or []
+        detail = attention[0].get("explanation", "") if attention and isinstance(attention[0], dict) else ""
+        if supporting_quality == "WATCH" or status == "WATCH":
+            return {
+                "status": "GREEN",
+                "component": "Data freshness",
+                "reason": detail or "Trading/evidence-critical market data is ready; supporting data quality is WATCH.",
+                "details": str(path),
+                "trading_evidence_readiness": trading_readiness,
+                "supporting_data_quality": supporting_quality or status,
+            }
+        return {
+            "status": "GREEN",
+            "component": "Data freshness",
+            "reason": "Trading/evidence-critical market data is ready.",
+            "details": str(path),
+            "trading_evidence_readiness": trading_readiness,
+            "supporting_data_quality": supporting_quality or status,
+        }
     if status == "PASS":
         return {
             "status": "GREEN",

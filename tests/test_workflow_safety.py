@@ -33,6 +33,7 @@ from reports.system_state import (
 )
 import run_app
 import run_current_candle_capture
+import run_data_freshness_audit
 import run_webull_watchlist
 from run_autonomous_paper_workflow import choose_action, commands_for_action, sleep_after_action, write_current_status_only
 from run_autonomous_a_tier_lifecycle import build_lifecycle as build_autonomous_a_tier_lifecycle
@@ -623,7 +624,9 @@ class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
             payload = build_data_freshness_audit(data_dir, moment, candle_dir=candle_dir)
 
         self.assertEqual(payload["data_continuity"], "WATCH")
-        self.assertEqual(payload["session_evidence"], "PARTIAL")
+        self.assertEqual(payload["session_evidence"], "CLEAN")
+        self.assertEqual(payload["trading_evidence_readiness"], "PASS")
+        self.assertEqual(payload["supporting_data_quality"], "WATCH")
         m5_items = [item for item in payload["needs_attention"] if item["timeframe"] == "M5"]
         self.assertTrue(m5_items)
         self.assertFalse(any(item["decision_critical"] for item in m5_items))
@@ -712,8 +715,24 @@ class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
             pd.DataFrame([refresh_audit_row(symbol=symbol, refresh_run_at_et="2026-08-12 16:00:00 EDT") for symbol in ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]]).to_csv(data_dir / "market_refresh_audit.csv", index=False)
             payload = build_data_freshness_audit(data_dir, moment)
         self.assertEqual(payload["data_continuity"], "WATCH")
-        self.assertEqual(payload["session_evidence"], "PARTIAL")
+        self.assertEqual(payload["session_evidence"], "CLEAN")
+        self.assertEqual(payload["trading_evidence_readiness"], "PASS")
+        self.assertEqual(payload["supporting_data_quality"], "WATCH")
         self.assertTrue(any(item["symbol"] == "QQQ" and item["timeframe"] == "M1" for item in payload["needs_attention"]))
+
+    def test_m1_becomes_decision_critical_if_dependency_map_requires_it(self) -> None:
+        dependency = dict(run_data_freshness_audit.TIMEFRAME_DEPENDENCIES["M1"])
+        dependency.update({"decision_critical": True, "entry_decision": True, "production_role": "entry_decision"})
+        with TemporaryDirectory() as temporary, patch.dict(
+            run_data_freshness_audit.TIMEFRAME_DEPENDENCIES,
+            {"M1": dependency},
+        ):
+            data_dir = Path(temporary)
+            moment = datetime(2026, 8, 12, 12, 35, tzinfo=MARKET_TZ)
+            write_test_candles(data_dir, "SPY", "M1", regular_session_starts(moment.date(), "M1", "12:00"))
+            result = self.inspect_one(data_dir, "SPY", "M1", moment)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertTrue(result["decision_critical"])
 
     def test_m30_failure_still_invalidates_session_evidence(self) -> None:
         with TemporaryDirectory() as temporary:
@@ -729,9 +748,52 @@ class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
             payload = build_data_freshness_audit(data_dir, moment)
         self.assertEqual(payload["data_continuity"], "FAIL")
         self.assertEqual(payload["session_evidence"], "INVALID")
+        self.assertEqual(payload["trading_evidence_readiness"], "FAIL")
         self.assertTrue(any(item["symbol"] == "QQQ" and item["timeframe"] == "M30" for item in payload["needs_attention"]))
 
-    def test_heartbeat_propagates_failing_data_freshness_artifact(self) -> None:
+    def test_heartbeat_keeps_non_decision_m1_watch_visible_without_blocking_readiness(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs_dir = root / "logs"
+            data_dir = root / "data"
+            logs_dir.mkdir()
+            data_dir.mkdir()
+            moment = datetime(2026, 5, 26, 10, 0, tzinfo=MARKET_TZ)
+            write_healthy_heartbeat_artifacts(logs_dir, data_dir, moment)
+            write_data_freshness_audit(
+                {
+                    "generated_at_et": moment.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                    "data_continuity": "WATCH",
+                    "trading_evidence_readiness": "PASS",
+                    "supporting_data_quality": "WATCH",
+                    "session_evidence": "CLEAN",
+                    "status": "WATCH",
+                    "needs_attention": [
+                        {
+                            "symbol": "QQQ",
+                            "timeframe": "M1",
+                            "status": "WATCH",
+                            "decision_critical": False,
+                            "explanation": "QQQ M1 stale by 7 minutes",
+                        }
+                    ],
+                },
+                logs_dir,
+            )
+            heartbeat = build_production_heartbeat(
+                logs_dir,
+                data_dir=data_dir,
+                moment=moment,
+                launchctl_output="state = not running\nlast exit code = 0\n",
+                **MACOS_NATIVE_RUNTIME,
+            )
+        self.assertEqual(heartbeat["status"], "GREEN")
+        freshness = next(check for check in heartbeat["checks"] if check["component"] == "Data freshness")
+        self.assertEqual(freshness["status"], "GREEN")
+        self.assertEqual(freshness["supporting_data_quality"], "WATCH")
+        self.assertIn("QQQ M1 stale", freshness["reason"])
+
+    def test_heartbeat_propagates_decision_critical_data_freshness_failure(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
             logs_dir = root / "logs"
@@ -744,9 +806,19 @@ class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
                 {
                     "generated_at_et": moment.strftime("%Y-%m-%d %H:%M:%S %Z"),
                     "data_continuity": "FAIL",
+                    "trading_evidence_readiness": "FAIL",
+                    "supporting_data_quality": "PASS",
                     "session_evidence": "INVALID",
                     "status": "FAIL",
-                    "needs_attention": [{"symbol": "QQQ", "timeframe": "M1", "explanation": "QQQ M1 stale by 7 minutes"}],
+                    "needs_attention": [
+                        {
+                            "symbol": "QQQ",
+                            "timeframe": "M30",
+                            "status": "FAIL",
+                            "decision_critical": True,
+                            "explanation": "QQQ M30 stale by 30 minutes",
+                        }
+                    ],
                 },
                 logs_dir,
             )
@@ -759,7 +831,7 @@ class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
             )
         self.assertEqual(heartbeat["status"], "RED")
         self.assertEqual(heartbeat["red_component"], "Data freshness")
-        self.assertIn("QQQ M1 stale", heartbeat["red_reason"])
+        self.assertIn("QQQ M30 stale", heartbeat["red_reason"])
 
     def test_heartbeat_treats_stale_data_freshness_artifact_as_watch(self) -> None:
         with TemporaryDirectory() as temporary:

@@ -80,6 +80,15 @@ class PreSessionAcceptanceRunnerTests(unittest.TestCase):
         self.assertIn("TIMEOUT after ${duration}s; impact: acceptance cannot prove clean-session readiness", text)
         self.assertIn("TIMEOUT: whole-run timeout reached before check could start", text)
 
+    def test_runner_reports_trading_readiness_separately_from_supporting_data_quality(self) -> None:
+        text = self.runner_text()
+
+        self.assertIn("trading_evidence_readiness", text)
+        self.assertIn("supporting_data_quality", text)
+        self.assertIn("m1_data_quality", text)
+        self.assertIn("SUPPORTING DATA QUALITY", text)
+        self.assertIn("M1 DATA QUALITY", text)
+
     def test_runner_cleans_only_transient_compose_run_containers(self) -> None:
         text = self.runner_text()
 
