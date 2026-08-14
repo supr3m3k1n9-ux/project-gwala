@@ -43,6 +43,7 @@ RUN_STARTED_EPOCH="$(date +%s)"
 FINALIZED=0
 
 mkdir -p "$RESULT_DIR"
+chown 1000:1000 "$RESULT_DIR"
 printf 'area\tstatus\tduration_seconds\treason\n' > "$CHECKS_TSV"
 : > "$STDOUT_LOG"
 

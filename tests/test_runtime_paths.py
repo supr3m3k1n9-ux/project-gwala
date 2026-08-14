@@ -155,7 +155,7 @@ class RuntimePathTests(unittest.TestCase):
                 status = build_refresh_status(audit_csv=None)
             self.assertIn("paper_import_blocked", status)
 
-            payload = build_provider_stability_audit(audit_csv=None, symbols=[])
+            payload = build_provider_stability_audit(audit_csv=Path("/tmp/gwala_missing_refresh_audit.csv"), symbols=[])
             self.assertEqual(payload["status"], "not_recorded")
 
     def test_repository_compose_mounts_runtime_data_not_source_package(self) -> None:
