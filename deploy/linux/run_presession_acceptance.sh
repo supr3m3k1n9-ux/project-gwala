@@ -282,6 +282,11 @@ run_fixed "Autonomous supervisor status persistence" 120 \
   python run_autonomous_paper_workflow.py --once --status-only --output-dir logs
 cleanup_acceptance_containers
 
+run_fixed "Data freshness audit refresh" 120 \
+  docker compose -f "$COMPOSE_FILE" run --no-deps gwala \
+  python run_data_freshness_audit.py --output-dir logs --data-dir /app/runtime_data --candle-dir logs
+cleanup_acceptance_containers
+
 run_vps_verifier
 
 run_fixed "Source runtime boundary" 120 \

@@ -103,6 +103,8 @@ class PreSessionAcceptanceRunnerTests(unittest.TestCase):
 
         self.assertIn("Autonomous supervisor status persistence", text)
         self.assertIn("run_autonomous_paper_workflow.py --once --status-only --output-dir logs", text)
+        self.assertIn("Data freshness audit refresh", text)
+        self.assertIn("run_data_freshness_audit.py --output-dir logs --data-dir /app/runtime_data --candle-dir logs", text)
         self.assertIn("tests.test_workflow_safety.DataFreshnessIntegrityAuditorTests", text)
         self.assertIn("tests.test_runtime_paths.RuntimePathTests", text)
         self.assertIn("tests.test_continuous_assurance.ContinuousAssuranceTests", text)
