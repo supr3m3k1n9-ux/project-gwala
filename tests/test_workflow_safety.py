@@ -34,7 +34,7 @@ from reports.system_state import (
 import run_app
 import run_current_candle_capture
 import run_webull_watchlist
-from run_autonomous_paper_workflow import choose_action, commands_for_action, sleep_after_action
+from run_autonomous_paper_workflow import choose_action, commands_for_action, sleep_after_action, write_current_status_only
 from run_autonomous_a_tier_lifecycle import build_lifecycle as build_autonomous_a_tier_lifecycle
 from run_autonomous_a_tier_lifecycle import run_exit_monitor as run_autonomous_a_tier_exit_monitor
 from run_after_close_evidence_maturity import OUTCOME_FILES, refresh_report_commands
@@ -863,6 +863,63 @@ class MarketCalendarTests(unittest.TestCase):
         decision = choose_action(moment, interval_minutes=5, premarket_minutes_before_open=15)
 
         self.assertEqual(decision.action, "after_close_recap")
+
+    def test_autonomous_supervisor_treats_exact_close_as_after_close_transition(self) -> None:
+        moment = datetime(2026, 5, 26, 16, 0, tzinfo=MARKET_TZ)
+
+        decision = choose_action(moment, interval_minutes=5, premarket_minutes_before_open=15)
+
+        self.assertEqual(decision.action, "after_close_recap")
+
+    def test_autonomous_supervisor_status_only_overwrites_stale_market_scan_artifact(self) -> None:
+        after_close = datetime(2026, 5, 26, 16, 5, tzinfo=MARKET_TZ)
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            (output_dir / "autonomous_paper_workflow_status.json").write_text(
+                json.dumps(
+                    {
+                        "generated_at_et": "2026-05-26 15:55:00 EDT",
+                        "decision": "market_scan",
+                        "message": "old scan",
+                        "dry_run": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(output_dir=output_dir, interval_minutes=5, premarket_minutes_before_open=15)
+
+            with patch("run_autonomous_paper_workflow.now_et", return_value=after_close):
+                write_current_status_only(args)
+
+            payload = json.loads((output_dir / "autonomous_paper_workflow_status.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["decision"], "after_close_recap")
+            self.assertTrue(payload["status_only"])
+            self.assertTrue(payload["dry_run"])
+            self.assertIn("No scanner, gates, validation", payload["guardrail"])
+
+    def test_autonomous_supervisor_status_only_persists_premarket_decision(self) -> None:
+        premarket = datetime(2026, 5, 26, 9, 20, tzinfo=MARKET_TZ)
+        with TemporaryDirectory() as temp_dir:
+            args = argparse.Namespace(output_dir=Path(temp_dir), interval_minutes=5, premarket_minutes_before_open=15)
+
+            with patch("run_autonomous_paper_workflow.now_et", return_value=premarket):
+                write_current_status_only(args)
+
+            payload = json.loads((Path(temp_dir) / "autonomous_paper_workflow_status.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["decision"], "premarket_check")
+            self.assertTrue(payload["status_only"])
+
+    def test_autonomous_supervisor_status_only_persists_regular_session_decision(self) -> None:
+        regular = datetime(2026, 5, 26, 10, 0, tzinfo=MARKET_TZ)
+        with TemporaryDirectory() as temp_dir:
+            args = argparse.Namespace(output_dir=Path(temp_dir), interval_minutes=5, premarket_minutes_before_open=15)
+
+            with patch("run_autonomous_paper_workflow.now_et", return_value=regular):
+                write_current_status_only(args)
+
+            payload = json.loads((Path(temp_dir) / "autonomous_paper_workflow_status.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["decision"], "market_scan")
+            self.assertTrue(payload["status_only"])
 
     def test_after_close_recap_runs_evidence_maturity_first(self) -> None:
         args = argparse.Namespace(

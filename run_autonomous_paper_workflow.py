@@ -56,6 +56,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--once", action="store_true", help="Make one schedule decision, run it if due, and exit.")
     parser.add_argument("--dry-run", action="store_true", help="Write the decision without running commands.")
+    parser.add_argument(
+        "--status-only",
+        action="store_true",
+        help="Persist the current supervisor decision and exit without running workflow commands.",
+    )
     return parser.parse_args()
 
 
@@ -121,7 +126,7 @@ def choose_action(
         message = "Run pre-market verification before the regular session opens."
         return SupervisorDecision("premarket_check", message, seconds_until(session.market_open, local))
 
-    if session.market_open <= local <= session.market_close:
+    if session.market_open <= local < session.market_close:
         message = "Run market-hours current-candle capture, gates, and dashboard sync checks."
         return SupervisorDecision("market_scan", message, seconds_until_next_scan(local, interval_minutes))
 
@@ -188,6 +193,7 @@ def write_status(output_dir: Path, decision: SupervisorDecision, *, dry_run: boo
                 "decision": decision.action,
                 "message": decision.message,
                 "dry_run": dry_run,
+                "status_only": False,
                 "suggested_next_wait_seconds": decision.sleep_seconds,
                 "guardrail": (
                     "Local research and paper-validation only. No broker orders, "
@@ -241,6 +247,31 @@ paper trades, or connect to broker execution.
     return path
 
 
+def write_current_status_only(args: argparse.Namespace) -> Path:
+    """Persist the current schedule decision without running production workflow commands."""
+
+    decision = choose_action(
+        now_et(),
+        interval_minutes=args.interval_minutes,
+        premarket_minutes_before_open=args.premarket_minutes_before_open,
+    )
+    path = write_status(args.output_dir, decision, dry_run=True)
+    json_path = args.output_dir / "autonomous_paper_workflow_status.json"
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    payload["status_only"] = True
+    payload["guardrail"] = (
+        "Supervisor state persistence only. No scanner, gates, validation, broker orders, "
+        "broker alerts, report generation, or paper imports were run."
+    )
+    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n## Status Only\n\n```text\ntrue\n```\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 def run_due_action(args: argparse.Namespace, decision: SupervisorDecision) -> None:
     """Run commands for a due action unless dry-run is enabled."""
 
@@ -261,6 +292,11 @@ def sleep_after_action(args: argparse.Namespace, decision: SupervisorDecision) -
 def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.status_only:
+        status_path = write_current_status_only(args)
+        print(f"status_only: saved supervisor status: {status_path}")
+        return
 
     while True:
         decision = choose_action(

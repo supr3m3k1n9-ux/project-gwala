@@ -277,6 +277,11 @@ APP_SHA="$(git -C "$APP_DIR" rev-parse --short HEAD)"
 
 cleanup_acceptance_containers
 
+run_fixed "Autonomous supervisor status persistence" 120 \
+  docker compose -f "$COMPOSE_FILE" run --no-deps gwala \
+  python run_autonomous_paper_workflow.py --once --status-only --output-dir logs
+cleanup_acceptance_containers
+
 run_vps_verifier
 
 run_fixed "Source runtime boundary" 120 \

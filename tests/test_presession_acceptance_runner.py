@@ -92,6 +92,8 @@ class PreSessionAcceptanceRunnerTests(unittest.TestCase):
     def test_python_invocations_are_fixed_acceptance_selectors(self) -> None:
         text = self.runner_text()
 
+        self.assertIn("Autonomous supervisor status persistence", text)
+        self.assertIn("run_autonomous_paper_workflow.py --once --status-only --output-dir logs", text)
         self.assertIn("tests.test_workflow_safety.DataFreshnessIntegrityAuditorTests", text)
         self.assertIn("tests.test_runtime_paths.RuntimePathTests", text)
         self.assertIn("tests.test_continuous_assurance.ContinuousAssuranceTests", text)
