@@ -60,9 +60,34 @@ class PreSessionAcceptanceRunnerTests(unittest.TestCase):
     def test_docker_invocations_are_fixed_to_compose_gwala_service(self) -> None:
         text = self.runner_text()
 
-        self.assertIn('docker compose -f "$COMPOSE_FILE" run --rm --no-deps gwala', text)
+        self.assertIn('docker compose -f "$COMPOSE_FILE" run --no-deps gwala', text)
         self.assertNotIn("docker run", text)
         self.assertNotIn("/var/run/docker.sock", text)
+
+    def test_runner_prints_visible_per_check_progress(self) -> None:
+        text = self.runner_text()
+
+        self.assertIn("START %s (timeout %ss)", text)
+        self.assertIn('print_result "$area" "PASS"', text)
+        self.assertIn('print_result "$area" "WATCH"', text)
+        self.assertIn('print_result "$area" "FAIL"', text)
+
+    def test_runner_records_check_duration_and_timeout_impact(self) -> None:
+        text = self.runner_text()
+
+        self.assertIn("area\\tstatus\\tduration_seconds\\treason", text)
+        self.assertIn("WHOLE_RUN_TIMEOUT_SECONDS=1800", text)
+        self.assertIn("TIMEOUT after ${duration}s; impact: acceptance cannot prove clean-session readiness", text)
+        self.assertIn("TIMEOUT: whole-run timeout reached before check could start", text)
+
+    def test_runner_cleans_only_transient_compose_run_containers(self) -> None:
+        text = self.runner_text()
+
+        self.assertIn("cleanup_acceptance_containers", text)
+        self.assertIn('docker ps -aq --filter "name=gwala-gwala-run-"', text)
+        self.assertIn("docker rm -f $ids", text)
+        self.assertNotIn("docker compose down", text)
+        self.assertNotIn("docker rm -f gwala-gwala-1", text)
 
     def test_python_invocations_are_fixed_acceptance_selectors(self) -> None:
         text = self.runner_text()

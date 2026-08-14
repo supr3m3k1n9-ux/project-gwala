@@ -38,9 +38,12 @@ RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 RESULT_DIR="$STACK_DIR/logs/presession_acceptance/$RUN_ID"
 CHECKS_TSV="$RESULT_DIR/checks.tsv"
 STDOUT_LOG="$RESULT_DIR/command_output.log"
+WHOLE_RUN_TIMEOUT_SECONDS=1800
+RUN_STARTED_EPOCH="$(date +%s)"
+FINALIZED=0
 
 mkdir -p "$RESULT_DIR"
-printf 'area\tstatus\treason\n' > "$CHECKS_TSV"
+printf 'area\tstatus\tduration_seconds\treason\n' > "$CHECKS_TSV"
 : > "$STDOUT_LOG"
 
 export GWALA_APP_DIR="$APP_DIR"
@@ -49,45 +52,153 @@ export GWALA_STACK_DIR="$STACK_DIR"
 record_check() {
   local area="$1"
   local status="$2"
-  local reason="$3"
+  local duration_seconds="$3"
+  local reason="$4"
   reason="${reason//$'\t'/ }"
   reason="${reason//$'\n'/ }"
-  printf '%s\t%s\t%s\n' "$area" "$status" "$reason" >> "$CHECKS_TSV"
+  printf '%s\t%s\t%s\t%s\n' "$area" "$status" "$duration_seconds" "$reason" >> "$CHECKS_TSV"
+}
+
+remaining_seconds() {
+  local now elapsed remaining
+  now="$(date +%s)"
+  elapsed=$((now - RUN_STARTED_EPOCH))
+  remaining=$((WHOLE_RUN_TIMEOUT_SECONDS - elapsed))
+  if (( remaining < 0 )); then
+    remaining=0
+  fi
+  printf '%s\n' "$remaining"
+}
+
+effective_timeout() {
+  local requested="$1"
+  local remaining
+  remaining="$(remaining_seconds)"
+  if (( remaining <= 0 )); then
+    printf '0\n'
+  elif (( requested < remaining )); then
+    printf '%s\n' "$requested"
+  else
+    printf '%s\n' "$remaining"
+  fi
+}
+
+print_start() {
+  local area="$1"
+  local timeout_seconds="$2"
+  printf 'START %s (timeout %ss)\n' "$area" "$timeout_seconds"
+}
+
+print_result() {
+  local area="$1"
+  local status="$2"
+  local duration_seconds="$3"
+  local reason="$4"
+  printf '%s %s (%ss) - %s\n' "$status" "$area" "$duration_seconds" "$reason"
+}
+
+cleanup_acceptance_containers() {
+  local area="Acceptance container cleanup"
+  local start duration ids
+  start="$(date +%s)"
+  print_start "$area" 30
+  {
+    printf '\n=== %s ===\n' "$area"
+    printf 'command: docker ps -aq --filter %q | docker rm -f <acceptance-run-containers>\n' 'name=gwala-gwala-run-'
+  } >> "$STDOUT_LOG"
+  ids="$(timeout 20 docker ps -aq --filter "name=gwala-gwala-run-" 2>>"$STDOUT_LOG" || true)"
+  if [[ -n "$ids" ]]; then
+    if timeout 30 docker rm -f $ids >>"$STDOUT_LOG" 2>&1; then
+      duration=$(( $(date +%s) - start ))
+      record_check "$area" "PASS" "$duration" "removed leftover Compose run containers"
+      print_result "$area" "PASS" "$duration" "removed leftover Compose run containers"
+    else
+      duration=$(( $(date +%s) - start ))
+      record_check "$area" "WATCH" "$duration" "leftover acceptance container cleanup returned nonzero"
+      print_result "$area" "WATCH" "$duration" "leftover acceptance container cleanup returned nonzero"
+    fi
+  else
+    duration=$(( $(date +%s) - start ))
+    record_check "$area" "PASS" "$duration" "no leftover Compose run containers"
+    print_result "$area" "PASS" "$duration" "no leftover Compose run containers"
+  fi
 }
 
 run_fixed() {
   local area="$1"
-  local timeout_seconds="$2"
+  local requested_timeout="$2"
   shift 2
+  local timeout_seconds
+  timeout_seconds="$(effective_timeout "$requested_timeout")"
+  if (( timeout_seconds <= 0 )); then
+    record_check "$area" "FAIL" "0" "TIMEOUT: whole-run timeout reached before check could start"
+    print_result "$area" "FAIL" "0" "TIMEOUT: whole-run timeout reached before check could start"
+    return 0
+  fi
+  local start duration code reason
+  start="$(date +%s)"
+  print_start "$area" "$timeout_seconds"
   {
     printf '\n=== %s ===\n' "$area"
     printf 'command:'
     printf ' %q' "$@"
     printf '\n'
   } >> "$STDOUT_LOG"
-  if timeout "$timeout_seconds" "$@" >> "$STDOUT_LOG" 2>&1; then
-    record_check "$area" "PASS" "fixed command completed"
+  if timeout --kill-after=15s "$timeout_seconds" "$@" >> "$STDOUT_LOG" 2>&1; then
+    duration=$(( $(date +%s) - start ))
+    reason="fixed command completed"
+    record_check "$area" "PASS" "$duration" "$reason"
+    print_result "$area" "PASS" "$duration" "$reason"
   else
-    local code="$?"
-    record_check "$area" "FAIL" "fixed command failed with rc=$code"
+    code="$?"
+    duration=$(( $(date +%s) - start ))
+    if [[ "$code" == "124" || "$code" == "137" ]]; then
+      reason="TIMEOUT after ${duration}s; impact: acceptance cannot prove clean-session readiness"
+    else
+      reason="fixed command failed with rc=$code"
+    fi
+    record_check "$area" "FAIL" "$duration" "$reason"
+    print_result "$area" "FAIL" "$duration" "$reason"
   fi
 }
 
 run_fixed_watch() {
   local area="$1"
-  local timeout_seconds="$2"
+  local requested_timeout="$2"
   shift 2
+  local timeout_seconds
+  timeout_seconds="$(effective_timeout "$requested_timeout")"
+  if (( timeout_seconds <= 0 )); then
+    record_check "$area" "FAIL" "0" "TIMEOUT: whole-run timeout reached before check could start"
+    print_result "$area" "FAIL" "0" "TIMEOUT: whole-run timeout reached before check could start"
+    return 0
+  fi
+  local start duration code reason
+  start="$(date +%s)"
+  print_start "$area" "$timeout_seconds"
   {
     printf '\n=== %s ===\n' "$area"
     printf 'command:'
     printf ' %q' "$@"
     printf '\n'
   } >> "$STDOUT_LOG"
-  if timeout "$timeout_seconds" "$@" >> "$STDOUT_LOG" 2>&1; then
-    record_check "$area" "PASS" "fixed command completed"
+  if timeout --kill-after=15s "$timeout_seconds" "$@" >> "$STDOUT_LOG" 2>&1; then
+    duration=$(( $(date +%s) - start ))
+    reason="fixed command completed"
+    record_check "$area" "PASS" "$duration" "$reason"
+    print_result "$area" "PASS" "$duration" "$reason"
   else
-    local code="$?"
-    record_check "$area" "WATCH" "fixed diagnostic command returned rc=$code"
+    code="$?"
+    duration=$(( $(date +%s) - start ))
+    if [[ "$code" == "124" || "$code" == "137" ]]; then
+      reason="TIMEOUT after ${duration}s; impact: acceptance cannot prove clean-session readiness"
+      record_check "$area" "FAIL" "$duration" "$reason"
+      print_result "$area" "FAIL" "$duration" "$reason"
+    else
+      reason="fixed diagnostic command returned rc=$code"
+      record_check "$area" "WATCH" "$duration" "$reason"
+      print_result "$area" "WATCH" "$duration" "$reason"
+    fi
   fi
 }
 
@@ -95,48 +206,75 @@ run_docker_unittest() {
   local area="$1"
   shift
   run_fixed "$area" 240 \
-    docker compose -f "$COMPOSE_FILE" run --rm --no-deps gwala \
+    docker compose -f "$COMPOSE_FILE" run --no-deps gwala \
     python -m unittest "$@"
+  cleanup_acceptance_containers
 }
 
 run_docker_python() {
   local area="$1"
   local snippet="$2"
   run_fixed "$area" 180 \
-    docker compose -f "$COMPOSE_FILE" run --rm --no-deps gwala \
+    docker compose -f "$COMPOSE_FILE" run --no-deps gwala \
     python -c "$snippet"
+  cleanup_acceptance_containers
 }
 
 run_vps_verifier() {
   local area="Production verifier"
   local tmp="$RESULT_DIR/vps_verifier.out"
+  local requested_timeout=240
+  local timeout_seconds
+  timeout_seconds="$(effective_timeout "$requested_timeout")"
+  if (( timeout_seconds <= 0 )); then
+    record_check "$area" "FAIL" "0" "TIMEOUT: whole-run timeout reached before check could start"
+    print_result "$area" "FAIL" "0" "TIMEOUT: whole-run timeout reached before check could start"
+    return 0
+  fi
+  local start duration code reason
+  start="$(date +%s)"
+  print_start "$area" "$timeout_seconds"
   {
     printf '\n=== %s ===\n' "$area"
     printf 'command: %q %q %q %q %q %q %q\n' \
       /usr/bin/python3 "$APP_DIR/deploy/linux/verify_vps_production.py" \
       --app-dir "$APP_DIR" --stack-dir "$STACK_DIR"
   } >> "$STDOUT_LOG"
-  if timeout 240 /usr/bin/python3 "$APP_DIR/deploy/linux/verify_vps_production.py" \
+  if timeout --kill-after=15s "$timeout_seconds" /usr/bin/python3 "$APP_DIR/deploy/linux/verify_vps_production.py" \
     --app-dir "$APP_DIR" --stack-dir "$STACK_DIR" > "$tmp" 2>&1
   then
     cat "$tmp" >> "$STDOUT_LOG"
+    duration=$(( $(date +%s) - start ))
     if grep -q "VPS PRODUCTION READINESS: PASS" "$tmp"; then
-      record_check "$area" "PASS" "VPS production readiness PASS"
+      record_check "$area" "PASS" "$duration" "VPS production readiness PASS"
+      print_result "$area" "PASS" "$duration" "VPS production readiness PASS"
     elif grep -q "VPS PRODUCTION READINESS: WATCH" "$tmp"; then
-      record_check "$area" "WATCH" "VPS production readiness WATCH"
+      record_check "$area" "WATCH" "$duration" "VPS production readiness WATCH"
+      print_result "$area" "WATCH" "$duration" "VPS production readiness WATCH"
     elif grep -q "VPS PRODUCTION READINESS: FAIL" "$tmp"; then
-      record_check "$area" "FAIL" "VPS production readiness FAIL"
+      record_check "$area" "FAIL" "$duration" "VPS production readiness FAIL"
+      print_result "$area" "FAIL" "$duration" "VPS production readiness FAIL"
     else
-      record_check "$area" "WATCH" "VPS verifier output did not include readiness status"
+      record_check "$area" "WATCH" "$duration" "VPS verifier output did not include readiness status"
+      print_result "$area" "WATCH" "$duration" "VPS verifier output did not include readiness status"
     fi
   else
-    local code="$?"
+    code="$?"
+    duration=$(( $(date +%s) - start ))
     cat "$tmp" >> "$STDOUT_LOG" 2>/dev/null || true
-    record_check "$area" "FAIL" "VPS verifier failed with rc=$code"
+    if [[ "$code" == "124" || "$code" == "137" ]]; then
+      reason="TIMEOUT after ${duration}s; impact: acceptance cannot prove clean-session readiness"
+    else
+      reason="VPS verifier failed with rc=$code"
+    fi
+    record_check "$area" "FAIL" "$duration" "$reason"
+    print_result "$area" "FAIL" "$duration" "$reason"
   fi
 }
 
 APP_SHA="$(git -C "$APP_DIR" rev-parse --short HEAD)"
+
+cleanup_acceptance_containers
 
 run_vps_verifier
 
@@ -209,6 +347,8 @@ run_docker_python "Regular-session freshness audit fixture" \
 
 run_docker_python "After-close freshness audit fixture" \
   "from pathlib import Path; from run_data_freshness_audit import build_audit, write_audit; from run_production_heartbeat import parse_et_datetime; out=Path('/app/logs/presession_acceptance/$RUN_ID/afterclose_freshness'); out.mkdir(parents=True, exist_ok=True); payload=build_audit(Path('/app/runtime_data'), parse_et_datetime('2026-08-14 16:10:00 EDT'), candle_dir=Path('/app/logs')); write_audit(payload, out); print(payload.get('status'), payload.get('session_evidence'))"
+
+cleanup_acceptance_containers
 
 /usr/bin/python3 - "$CHECKS_TSV" "$RESULT_DIR" "$APP_SHA" <<'PY'
 from __future__ import annotations

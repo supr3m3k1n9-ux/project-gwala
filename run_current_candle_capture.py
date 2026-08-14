@@ -657,9 +657,10 @@ def write_report(output_dir: Path, results: list[StepResult], payload: dict[str,
 
     output_dir.mkdir(parents=True, exist_ok=True)
     generated_at = datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
+    workflow_run_id = getattr(args, "workflow_run_id", "") or f"critical-{datetime.now(MARKET_TZ).strftime('%Y%m%dT%H%M%S')}"
     json_payload = {
         "generated_at_et": generated_at,
-        "workflow_run_id": args.workflow_run_id or f"critical-{datetime.now(MARKET_TZ).strftime('%Y%m%dT%H%M%S')}",
+        "workflow_run_id": workflow_run_id,
         "symbols": normalized_symbols(args.symbols),
         "refresh_ran": not args.skip_refresh,
         "critical_path_only": bool(getattr(args, "critical_path_only", False)),
