@@ -25,6 +25,7 @@ const paperCommandConfirmExitUrl = "/api/actions/paper-command-center/confirm-ex
 const updatePaperTradeActionUrl = "/api/actions/update-paper-trade";
 const replayJournalStorageKey = "project_gwala_replay_practice_v1";
 const commandCenterInboxStorageKey = "project_gwala_command_center_inbox_v1";
+const commandCenterInboxUiStorageKey = "project_gwala_command_center_inbox_ui_v1";
 const autoRefreshMs = 60_000;
 const defaultCommandCenterPollMs = 15_000;
 const defaultCommandCenterChartPollMs = 7_000;
@@ -243,9 +244,12 @@ let lastOpenPaperKeys = new Set();
 let terminalFocus = null;
 let commandCenterState = null;
 let commandCenterInboxState = loadCommandCenterInboxState();
+let commandCenterInboxUiState = loadCommandCenterInboxUiState();
 let commandCenterSymbol = "SPY";
 let commandCenterTimeframe = "M30";
-let commandCenterInboxFilter = "All";
+let commandCenterInboxFilter = commandCenterInboxUiState.filter || "All";
+let commandCenterSelectedInboxId = commandCenterInboxUiState.selectedId || "";
+let commandCenterOpenInboxSnapshot = null;
 let commandCenterRefreshInFlight = false;
 let commandCenterChartRefreshInFlight = false;
 let commandCenterPollTimer = null;
@@ -2986,6 +2990,22 @@ function saveCommandCenterInboxState() {
   localStorage.setItem(commandCenterInboxStorageKey, JSON.stringify(commandCenterInboxState));
 }
 
+function loadCommandCenterInboxUiState() {
+  try {
+    return JSON.parse(localStorage.getItem(commandCenterInboxUiStorageKey) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveCommandCenterInboxUiState() {
+  commandCenterInboxUiState = {
+    selectedId: commandCenterSelectedInboxId || "",
+    filter: commandCenterInboxFilter || "All",
+  };
+  localStorage.setItem(commandCenterInboxUiStorageKey, JSON.stringify(commandCenterInboxUiState));
+}
+
 function statusTone(value) {
   const normalized = text(value, "UNAVAILABLE").toUpperCase();
   if (["PASS", "GREEN", "CLEAN", "CONTINUE", "PROMOTE", "READY", "LATEST COMPLETED CANDLE", "CONNECTED"].includes(normalized)) return "pass";
@@ -3219,6 +3239,125 @@ async function loadCommandCenterChart(options = {}) {
   }
 }
 
+function commandCenterInboxReportIdFromHash() {
+  const hash = window.location.hash || "";
+  const prefix = "#inbox/report/";
+  if (!hash.startsWith(prefix)) return "";
+  try {
+    return decodeURIComponent(hash.slice(prefix.length));
+  } catch {
+    return "";
+  }
+}
+
+function commandCenterInboxRouteBase() {
+  return (window.location.hash || "").startsWith("#inbox/report/") ? "#inbox" : window.location.hash;
+}
+
+function updateCommandCenterInboxRoute(id) {
+  const nextHash = id ? `#inbox/report/${encodeURIComponent(id)}` : "#inbox";
+  if (window.location.hash === nextHash) return;
+  history.replaceState(null, "", nextHash);
+  updateAppRoute();
+}
+
+function captureCommandCenterInboxScroll() {
+  const reader = $("cc-inbox-reader-content");
+  if (!reader || !commandCenterSelectedInboxId) return 0;
+  return reader.scrollTop || 0;
+}
+
+function restoreCommandCenterInboxScroll(scrollTop) {
+  if (!commandCenterSelectedInboxId) return;
+  window.requestAnimationFrame(() => {
+    const reader = $("cc-inbox-reader-content");
+    if (reader) reader.scrollTop = scrollTop || 0;
+  });
+}
+
+function selectCommandCenterInboxEvent(event) {
+  commandCenterSelectedInboxId = event?.id || "";
+  commandCenterOpenInboxSnapshot = event ? { ...event } : null;
+  if (commandCenterSelectedInboxId) {
+    commandCenterInboxState[commandCenterSelectedInboxId] = commandCenterInboxState[commandCenterSelectedInboxId] || {};
+    commandCenterInboxState[commandCenterSelectedInboxId].read = true;
+    saveCommandCenterInboxState();
+  }
+  saveCommandCenterInboxUiState();
+  updateCommandCenterInboxRoute(commandCenterSelectedInboxId);
+}
+
+function selectedCommandCenterInboxEvent(events) {
+  const routeId = commandCenterInboxReportIdFromHash();
+  if (routeId && routeId !== commandCenterSelectedInboxId) {
+    commandCenterSelectedInboxId = routeId;
+    commandCenterOpenInboxSnapshot = null;
+    saveCommandCenterInboxUiState();
+  }
+  if (!commandCenterSelectedInboxId) return null;
+  const current = events.find((event) => event.id === commandCenterSelectedInboxId);
+  if (!commandCenterOpenInboxSnapshot && current) {
+    commandCenterOpenInboxSnapshot = { ...current };
+    commandCenterInboxState[current.id] = commandCenterInboxState[current.id] || {};
+    commandCenterInboxState[current.id].read = true;
+    saveCommandCenterInboxState();
+  }
+  return {
+    current,
+    display: commandCenterOpenInboxSnapshot || current,
+    updated:
+      Boolean(current && commandCenterOpenInboxSnapshot) &&
+      (
+        current.timestamp_iso !== commandCenterOpenInboxSnapshot.timestamp_iso ||
+        current.title !== commandCenterOpenInboxSnapshot.title ||
+        current.content !== commandCenterOpenInboxSnapshot.content
+      ),
+  };
+}
+
+function renderCommandCenterInboxReader(selection) {
+  const reader = $("cc-inbox-reader");
+  if (!reader) return;
+  if (!commandCenterSelectedInboxId) {
+    reader.innerHTML = '<article class="cc-inbox-reader-empty"><strong>Select a report to read.</strong><p>Background refreshes will keep the selected report open.</p></article>';
+    return;
+  }
+  if (!selection?.display && !selection?.current) {
+    reader.innerHTML = `
+      <article class="cc-inbox-reader-missing">
+        <header>
+          <strong>Report unavailable</strong>
+          <button type="button" data-cc-inbox-close>Close</button>
+        </header>
+        <p>This report is no longer present in the authoritative Inbox feed. Archived source files were not changed by the display refresh.</p>
+      </article>
+    `;
+    return;
+  }
+  const event = selection.display || selection.current;
+  const state = commandCenterInboxState[event.id] || {};
+  reader.innerHTML = `
+    <article class="cc-inbox-reader-card">
+      <header>
+        <div>
+          <span>${escapeHtml(event.category)} / ${escapeHtml(event.timestamp)}</span>
+          <h3>${escapeHtml(event.title)}</h3>
+          <p>${escapeHtml(event.summary || "")}</p>
+        </div>
+        ${statusBadge(event.importance)}
+      </header>
+      ${selection.updated ? '<p class="cc-inbox-update-note">Updated version available. This reader is preserving the report version you opened.</p>' : ""}
+      <pre id="cc-inbox-reader-content">${escapeHtml(event.content || "No body available.")}</pre>
+      <div class="cc-inbox-actions">
+        <button type="button" data-cc-inbox-action="read" data-cc-inbox-id="${escapeHtml(event.id)}">${state.read ? "Unread" : "Read"}</button>
+        <button type="button" data-cc-inbox-action="pin" data-cc-inbox-id="${escapeHtml(event.id)}">${state.pinned ? "Unpin" : "Pin"}</button>
+        <button type="button" data-cc-inbox-action="archive" data-cc-inbox-id="${escapeHtml(event.id)}">${state.archived ? "Restore" : "Archive"}</button>
+        <button type="button" data-cc-inbox-close>Close</button>
+      </div>
+    </article>
+  `;
+}
+
 function inboxVisibleEvents(events) {
   return events.filter((event) => {
     const state = commandCenterInboxState[event.id] || {};
@@ -3233,6 +3372,8 @@ function inboxVisibleEvents(events) {
 }
 
 function renderCommandCenterInbox(events = []) {
+  const scrollTop = captureCommandCenterInboxScroll();
+  const selection = selectedCommandCenterInboxEvent(events);
   const unread = events.filter((event) => !(commandCenterInboxState[event.id] || {}).read).length;
   setText("cc-inbox-count", unread);
   $("cc-inbox-filters").innerHTML = ["All", "Unread", "Important", "Executive", "Research", "Trading", "Alerts", "Archived"]
@@ -3241,16 +3382,18 @@ function renderCommandCenterInbox(events = []) {
   for (const button of document.querySelectorAll("[data-cc-filter]")) {
     button.addEventListener("click", () => {
       commandCenterInboxFilter = button.dataset.ccFilter;
+      saveCommandCenterInboxUiState();
       renderCommandCenterInbox(commandCenterState?.inbox?.events || []);
     });
   }
+  renderCommandCenterInboxReader(selection);
   const visible = inboxVisibleEvents(events);
   $("cc-inbox-list").innerHTML = visible.length
     ? visible
         .map((event) => {
           const state = commandCenterInboxState[event.id] || {};
           return `
-            <article class="cc-inbox-item ${state.read ? "read" : "unread"}">
+            <article class="cc-inbox-item ${state.read ? "read" : "unread"} ${event.id === commandCenterSelectedInboxId ? "selected" : ""}">
               <header>
                 <div>
                   <span>${escapeHtml(event.category)} / ${escapeHtml(event.timestamp)}</span>
@@ -3259,11 +3402,8 @@ function renderCommandCenterInbox(events = []) {
                 ${statusBadge(event.importance)}
               </header>
               <p>${escapeHtml(event.summary)}</p>
-              <details>
-                <summary>Open</summary>
-                <pre>${escapeHtml(event.content || "No body available.")}</pre>
-              </details>
               <div class="cc-inbox-actions">
+                <button type="button" data-cc-inbox-action="open" data-cc-inbox-id="${escapeHtml(event.id)}">${event.id === commandCenterSelectedInboxId ? "Open" : "Open"}</button>
                 <button type="button" data-cc-inbox-action="read" data-cc-inbox-id="${escapeHtml(event.id)}">${state.read ? "Unread" : "Read"}</button>
                 <button type="button" data-cc-inbox-action="pin" data-cc-inbox-id="${escapeHtml(event.id)}">${state.pinned ? "Unpin" : "Pin"}</button>
                 <button type="button" data-cc-inbox-action="archive" data-cc-inbox-id="${escapeHtml(event.id)}">${state.archived ? "Restore" : "Archive"}</button>
@@ -3277,6 +3417,12 @@ function renderCommandCenterInbox(events = []) {
     button.addEventListener("click", () => {
       const id = button.dataset.ccInboxId;
       const action = button.dataset.ccInboxAction;
+      const event = events.find((item) => item.id === id);
+      if (action === "open") {
+        if (event) selectCommandCenterInboxEvent(event);
+        renderCommandCenterInbox(commandCenterState?.inbox?.events || []);
+        return;
+      }
       commandCenterInboxState[id] = commandCenterInboxState[id] || {};
       if (action === "read") commandCenterInboxState[id].read = !commandCenterInboxState[id].read;
       if (action === "pin") commandCenterInboxState[id].pinned = !commandCenterInboxState[id].pinned;
@@ -3285,6 +3431,16 @@ function renderCommandCenterInbox(events = []) {
       renderCommandCenterInbox(commandCenterState?.inbox?.events || []);
     });
   }
+  for (const button of document.querySelectorAll("[data-cc-inbox-close]")) {
+    button.addEventListener("click", () => {
+      commandCenterSelectedInboxId = "";
+      commandCenterOpenInboxSnapshot = null;
+      saveCommandCenterInboxUiState();
+      updateCommandCenterInboxRoute("");
+      renderCommandCenterInbox(commandCenterState?.inbox?.events || []);
+    });
+  }
+  restoreCommandCenterInboxScroll(scrollTop);
 }
 
 function renderCommandCenterResearch(research) {
@@ -5531,6 +5687,7 @@ function renderReportTabs() {
 
 function updateAppRoute() {
   let activeHash = window.location.hash && window.location.hash !== "#" ? window.location.hash : "#home";
+  const routeHash = activeHash.startsWith("#inbox/report/") ? "#inbox" : activeHash;
   const routeAliases = {
     "#home": "#overview",
     "#state": "#system",
@@ -5540,8 +5697,8 @@ function updateAppRoute() {
     "#research-lab": "#research",
     "#systems": "#system",
   };
-  if (routeAliases[activeHash]) {
-    window.location.hash = routeAliases[activeHash];
+  if (routeAliases[routeHash]) {
+    window.location.hash = routeAliases[routeHash];
     return;
   }
   const routePages = {
@@ -5600,7 +5757,7 @@ function updateAppRoute() {
     "#practice-replay": { bodyClass: "practice-replay-route", sections: ["research-executive", "practice-replay"] },
     "#reports": { bodyClass: "reports-route", sections: ["research-executive", "reports"] },
   };
-  const selectedPage = routePages[activeHash] || routePages["#overview"];
+  const selectedPage = routePages[routeHash] || routePages["#overview"];
   const selectedSections = new Set(selectedPage.sections);
   const routePageList = Object.keys(routePages).map((key) => routePages[key]);
   const allRouteClasses = routePageList.map((page) => page.bodyClass);
@@ -5616,9 +5773,9 @@ function updateAppRoute() {
   }
 
   const topbar = document.querySelector(".topbar");
-  if (topbar) topbar.hidden = activeHash !== "#home";
+  if (topbar) topbar.hidden = routeHash !== "#home";
 
-  if (!routePages[activeHash]) {
+  if (!routePages[routeHash]) {
     window.location.hash = "#overview";
     return;
   }
@@ -5655,12 +5812,15 @@ function updateAppRoute() {
     "#phase-milestones": "#systems",
     "#system-legacy": "#system",
   };
-  const activeParent = navParents[activeHash] || "#overview";
+  const activeParent = navParents[routeHash] || "#overview";
   for (const link of document.querySelectorAll(".sidebar nav a")) {
     link.classList.toggle("active", link.getAttribute("href") === activeParent);
   }
 
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  if (routeHash === "#inbox" && commandCenterState) {
+    renderCommandCenterInbox(commandCenterState?.inbox?.events || []);
+  }
 }
 
 function renderState(state) {

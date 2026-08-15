@@ -12348,6 +12348,54 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertIn("Command Center could not refresh the display. Production data was not changed.", script)
         self.assertNotIn("NetworkError when attempting to fetch resource", script)
 
+    def test_command_center_inbox_preserves_open_report_across_polling(self) -> None:
+        html = Path("app/index.html").read_text(encoding="utf-8")
+        script = Path("app/app.js").read_text(encoding="utf-8")
+        inbox_block = script.split("function renderCommandCenterInbox(events = [])", 1)[1].split("function renderCommandCenterResearch", 1)[0]
+
+        self.assertIn('id="cc-inbox-reader"', html)
+        self.assertIn("commandCenterInboxUiStorageKey", script)
+        self.assertIn("commandCenterSelectedInboxId", script)
+        self.assertIn("commandCenterOpenInboxSnapshot", script)
+        self.assertIn("captureCommandCenterInboxScroll()", inbox_block)
+        self.assertIn("selectedCommandCenterInboxEvent(events)", inbox_block)
+        self.assertIn("renderCommandCenterInboxReader(selection)", inbox_block)
+        self.assertIn("restoreCommandCenterInboxScroll(scrollTop)", inbox_block)
+        self.assertIn("Background refreshes will keep the selected report open.", script)
+        self.assertNotIn("<details>", inbox_block)
+
+    def test_command_center_inbox_supports_stable_report_permalink_route(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+        route_block = script.split("function updateAppRoute()", 1)[1].split("function renderState", 1)[0]
+
+        self.assertIn("commandCenterInboxReportIdFromHash", script)
+        self.assertIn("#inbox/report/", script)
+        self.assertIn("decodeURIComponent", script)
+        self.assertIn("encodeURIComponent(id)", script)
+        self.assertIn('activeHash.startsWith("#inbox/report/") ? "#inbox" : activeHash', route_block)
+        self.assertIn('routeHash === "#inbox"', route_block)
+        self.assertIn("renderCommandCenterInbox(commandCenterState?.inbox?.events || [])", route_block)
+        self.assertIn("history.replaceState", script)
+
+    def test_command_center_inbox_manual_refresh_does_not_clear_selection(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+        manual_refresh_block = script.split("async function refreshCommandCenterView()", 1)[1].split("async function runRefreshViewAction", 1)[0]
+        loader_block = script.split("async function loadCommandCenter()", 1)[1].split("async function refreshCommandCenter()", 1)[0]
+
+        self.assertIn("loadCommandCenter()", manual_refresh_block)
+        self.assertIn("loadCommandCenterChart()", manual_refresh_block)
+        self.assertIn("renderFounderCommandCenter(payload)", loader_block)
+        self.assertNotIn("commandCenterSelectedInboxId = \"\"", manual_refresh_block)
+        self.assertNotIn("commandCenterOpenInboxSnapshot = null", manual_refresh_block)
+        self.assertNotIn("localStorage.clear", manual_refresh_block)
+
+    def test_command_center_inbox_reports_disappearance_without_closing_reader(self) -> None:
+        script = Path("app/app.js").read_text(encoding="utf-8")
+
+        self.assertIn("Report unavailable", script)
+        self.assertIn("This report is no longer present in the authoritative Inbox feed.", script)
+        self.assertIn("Updated version available. This reader is preserving the report version you opened.", script)
+
     def test_founder_command_center_routes_preserve_v1_pages(self) -> None:
         script = Path("app/app.js").read_text(encoding="utf-8")
         route_block = script.split("function updateAppRoute()", 1)[1].split("async function showReport", 1)[0]
@@ -12359,7 +12407,7 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
     def test_founder_command_center_uses_versioned_frontend_asset(self) -> None:
         html = Path("app/index.html").read_text(encoding="utf-8")
 
-        self.assertIn("/app.js?v=20260812-command-center-refresh-view", html)
+        self.assertIn("/app.js?v=20260815-inbox-reading-state", html)
 
     def test_phase_3_strategy_lifecycle_constitution_is_documented(self) -> None:
         document = Path("docs/strategy-vault.md").read_text(encoding="utf-8")

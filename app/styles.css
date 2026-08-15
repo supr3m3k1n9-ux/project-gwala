@@ -84,6 +84,8 @@ body {
 .cc-header,
 .cc-panel > header,
 .cc-inbox-item header,
+.cc-inbox-reader-card header,
+.cc-inbox-reader-missing header,
 .cc-research-grid header {
   display: flex;
   justify-content: space-between;
@@ -154,6 +156,9 @@ body {
 .cc-lifecycle-grid article,
 .cc-research-factory-grid article,
 .cc-vault-card-grid article,
+.cc-inbox-reader-card,
+.cc-inbox-reader-empty,
+.cc-inbox-reader-missing,
 .cc-inbox-item {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -448,8 +453,44 @@ body {
   gap: 12px;
 }
 
+.cc-inbox-reader {
+  display: grid;
+  gap: 10px;
+}
+
+.cc-inbox-reader h3 {
+  margin: 4px 0 8px;
+}
+
+.cc-inbox-reader-card {
+  border-color: rgba(89, 166, 255, 0.45);
+}
+
+.cc-inbox-reader-card pre {
+  min-height: 260px;
+  max-height: 58vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #070a0f;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  color: var(--text);
+}
+
+.cc-inbox-update-note {
+  border: 1px solid rgba(253, 176, 34, 0.35);
+  background: rgba(253, 176, 34, 0.08);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
 .cc-inbox-item.unread {
   border-color: rgba(89, 166, 255, 0.55);
+}
+
+.cc-inbox-item.selected {
+  border-color: var(--accent);
 }
 
 .cc-inbox-item.read {
