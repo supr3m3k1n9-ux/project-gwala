@@ -1028,6 +1028,9 @@ def founder_command_center_payload() -> dict:
     source = command_center_source_identity()
     session = command_center_session_payload()
     production_status = next((card["status"] for card in system["cards"] if card["name"] == "Production Health"), "UNAVAILABLE")
+    cohort = canonical.get("cohort_1", {})
+    frozen_observations = cohort.get("observations")
+    frozen_checkpoint = f"{frozen_observations} / 30" if cohort.get("status") == "FROZEN" else None
     payload = {
         "generated_at_et": datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
         "source": source,
@@ -1038,7 +1041,12 @@ def founder_command_center_payload() -> dict:
             "evidence": canonical.get("production", {}).get("evidence", "CLEAN" if validation["completed_trades"] >= 30 else "PARTIAL"),
             "market_state": text_value(safe_read_json(LOGS_DIR / "autonomous_paper_workflow_status.json").get("decision"), "UNKNOWN"),
             "current_phase": canonical.get("phase_state", {}).get("phase_2", "Phase 2: Discover first commercially viable edge"),
-            "official_validation": canonical.get("validation", {}).get("metrics", {}).get("checkpoint", {}).get("value", f"{validation['completed_trades']} / 30"),
+            "cohort_1": cohort.get("status", "NOT FROZEN"),
+            "independent_opportunities": cohort.get("independent_opportunities", "UNKNOWN"),
+            "phase_3": canonical.get("phase_state", {}).get("phase_3", "PREPARED - NOT ACTIVE"),
+            "broker_real_money": canonical.get("phase_state", {}).get("broker_real_money", "DISABLED"),
+            "official_validation": frozen_checkpoint
+            or canonical.get("validation", {}).get("metrics", {}).get("checkpoint", {}).get("value", f"{validation['completed_trades']} / 30"),
             "last_autonomous_run": text_value(safe_read_json(LOGS_DIR / "autonomous_paper_workflow_status.json").get("generated_at_et"), "UNAVAILABLE"),
             "next_autonomous_run": "Systemd timer cadence",
         },

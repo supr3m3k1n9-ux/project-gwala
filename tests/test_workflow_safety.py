@@ -24,6 +24,10 @@ from reports.refresh_status import build_refresh_status
 from reports.canonical_session_state import audit_report_consistency
 from reports.canonical_session_state import build_canonical_session_state
 from reports.canonical_session_state import write_canonical_session_state
+from reports.cohort_freeze import freeze_cohort_1
+from reports.cohort_freeze import freeze_paths
+from reports.cohort_freeze import sha256_file
+from reports.cohort_freeze import verify_cohort_1_freeze
 from reports.system_state import (
     build_system_state,
     current_candidate_state,
@@ -12269,6 +12273,100 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertEqual(payload["today"]["new_official_trades"], 1)
         self.assertEqual(payload["today"]["completed_trades"], 1)
         self.assertEqual(payload["reporting_consistency"]["status"], "PASS")
+
+    def test_cohort_1_freeze_creates_tamper_evident_snapshot_without_mutating_ledger(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            write_canonical_session_state(build_canonical_session_state(logs, data, date(2026, 8, 14)), logs, date(2026, 8, 14))
+            ledger = data / "paper_validation_samples.csv"
+            original_hash = sha256_file(ledger)
+
+            snapshot = freeze_cohort_1(
+                logs_dir=logs,
+                data_dir=data,
+                production_commit="TEST_COMMIT",
+                freeze_timestamp="2026-08-15T10:00:00-04:00",
+            )
+            verification = verify_cohort_1_freeze(logs, data)
+            paths = freeze_paths(logs)
+
+            self.assertEqual(snapshot["status"], "FROZEN")
+            self.assertEqual(snapshot["strategy_observations"], 30)
+            self.assertEqual(snapshot["independent_opportunities"]["value"], 21)
+            self.assertEqual(snapshot["excluded_invalid_rows"], 3)
+            self.assertEqual(snapshot["phase_2"]["status"], "COMPLETE")
+            self.assertEqual(snapshot["phase_3"]["status"], "PREPARED - NOT ACTIVE")
+            self.assertEqual(snapshot["broker_real_money"], "DISABLED")
+            self.assertEqual(verification["status"], "PASS")
+            self.assertEqual(original_hash, sha256_file(ledger))
+            self.assertTrue(paths.observations_csv.exists())
+            self.assertTrue(paths.invalid_rows_csv.exists())
+            self.assertTrue(paths.checksums_sha256.exists())
+
+    def test_cohort_1_freeze_refuses_silent_overwrite(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            freeze_cohort_1(logs_dir=logs, data_dir=data, production_commit="TEST_COMMIT")
+
+            with self.assertRaises(FileExistsError):
+                freeze_cohort_1(logs_dir=logs, data_dir=data, production_commit="TEST_COMMIT_2")
+
+    def test_canonical_and_command_center_present_frozen_phase_2_state(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            write_canonical_session_state(build_canonical_session_state(logs, data, date(2026, 8, 14)), logs, date(2026, 8, 14))
+            freeze_cohort_1(logs_dir=logs, data_dir=data, production_commit="TEST_COMMIT")
+
+            state = build_canonical_session_state(logs, data, date(2026, 8, 14))
+            with patch.object(run_app, "LOGS_DIR", logs), patch.object(run_app, "RUNTIME_DATA_DIR", data):
+                payload = run_app.founder_command_center_payload()
+
+        self.assertEqual(state["phase_state"]["phase_2"], "COMPLETE")
+        self.assertTrue(state["phase_state"]["cohort_1_frozen"])
+        self.assertEqual(state["cohort_1"]["status"], "FROZEN")
+        self.assertEqual(state["cohort_1"]["observations"], 30)
+        self.assertEqual(state["cohort_1"]["independent_opportunities"], 21)
+        self.assertEqual(payload["overview"]["current_phase"], "COMPLETE")
+        self.assertEqual(payload["overview"]["cohort_1"], "FROZEN")
+        self.assertEqual(payload["overview"]["official_validation"], "30 / 30")
+        self.assertEqual(payload["overview"]["phase_3"], "PREPARED - NOT ACTIVE")
+        self.assertEqual(payload["overview"]["broker_real_money"], "DISABLED")
+
+    def test_future_ledger_append_does_not_change_frozen_cohort_membership(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            freeze_cohort_1(logs_dir=logs, data_dir=data, production_commit="TEST_COMMIT")
+            paths = freeze_paths(logs)
+            before = sha256_file(paths.observations_csv)
+
+            ledger = data / "paper_validation_samples.csv"
+            frame = pd.read_csv(ledger)
+            frame.loc[len(frame)] = {
+                "sample_date": "2026-08-17",
+                "entry_time_et": "10:00",
+                "source_signal_et": "2026-08-17 10:00",
+                "candidate_entry_et": "2026-08-17 10:00",
+                "exit_time_et": "15:55",
+                "symbol": "QQQ",
+                "setup": "Future Phase 3",
+                "direction": "long",
+                "sample_status": "completed",
+                "counts_toward_30": "True",
+                "counts_toward_live_readiness": "True",
+                "invalid_for_validation": "",
+                "outcome_r": "2.0",
+            }
+            frame.to_csv(ledger, index=False)
+            state = build_canonical_session_state(logs, data, date(2026, 8, 17))
+
+            self.assertEqual(before, sha256_file(paths.observations_csv))
+            self.assertEqual(state["cohort_1"]["observations"], 30)
+            self.assertEqual(state["phase_state"]["phase_2"], "COMPLETE")
+            self.assertTrue(state["phase_state"]["cohort_1_frozen"])
 
     def test_validation_scorecard_uses_authoritative_official_ledger(self) -> None:
         with TemporaryDirectory() as temporary:

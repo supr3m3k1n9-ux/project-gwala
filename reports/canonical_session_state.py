@@ -14,6 +14,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from reports.cohort_freeze import COHORT_VERSION
+from reports.cohort_freeze import load_cohort_1_freeze
+
 
 CANONICAL_SCHEMA_VERSION = "canonical-session-state-v1"
 UNKNOWN = "UNKNOWN"
@@ -512,18 +515,31 @@ def build_canonical_session_state(logs_dir: Path, data_dir: Path, trading_day: d
     funnel = candidate_funnel(logs_dir, data_dir, trading_day, validation)
     orb = orb_reconciliation(logs_dir, data_dir, trading_day)
     production = production_reconciliation(logs_dir)
+    freeze = load_cohort_1_freeze(logs_dir)
     reporting_status, reporting_reasons = reporting_status_from_sections(validation, funnel, orb)
     completed = validation["metrics"]["valid_completed_observations"]["value"]
     checkpoint_reached = completed != UNKNOWN and int(completed) >= CHECKPOINT_TARGET
+    cohort_frozen = freeze.get("status") == "FROZEN"
     return {
         "schema_version": CANONICAL_SCHEMA_VERSION,
         "generated_at": datetime.now().isoformat(),
         "trading_date": trading_day.isoformat(),
         "phase_state": {
-            "phase_2": "CHECKPOINT REACHED / FREEZE PENDING" if checkpoint_reached else "ACTIVE",
+            "phase_2": "COMPLETE" if cohort_frozen else ("CHECKPOINT REACHED / FREEZE PENDING" if checkpoint_reached else "ACTIVE"),
+            "phase_2_reason": freeze.get("phase_2", {}).get("reason", "") if cohort_frozen else "",
             "phase_3": "PREPARED - NOT ACTIVE",
             "broker_real_money": "DISABLED",
-            "cohort_1_frozen": False,
+            "cohort_1_frozen": cohort_frozen,
+        },
+        "cohort_1": {
+            "status": "FROZEN" if cohort_frozen else "NOT FROZEN",
+            "cohort_version": freeze.get("cohort_version", COHORT_VERSION),
+            "snapshot_path": str(logs_dir / "cohorts" / COHORT_VERSION / "cohort_1_snapshot.json"),
+            "observations": freeze.get("strategy_observations", completed if completed != UNKNOWN else UNKNOWN),
+            "independent_opportunities": freeze.get("independent_opportunities", {}).get("value", independent.get("value")),
+            "provenance": freeze.get("independent_opportunities", {}).get("provenance", independent.get("provenance")),
+            "freeze_timestamp": freeze.get("freeze_timestamp", ""),
+            "guardrail": "Cohort 1 membership is closed once frozen; future observations require new cohort/experiment identities.",
         },
         "production": production,
         "reporting": {"status": reporting_status, "reasons": reporting_reasons},
@@ -553,6 +569,9 @@ def load_or_build_canonical_session_state(logs_dir: Path, data_dir: Path, tradin
     path = canonical_session_state_path(logs_dir, trading_day)
     payload, error = read_json(path)
     if payload and payload.get("schema_version") == CANONICAL_SCHEMA_VERSION:
+        freeze = load_cohort_1_freeze(logs_dir)
+        if freeze.get("status") == "FROZEN" and not payload.get("phase_state", {}).get("cohort_1_frozen"):
+            return build_canonical_session_state(logs_dir, data_dir, trading_day)
         return payload
     return build_canonical_session_state(logs_dir, data_dir, trading_day)
 
