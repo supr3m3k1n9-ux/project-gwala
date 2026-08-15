@@ -28,6 +28,10 @@ from reports.cohort_freeze import freeze_cohort_1
 from reports.cohort_freeze import freeze_paths
 from reports.cohort_freeze import sha256_file
 from reports.cohort_freeze import verify_cohort_1_freeze
+from reports.data_trust import create_research_snapshot
+from reports.data_trust import research_market_data_contract
+from reports.data_trust import snapshot_paths as data_trust_snapshot_paths
+from reports.data_trust import verify_research_snapshot
 from reports.phase3_activation import activate_phase3
 from reports.phase3_activation import load_phase3_activation
 from reports.phase3_activation import phase3_activation_path
@@ -86,6 +90,7 @@ from run_import_candles_csv import import_candles, normalize_external_candles
 from data.candle_cache import candle_cache_path, legacy_candle_cache_path, preferred_candle_path, save_candle_cache
 from data.market_data_sources import append_sources, latest_source_for, source_row
 from data.polygon_data import normalize_polygon_aggs, polygon_aggs_url, timeframe_to_polygon
+from indicators.multitimeframe import add_higher_timeframe_bias
 from run_intraday_loop import is_market_open, parse_args as parse_intraday_loop_args, session_has_ended
 from run_candidate_window_ledger import build_ledger as build_candidate_window_ledger
 from run_candidate_ledger_event_dispatcher import build_dispatch as build_candidate_ledger_event_dispatch
@@ -12433,6 +12438,94 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertEqual(payload["research"]["phase_3"]["kpis"]["validated_edges"], 0)
         self.assertEqual(payload["research"]["experiments"]["active_experiments"], 0)
         self.assertFalse(payload["research"]["auditors"]["automation_allowed"])
+
+    def test_higher_timeframe_bias_uses_completed_context_only(self) -> None:
+        index = pd.to_datetime(
+            [
+                "2026-08-14 09:30:00-04:00",
+                "2026-08-14 10:00:00-04:00",
+                "2026-08-14 10:30:00-04:00",
+                "2026-08-14 11:00:00-04:00",
+            ],
+            utc=True,
+        )
+        candles = pd.DataFrame(
+            {
+                "open": [100.0, 101.0, 140.0, 142.0],
+                "high": [102.0, 102.0, 145.0, 143.0],
+                "low": [99.0, 100.0, 139.0, 141.0],
+                "close": [101.0, 101.5, 144.0, 142.5],
+                "volume": [1000, 1000, 9000, 1000],
+                "symbol": ["SPY"] * 4,
+            },
+            index=index,
+        )
+
+        result = add_higher_timeframe_bias(
+            candles,
+            thesis_interval="60m",
+            fast_length=1,
+            slow_length=2,
+            regime_length=3,
+        )
+
+        ten = pd.Timestamp("2026-08-14 10:00:00-04:00").tz_convert("UTC")
+        ten_thirty = pd.Timestamp("2026-08-14 10:30:00-04:00").tz_convert("UTC")
+        eleven = pd.Timestamp("2026-08-14 11:00:00-04:00").tz_convert("UTC")
+
+        self.assertNotEqual(result.loc[ten, "htf_context_bucket_start"], ten)
+        self.assertNotEqual(result.loc[ten_thirty, "htf_context_bucket_start"], ten)
+        self.assertEqual(result.loc[eleven, "htf_context_bucket_start"], ten)
+        self.assertEqual(result.loc[eleven, "htf_context_available_at"], eleven)
+
+    def test_research_market_data_contract_declares_fail_closed_policies(self) -> None:
+        contract = research_market_data_contract()
+
+        self.assertEqual(contract["contract_version"], "research-market-data-contract-v1")
+        self.assertIn("unavailable until the full 60-minute bucket has completed", contract["timeframe_semantics"]["M60"])
+        self.assertIn("Fail closed", contract["missing_bar_policy"])
+        self.assertEqual(contract["phase3_gate_policy"].split()[0], "P3-E001/P3-E002")
+
+    def test_phase3_research_snapshot_is_tamper_evident_without_research_activation(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "logs"
+            source = root / "source"
+            rows = pd.DataFrame(
+                [
+                    {
+                        "datetime": "2026-08-14T13:30:00.000+0000",
+                        "open": 100.0,
+                        "high": 101.0,
+                        "low": 99.0,
+                        "close": 100.5,
+                        "volume": 1000,
+                    }
+                ]
+            )
+            for symbol in ["SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"]:
+                for timeframe in ["M1", "M5", "M15", "M30", "M60", "D"]:
+                    save_candle_cache(rows, source, symbol, timeframe, write_legacy_alias=True)
+
+            manifest = create_research_snapshot(
+                logs_dir=logs,
+                source_candle_dir=source,
+                production_commit="TEST_COMMIT",
+                created_at="2026-08-15T12:00:00-04:00",
+            )
+            verification = verify_research_snapshot(logs)
+            paths = data_trust_snapshot_paths(logs)
+
+            self.assertEqual(verification["status"], "PASS")
+            self.assertEqual(manifest["phase3_research_data_ready"], "NO")
+            self.assertEqual(len(manifest["files"]), 48)
+            self.assertTrue(paths.contract_json.exists())
+            self.assertTrue(paths.contract_md.exists())
+            self.assertTrue(paths.checksums_sha256.exists())
+
+            tampered = paths.root / "candles" / "SPY" / "M30.csv"
+            tampered.write_text(tampered.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+            self.assertEqual(verify_research_snapshot(logs)["status"], "FAIL")
 
     def test_validation_scorecard_uses_authoritative_official_ledger(self) -> None:
         with TemporaryDirectory() as temporary:
