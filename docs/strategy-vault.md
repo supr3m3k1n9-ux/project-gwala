@@ -20,15 +20,13 @@ keep official paper-watch focused on strategies that have earned evidence.
 
 ## Phase 3 Strategy Lifecycle Constitution
 
-Adopted 2026-08-12. Phase 2 remains active until Project Gwala records 30
-legitimate completed official paper trades and freezes Cohort 1 under approved
-evidence governance. Until then:
+Adopted 2026-08-12. Activated 2026-08-15 after Phase 2 reached 30 completed official observations and Cohort 1 was frozen under approved evidence governance.
 
-- Phase 3 status is `PREPARED - NOT ACTIVE`.
-- Phase 3 research is not activated.
+- Phase 3 status is `ACTIVE`.
+- Phase 3 research is activated for edge discovery only.
 - No production strategy behavior, signals, gates, thresholds, risk rules,
   regime routing, broker/live behavior, paper evidence rules, or research
-  allocation changes are authorized by this constitution.
+  allocation changes are authorized by this constitution. Broker/live behavior remains disabled. Broker/live behavior remains disabled.
 
 Core principle:
 

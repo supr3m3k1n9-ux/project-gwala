@@ -28,6 +28,10 @@ from reports.cohort_freeze import freeze_cohort_1
 from reports.cohort_freeze import freeze_paths
 from reports.cohort_freeze import sha256_file
 from reports.cohort_freeze import verify_cohort_1_freeze
+from reports.phase3_activation import activate_phase3
+from reports.phase3_activation import load_phase3_activation
+from reports.phase3_activation import phase3_activation_path
+from reports.phase3_activation import phase3_opening_agenda_path
 from reports.system_state import (
     build_system_state,
     current_candidate_state,
@@ -12368,6 +12372,68 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
             self.assertEqual(state["phase_state"]["phase_2"], "COMPLETE")
             self.assertTrue(state["phase_state"]["cohort_1_frozen"])
 
+    def test_phase_3_activation_requires_frozen_cohort_1(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, _data = self.write_canonical_regression_artifacts(root)
+
+            with self.assertRaises(ValueError):
+                activate_phase3(logs_dir=logs, production_commit="TEST_COMMIT")
+
+    def test_phase_3_activation_creates_opening_research_agenda_without_broker_activation(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            freeze_cohort_1(logs_dir=logs, data_dir=data, production_commit="TEST_COMMIT")
+
+            payload = activate_phase3(
+                logs_dir=logs,
+                production_commit="TEST_COMMIT",
+                activated_at="2026-08-15T12:30:00-04:00",
+            )
+            loaded = load_phase3_activation(logs)
+
+            self.assertTrue(phase3_activation_path(logs).exists())
+            self.assertTrue(phase3_opening_agenda_path(logs).exists())
+            self.assertEqual(payload["phase_3"], "ACTIVE")
+            self.assertEqual(payload["research_factory"], "ACTIVE")
+            self.assertEqual(payload["edge_discovery"], "ACTIVE")
+            self.assertEqual(payload["broker_real_money"], "DISABLED")
+            self.assertEqual(payload["kpi_baseline"]["ideas_tested"], 0)
+            self.assertEqual(payload["kpi_baseline"]["validated_edges"], 0)
+            self.assertEqual(payload["hypothesis_registry"]["count"], 5)
+            self.assertIn("QQQ Setup B Short", payload["hypothesis_registry"]["items"][0]["name"])
+            self.assertEqual(loaded["phase_3"], "ACTIVE")
+
+    def test_canonical_and_command_center_present_active_phase_3_after_activation(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            freeze_cohort_1(logs_dir=logs, data_dir=data, production_commit="TEST_COMMIT")
+            activate_phase3(logs_dir=logs, production_commit="TEST_COMMIT")
+
+            state = build_canonical_session_state(logs, data, date(2026, 8, 14))
+            with patch.object(run_app, "LOGS_DIR", logs), patch.object(run_app, "RUNTIME_DATA_DIR", data):
+                payload = run_app.founder_command_center_payload()
+
+        self.assertEqual(state["phase_state"]["phase_2"], "COMPLETE")
+        self.assertEqual(state["phase_state"]["phase_3"], "ACTIVE")
+        self.assertEqual(state["phase_state"]["research_factory"], "ACTIVE")
+        self.assertEqual(state["phase_state"]["edge_discovery"], "ACTIVE")
+        self.assertEqual(state["phase_state"]["broker_real_money"], "DISABLED")
+        self.assertEqual(payload["overview"]["current_phase"], "COMPLETE")
+        self.assertEqual(payload["overview"]["phase_3"], "ACTIVE")
+        self.assertEqual(payload["overview"]["broker_real_money"], "DISABLED")
+        self.assertEqual(payload["research"]["phase_3"]["status"], "ACTIVE")
+        self.assertTrue(payload["research"]["phase_3"]["research_active"])
+        self.assertFalse(payload["research"]["phase_3"]["automatic_switching_enabled"])
+        self.assertEqual(payload["research"]["research_factory"]["status"], "ACTIVE")
+        self.assertEqual(payload["research"]["hypothesis_registry"]["count"], 5)
+        self.assertEqual(payload["research"]["phase_3"]["kpis"]["ideas_tested"], 0)
+        self.assertEqual(payload["research"]["phase_3"]["kpis"]["validated_edges"], 0)
+        self.assertEqual(payload["research"]["experiments"]["active_experiments"], 0)
+        self.assertFalse(payload["research"]["auditors"]["automation_allowed"])
+
     def test_validation_scorecard_uses_authoritative_official_ledger(self) -> None:
         with TemporaryDirectory() as temporary:
             samples = Path(temporary) / "paper_validation_samples.csv"
@@ -12717,7 +12783,8 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         document = Path("docs/strategy-vault.md").read_text(encoding="utf-8")
 
         self.assertIn("Phase 3 Strategy Lifecycle Constitution", document)
-        self.assertIn("Phase 3 status is `PREPARED - NOT ACTIVE`", document)
+        self.assertIn("Phase 3 status is `ACTIVE`", document)
+        self.assertIn("Broker/live behavior remains disabled", document)
         self.assertIn("DISCOVERY -> RESEARCH -> ROBUSTNESS -> WALK-FORWARD -> HOLDOUT -> FORWARD PAPER", document)
         self.assertIn("ARCHIVED - FAILED VALIDATION", document)
         self.assertIn("Never optimize a validated strategy in place", document)
@@ -12769,12 +12836,13 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
     def test_phase_3_research_factory_governance_is_documented(self) -> None:
         document = Path("docs/phase-3-research-factory.md").read_text(encoding="utf-8")
 
-        self.assertIn("Research Factory: PREPARED - NOT ACTIVE", document)
+        self.assertIn("Research Factory: ACTIVE", document)
         self.assertIn("Hypothesis Registry", document)
         self.assertIn("Research Queue", document)
         self.assertIn("HYPOTHESIS -> QUICK SCREEN -> DISCOVERY -> ROBUSTNESS", document)
         self.assertIn("Do not emit these events without real evidence.", document)
         self.assertIn("30 / 30 legitimate completed official paper trades", document)
+        self.assertIn("No broad historical mining job is authorized", document)
 
     def test_research_factory_payload_is_prepared_but_not_active(self) -> None:
         payload = run_app.founder_research_payload()

@@ -2,18 +2,17 @@
 
 Adopted 2026-08-12.
 
-Phase 2 remains active at 29/30 completed official validation trades. Phase 3
-and the Research Factory are prepared, not active.
+Phase 2 is COMPLETE, Cohort 1 is FROZEN, and Phase 3 Research Factory is ACTIVE for edge discovery.
 
 Current protection:
 
-- Official Validation: 29 / 30.
-- Phase 2: ACTIVE.
-- Phase 3: PREPARED - NOT ACTIVE.
-- Research Factory: PREPARED - NOT ACTIVE.
+- Official Validation: 30 / 30 frozen in cohort_1_v1.
+- Phase 2: COMPLETE.
+- Phase 3: ACTIVE.
+- Research Factory: ACTIVE.
 - Automatic Strategy Switching: DISABLED.
 
-This document does not authorize historical strategy mining, new strategy
+This document authorizes Phase 3 research governance, Cohort 1 autopsy, hypothesis registry, and research queue activation. It does not authorize broad unbounded historical mining, new production strategy
 activation, production strategy changes, signal changes, gate changes,
 threshold changes, risk changes, regime routing changes, broker/live behavior,
 paper evidence rule changes, validation eligibility changes, or research
@@ -41,7 +40,7 @@ The intended flywheel:
 
 ## Hypothesis Sources
 
-Prepared hypothesis sources:
+Active hypothesis sources:
 
 - Existing strategy families: VWAP / EMA continuation, trend pullback, opening
   range breakout, opening range failure, gap fill / fade, failed breakout, mean
@@ -99,14 +98,14 @@ The Research Queue should prioritize work based on:
 
 The queue must not prioritize merely because a backtest looks exciting.
 
-Prepared queue groups:
+Active queue groups:
 
 - Now Researching.
 - Up Next.
 - Waiting for Evidence.
 - On Hold.
 
-During Phase 2 these groups may display placeholders only.
+During Phase 3 these groups display the current opening research agenda and must not fabricate progress.
 
 ## Research Lifecycle
 
@@ -245,6 +244,8 @@ Research Factory activation requires all of:
 2. Cohort 1 frozen according to approved evidence governance;
 3. Phase 3 explicitly activated.
 
-Until then:
+Current state after explicit Investment Committee activation:
 
-`RESEARCH FACTORY: PREPARED - NOT ACTIVE`
+`RESEARCH FACTORY: ACTIVE`
+
+No broad historical mining job is authorized until the opening research agenda is reviewed.

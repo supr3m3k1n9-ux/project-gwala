@@ -39,6 +39,7 @@ from indicators.session import add_opening_range, add_session_columns
 from indicators.trend import add_core_indicators
 from reports.canonical_session_state import audit_report_consistency
 from reports.canonical_session_state import load_or_build_canonical_session_state
+from reports.phase3_activation import load_phase3_activation
 from run_data_freshness_audit import build_audit as build_data_freshness_audit
 from run_data_freshness_audit import write_audit as write_data_freshness_audit
 from run_production_heartbeat import session_context
@@ -909,6 +910,56 @@ def founder_research_payload(samples_csv: Path | None = None) -> dict:
 
     scorecard = founder_validation_scorecard(samples_csv)
     vault_cards = founder_strategy_vault_cards()
+    phase3_state = load_phase3_activation(LOGS_DIR)
+    phase3_active = phase3_state.get("phase_3") == "ACTIVE"
+    phase3_status = "ACTIVE" if phase3_active else PHASE_3_STATUS
+    research_factory = dict(RESEARCH_FACTORY_PREPARATION)
+    strategy_vault = dict(STRATEGY_VAULT_PREPARATION)
+    hypothesis_registry = dict(HYPOTHESIS_REGISTRY_PREPARATION)
+    research_queue = dict(RESEARCH_QUEUE_PREPARATION)
+    experiments = dict(RESEARCH_EXPERIMENTS_PREPARATION)
+    auditors = dict(RESEARCH_AUDITORS_PREPARATION)
+    kpis = phase3_state.get("kpi_baseline", {}) if phase3_active else {}
+    if phase3_active:
+        research_factory.update(
+            {
+                "status": "ACTIVE",
+                "active": True,
+                "historical_mining_active": False,
+                "automatic_strategy_generation_enabled": False,
+                "automatic_switching_enabled": False,
+                "guardrail": "Active research governance only. Broad historical mining awaits Investment Committee approval.",
+            }
+        )
+        strategy_vault.update(
+            {
+                "status": "ACTIVE",
+                "phase_3_research_active": True,
+                "automatic_switching_enabled": False,
+                "current_detail_state": "Phase 3 Opening Research",
+                "guardrail": "Research active. No strategy switching, broker orders, gate changes, or paper evidence mutation.",
+            }
+        )
+        hypothesis_registry.update(phase3_state.get("hypothesis_registry", {}))
+        research_queue.update(
+            {
+                "status": "ACTIVE",
+                "groups": [
+                    {"name": "Now Researching", "items": phase3_state.get("research_queue", {}).get("now_researching", [])},
+                    {"name": "Up Next", "items": phase3_state.get("research_queue", {}).get("up_next", [])},
+                    {"name": "Waiting for Evidence", "items": phase3_state.get("research_queue", {}).get("waiting_for_evidence", [])},
+                    {"name": "On Hold", "items": phase3_state.get("research_queue", {}).get("on_hold", [])},
+                ],
+            }
+        )
+        experiments.update(
+            {
+                "status": "ACTIVE",
+                "active_experiments": 0,
+                "proposed_experiments": phase3_state.get("proposed_experiments", []),
+            }
+        )
+        auditors.update({"status": "ACTIVE - AVAILABLE WHEN APPROVED", "automation_allowed": False})
     return {
         "primary": {
             "name": "VWAP official paper validation",
@@ -929,19 +980,25 @@ def founder_research_payload(samples_csv: Path | None = None) -> dict:
             {"name": "Capital Scaling", "status": "Awaiting Phase 3 Evidence"},
         ],
         "phase_3": {
-            "status": PHASE_3_STATUS,
+            "status": phase3_status,
             "activation_trigger": STRATEGY_VAULT_PREPARATION["activation_trigger"],
-            "research_active": STRATEGY_VAULT_PREPARATION["phase_3_research_active"],
-            "automatic_switching_enabled": STRATEGY_VAULT_PREPARATION["automatic_switching_enabled"],
-            "guardrail": STRATEGY_VAULT_PREPARATION["guardrail"],
+            "research_active": phase3_active,
+            "automatic_switching_enabled": False,
+            "guardrail": (
+                "Phase 3 research active. Broker/live execution remains disabled."
+                if phase3_active
+                else STRATEGY_VAULT_PREPARATION["guardrail"]
+            ),
+            "kpis": kpis,
+            "cohort_1": phase3_state.get("cohort_1", {}) if phase3_active else {},
         },
         "lifecycle_states": STRATEGY_LIFECYCLE_STATES,
-        "strategy_vault": STRATEGY_VAULT_PREPARATION,
-        "research_factory": RESEARCH_FACTORY_PREPARATION,
-        "hypothesis_registry": HYPOTHESIS_REGISTRY_PREPARATION,
-        "research_queue": RESEARCH_QUEUE_PREPARATION,
-        "experiments": RESEARCH_EXPERIMENTS_PREPARATION,
-        "auditors": RESEARCH_AUDITORS_PREPARATION,
+        "strategy_vault": strategy_vault,
+        "research_factory": research_factory,
+        "hypothesis_registry": hypothesis_registry,
+        "research_queue": research_queue,
+        "experiments": experiments,
+        "auditors": auditors,
         "vault_cards": vault_cards,
         "vault_counts": {
             "active": 0,
@@ -951,8 +1008,12 @@ def founder_research_payload(samples_csv: Path | None = None) -> dict:
             "archived": 0,
         },
         "research_funnel": [
-            {"stage": stage, "count": 0, "status": "Awaiting Phase 3 Evidence"}
-            for stage in RESEARCH_FACTORY_PREPARATION["stages"]
+            {
+                "stage": stage,
+                "count": hypothesis_registry.get("count", 0) if stage == "HYPOTHESIS" and phase3_active else 0,
+                "status": "ACTIVE" if stage == "HYPOTHESIS" and phase3_active else ("Awaiting Evidence" if phase3_active else "Awaiting Phase 3 Evidence"),
+            }
+            for stage in research_factory["stages"]
         ],
         "future_inbox_event_types": [
             "NEW HYPOTHESIS",
