@@ -37,6 +37,8 @@ from data.market_data import load_candles_from_csv
 from data.market_data_sources import latest_source_for
 from indicators.session import add_opening_range, add_session_columns
 from indicators.trend import add_core_indicators
+from reports.canonical_session_state import audit_report_consistency
+from reports.canonical_session_state import load_or_build_canonical_session_state
 from run_data_freshness_audit import build_audit as build_data_freshness_audit
 from run_data_freshness_audit import write_audit as write_data_freshness_audit
 from run_production_heartbeat import session_context
@@ -578,6 +580,42 @@ def current_trading_date(moment: datetime | None = None) -> date:
     return (moment or datetime.now(MARKET_TZ)).astimezone(MARKET_TZ).date()
 
 
+def command_center_reconciled_trading_date(logs_dir: Path | None = None, moment: datetime | None = None) -> date:
+    """Return the session date the founder-facing Command Center should reconcile."""
+
+    logs = logs_dir or LOGS_DIR
+    heartbeat = safe_read_json(logs / "production_heartbeat.json")
+    for key in ("heartbeat_date", "expected_artifact_date", "trading_date"):
+        value = text_value(heartbeat.get(key), "")
+        if value:
+            try:
+                return date.fromisoformat(value[:10])
+            except ValueError:
+                pass
+    scanner = safe_read_csv(logs / "daily_paper_signal_scanner.csv")
+    if not scanner.empty and "scan_date" in scanner.columns:
+        values = scanner["scan_date"].dropna().astype(str)
+        if not values.empty:
+            try:
+                return date.fromisoformat(values.iloc[-1][:10])
+            except ValueError:
+                pass
+    return current_trading_date(moment)
+
+
+def founder_canonical_session_state(
+    logs_dir: Path | None = None,
+    runtime_dir: Path | None = None,
+    trading_day: date | None = None,
+) -> dict:
+    """Build or load the canonical session state without mutating production evidence."""
+
+    logs = logs_dir or LOGS_DIR
+    runtime = runtime_dir or RUNTIME_DATA_DIR
+    session_day = trading_day or command_center_reconciled_trading_date(logs)
+    return load_or_build_canonical_session_state(logs, runtime, session_day)
+
+
 def official_validation_frame(samples_csv: Path | None = None) -> pd.DataFrame:
     """Return official non-invalid validation rows from the authoritative ledger."""
 
@@ -692,67 +730,40 @@ def founder_today_funnel(logs_dir: Path | None = None, runtime_dir: Path | None 
 
     logs = logs_dir or LOGS_DIR
     runtime = runtime_dir or RUNTIME_DATA_DIR
-    today = current_trading_date().isoformat()
-    scanner = safe_read_csv(logs / "daily_paper_signal_scanner.csv")
-    sizing = safe_read_csv(logs / "position_sizing.csv")
-    paper_gate = safe_read_csv(logs / "paper_gate_v2.csv")
-    contract_gate = safe_read_csv(logs / "options_contract_gate.csv")
-    samples = official_validation_frame(runtime / "paper_validation_samples.csv")
-    capture = safe_read_json(logs / "current_candle_capture.json")
-    import_preview = safe_read_json(logs / "paper_validation_sample_import.json")
+    canonical = founder_canonical_session_state(logs, runtime)
+    today = canonical.get("trading_date") or command_center_reconciled_trading_date(logs).isoformat()
+    funnel = canonical.get("candidate_funnel", {})
 
-    def scanner_status(frame: pd.DataFrame, value: str):
-        column = "scanner_status" if "scanner_status" in frame.columns else "signal_status"
-        return frame[column].astype(str).str.lower().eq(value)
+    def stage(name: str, key: str) -> dict:
+        metric = funnel.get(key, {})
+        value = metric.get("value") if isinstance(metric, dict) else None
+        status = "UNAVAILABLE" if value == "UNKNOWN" or value is None else "AVAILABLE"
+        return {
+            "name": name,
+            "status": status,
+            "count": None if status == "UNAVAILABLE" else value,
+            "detail": metric.get("reason", "") if isinstance(metric, dict) else "",
+        }
 
-    def today_rows(frame: pd.DataFrame) -> pd.DataFrame:
-        if frame.empty:
-            return frame
-        for column in ("sample_date", "trade_date", "session_date", "entry_date"):
-            if column in frame.columns:
-                return frame[frame[column].astype(str).str.startswith(today)].copy()
-        return frame
-
-    today_samples = today_rows(samples)
-    today_completed = (
-        today_samples[pd.to_numeric(today_samples.get("outcome_r", pd.Series([], dtype=str)), errors="coerce").notna()]
-        if not today_samples.empty
-        else today_samples
-    )
+    validation = canonical.get("validation", {}).get("metrics", {})
     stages = [
-        {"name": "Scanner", **count_or_unavailable(scanner)},
-        {"name": "Allowed", **count_or_unavailable(scanner, lambda df: scanner_status(df, "allowed"))},
-        {
-            "name": "Current Candle",
-            "status": "AVAILABLE" if capture.get("_available") else "UNAVAILABLE",
-            "count": capture.get("current_candle_count") or capture.get("current_session_count"),
-            "detail": capture.get("summary") or capture.get("_error", ""),
-        },
-        {"name": "Size OK", **count_or_unavailable(sizing, lambda df: df.get("sizing_status", "").astype(str).str.lower().eq("size_ok"))},
-        {
-            "name": "Paper Gate",
-            **count_or_unavailable(
-                paper_gate,
-                lambda df: df.get("sample_status", "").astype(str).str.lower().eq("ready_for_validation_sample"),
-            ),
-        },
-        {
-            "name": "Contract Gate",
-            **count_or_unavailable(
-                contract_gate,
-                lambda df: df.get("contract_gate_pass", "").map(bool_value),
-            ),
-        },
-        {"name": "Official Validation", "status": "AVAILABLE" if not samples.empty else "UNAVAILABLE", "count": int(len(today_samples)) if not samples.empty else None},
+        stage("Scanner", "scanner"),
+        stage("Allowed", "allowed"),
+        stage("Current Candle", "current_candle"),
+        stage("Size OK", "size_ok"),
+        stage("Paper Gate", "paper_gate_ready_final_snapshot"),
+        stage("Contract Gate", "contract_gate_pass"),
+        stage("Official Validation", "official_imports"),
     ]
+    new_official = validation.get("new_official_observations_today", {}).get("value")
+    completed_today = validation.get("new_completed_observations_today", {}).get("value")
+    today_r = validation.get("today_r", {}).get("value")
     return {
         "trading_date": today,
         "stages": stages,
-        "new_official_trades": int(len(today_samples)) if not samples.empty else None,
-        "completed_trades": int(len(today_completed)) if not today_samples.empty else 0,
-        "today_r": round(pd.to_numeric(today_completed.get("outcome_r", pd.Series(dtype=str)), errors="coerce").sum(), 2)
-        if not today_completed.empty
-        else 0.0,
+        "new_official_trades": None if new_official == "UNKNOWN" else new_official,
+        "completed_trades": None if completed_today == "UNKNOWN" else completed_today,
+        "today_r": None if today_r == "UNKNOWN" else today_r,
         "artifacts": {
             "scanner": artifact_state(logs / "daily_paper_signal_scanner.csv"),
             "current_candle_capture": artifact_state(logs / "current_candle_capture.json"),
@@ -760,7 +771,7 @@ def founder_today_funnel(logs_dir: Path | None = None, runtime_dir: Path | None 
             "paper_gate": artifact_state(logs / "paper_gate_v2.csv"),
             "contract_gate": artifact_state(logs / "options_contract_gate.csv"),
             "validation_import_preview": {
-                "status": "AVAILABLE" if import_preview.get("_available") else "UNAVAILABLE",
+                "status": "AVAILABLE" if funnel.get("validation_preview_import_signal", {}).get("value") != "UNKNOWN" else "UNAVAILABLE",
                 "path": str(logs / "paper_validation_sample_import.json"),
             },
         },
@@ -1010,22 +1021,24 @@ def founder_system_payload(logs_dir: Path | None = None) -> dict:
 def founder_command_center_payload() -> dict:
     """Build the read-only founder-facing Command Center V1 payload."""
 
+    canonical = founder_canonical_session_state()
     validation = founder_validation_scorecard()
     funnel = founder_today_funnel()
     system = founder_system_payload()
     source = command_center_source_identity()
     session = command_center_session_payload()
     production_status = next((card["status"] for card in system["cards"] if card["name"] == "Production Health"), "UNAVAILABLE")
-    return {
+    payload = {
         "generated_at_et": datetime.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
         "source": source,
         "session": session,
+        "canonical_session_state": canonical,
         "overview": {
             "production": production_status,
-            "evidence": "CLEAN" if validation["completed_trades"] >= 30 else "PARTIAL",
+            "evidence": canonical.get("production", {}).get("evidence", "CLEAN" if validation["completed_trades"] >= 30 else "PARTIAL"),
             "market_state": text_value(safe_read_json(LOGS_DIR / "autonomous_paper_workflow_status.json").get("decision"), "UNKNOWN"),
-            "current_phase": "Phase 2: Discover first commercially viable edge",
-            "official_validation": f"{validation['completed_trades']} / 30",
+            "current_phase": canonical.get("phase_state", {}).get("phase_2", "Phase 2: Discover first commercially viable edge"),
+            "official_validation": canonical.get("validation", {}).get("metrics", {}).get("checkpoint", {}).get("value", f"{validation['completed_trades']} / 30"),
             "last_autonomous_run": text_value(safe_read_json(LOGS_DIR / "autonomous_paper_workflow_status.json").get("generated_at_et"), "UNAVAILABLE"),
             "next_autonomous_run": "Systemd timer cadence",
         },
@@ -1041,6 +1054,8 @@ def founder_command_center_payload() -> dict:
         "system": system,
         "guardrail": "Read-only observability. No trading controls, no broker orders, and no evidence mutations.",
     }
+    payload["reporting_consistency"] = audit_report_consistency(canonical, command_center_payload=payload)
+    return payload
 
 
 def founder_command_center_chart_payload(symbol: str = "SPY", timeframe: str = "M30") -> dict:

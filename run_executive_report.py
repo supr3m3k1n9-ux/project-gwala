@@ -28,11 +28,14 @@ from config.runtime_paths import runtime_data_path
 from config.settings import STRATEGY
 from indicators.session import add_session_columns, parse_clock
 from notification_format import executive_report_notification
+from reports.canonical_session_state import audit_report_consistency
+from reports.canonical_session_state import build_canonical_session_state
+from reports.canonical_session_state import write_canonical_session_state
 from run_production_alert import internal_severity, send_mac_notification
 
 
 OPENING_REPORT_VERSION = "opening-v1.0"
-EOD_REPORT_VERSION = "eod-v1.0"
+EOD_REPORT_VERSION = "eod-v1.1-canonical"
 REPORTS_DIR = Path("logs/executive_reports")
 PAPER_CSV = runtime_data_path("paper_trades.csv")
 SAMPLES_CSV = runtime_data_path("paper_validation_samples.csv")
@@ -213,23 +216,35 @@ def official_samples(samples: pd.DataFrame) -> pd.DataFrame:
         mask = frame["counts_toward_30"].map(truthy)
     else:
         mask = pd.Series([True] * len(frame), index=frame.index)
-    if "invalidated" in frame.columns:
+    if "invalid_for_validation" in frame.columns:
+        mask &= ~frame["invalid_for_validation"].map(truthy)
+    elif "invalidated" in frame.columns:
         mask &= ~frame["invalidated"].map(truthy)
-    if "sample_status" in frame.columns:
-        mask &= frame["sample_status"].astype(str).str.strip().eq("ready_for_validation_sample")
     return frame[mask].copy()
 
 
 def open_official_samples(samples: pd.DataFrame) -> pd.DataFrame:
     official = official_samples(samples)
-    if official.empty or "outcome" not in official.columns:
+    if official.empty:
+        return official
+    if "outcome_r" in official.columns:
+        outcomes = pd.to_numeric(official["outcome_r"], errors="coerce")
+        return official[outcomes.isna()].copy()
+    if "outcome" not in official.columns:
         return official
     return official[official["outcome"].map(text).eq("")].copy()
 
 
 def completed_official_samples(samples: pd.DataFrame) -> pd.DataFrame:
     official = official_samples(samples)
-    if official.empty or "outcome" not in official.columns:
+    if official.empty:
+        return pd.DataFrame(columns=official.columns)
+    if "outcome_r" in official.columns:
+        outcomes = pd.to_numeric(official["outcome_r"], errors="coerce")
+        completed = official[outcomes.notna()].copy()
+        completed["realized_r"] = outcomes[outcomes.notna()]
+        return completed
+    if "outcome" not in official.columns:
         return pd.DataFrame(columns=official.columns)
     return official[official["outcome"].map(text).ne("")].copy()
 
@@ -350,10 +365,10 @@ def completed_trade_rows(samples: pd.DataFrame) -> list[dict[str, str]]:
             {
                 "symbol": text(row.get("symbol")),
                 "strategy": text(row.get("setup")),
-                "entry_time": text(row.get("signal_time")) or text(row.get("entry_time")),
-                "exit_time": text(row.get("exit_time")),
+                "entry_time": text(row.get("signal_time")) or text(row.get("entry_time_et")) or text(row.get("entry_time")),
+                "exit_time": text(row.get("exit_time_et")) or text(row.get("exit_time")),
                 "direction": text(row.get("direction")),
-                "result_r": text(row.get("realized_r")),
+                "result_r": text(row.get("realized_r")) or text(row.get("outcome_r")),
                 "exit_reason": text(row.get("exit_reason")),
                 "market_regime": text(row.get("market_regime")) or "N/A",
             }
@@ -368,7 +383,7 @@ def open_trade_rows(samples: pd.DataFrame) -> list[dict[str, str]]:
             {
                 "symbol": text(row.get("symbol")),
                 "strategy": text(row.get("setup")),
-                "entry_time": text(row.get("signal_time")) or text(row.get("entry_time")),
+                "entry_time": text(row.get("signal_time")) or text(row.get("entry_time_et")) or text(row.get("entry_time")),
                 "current_status": "open_pending_reconciliation",
                 "unrealized_r": text(row.get("unrealized_r")) or "N/A",
                 "exit_conditions_remaining": "Stop, target, or force-exit reconciliation.",
@@ -390,6 +405,95 @@ def trading_activity(samples: pd.DataFrame, output_dir: Path) -> dict[str, Any]:
         "autonomous_paper_trades_closed": len(completed),
         "open_paper_trades": len(open_trades),
         "official_validation_trade_count": len(official),
+    }
+
+
+def metric_value(canonical: dict[str, Any], *path: str) -> Any:
+    current: Any = canonical
+    for key in path:
+        if not isinstance(current, dict):
+            return "UNKNOWN"
+        current = current.get(key)
+    if isinstance(current, dict) and "value" in current:
+        return current.get("value")
+    return current if current is not None else "UNKNOWN"
+
+
+def validation_summary_from_canonical(canonical: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "total_rows": metric_value(canonical, "validation", "metrics", "total_rows"),
+        "completed_official_observations": metric_value(canonical, "validation", "metrics", "valid_completed_observations"),
+        "valid_open_observations": metric_value(canonical, "validation", "metrics", "valid_open_observations"),
+        "invalid_excluded_rows": metric_value(canonical, "validation", "metrics", "invalid_excluded_rows"),
+        "new_official_observations_today": metric_value(canonical, "validation", "metrics", "new_official_observations_today"),
+        "new_completed_observations_today": metric_value(canonical, "validation", "metrics", "new_completed_observations_today"),
+        "checkpoint": metric_value(canonical, "validation", "metrics", "checkpoint"),
+        "today_r": metric_value(canonical, "validation", "metrics", "today_r"),
+        "independent_opportunities": metric_value(canonical, "independent_opportunities"),
+        "independent_opportunities_provenance": canonical.get("independent_opportunities", {}).get("provenance", "UNKNOWN"),
+        "independent_opportunities_reason": canonical.get("independent_opportunities", {}).get("reason", ""),
+    }
+
+
+def trading_activity_from_canonical(canonical: dict[str, Any]) -> dict[str, Any]:
+    funnel = canonical.get("candidate_funnel", {})
+    validation = validation_summary_from_canonical(canonical)
+    return {
+        "candidates_detected": metric_value(funnel, "scanner"),
+        "candidates_promoted": metric_value(funnel, "size_ok"),
+        "current_candle": metric_value(funnel, "current_candle"),
+        "earlier_today": metric_value(funnel, "earlier_today"),
+        "paper_gate_ready_final_snapshot": metric_value(funnel, "paper_gate_ready_final_snapshot"),
+        "contract_gate_passes": metric_value(funnel, "contract_gate_pass"),
+        "validation_preview_import_signal": metric_value(funnel, "validation_preview_import_signal"),
+        "official_imports": metric_value(funnel, "official_imports"),
+        "autonomous_paper_trades_opened": metric_value(funnel, "official_imports"),
+        "autonomous_paper_trades_closed": validation["new_completed_observations_today"],
+        "open_paper_trades": validation["valid_open_observations"],
+        "official_validation_trade_count": validation["completed_official_observations"],
+    }
+
+
+def opening_range_breakout_from_canonical(canonical: dict[str, Any]) -> dict[str, Any]:
+    accumulated = canonical.get("orb", {}).get("accumulated_evidence", {})
+    readiness = canonical.get("orb", {}).get("paper_watch_readiness", {})
+    checks = readiness.get("checks", []) if isinstance(readiness, dict) else []
+    by_check = {
+        str(item.get("check", "")): item
+        for item in checks
+        if isinstance(item, dict)
+    }
+
+    def progress(check: str) -> dict[str, Any]:
+        row = by_check.get(check, {})
+        current = float(row.get("current", 0) or 0)
+        required = float(row.get("required", 0) or 0)
+        return {
+            "current": current,
+            "required": required,
+            "remaining": max(required - current, 0.0),
+            "status": text(row.get("status")) or "missing",
+        }
+
+    return {
+        "strategy": "Opening Range Breakout",
+        "strategy_id": "opening_range_breakout",
+        "collection_mode": "shadow_only",
+        "decision": readiness.get("decision", "UNKNOWN"),
+        "next_blocker": readiness.get("next_blocker", "UNKNOWN"),
+        "blocked_count": readiness.get("blocked_count", "UNKNOWN"),
+        "accumulated_shadow_samples": metric_value(accumulated, "shadow_samples"),
+        "accumulated_forward_observations": metric_value(accumulated, "forward_observations"),
+        "accumulated_matured_shadow_outcomes": metric_value(accumulated, "matured_shadow_outcomes"),
+        "accumulated_matured_forward_outcomes": metric_value(accumulated, "matured_forward_outcomes"),
+        "shadow_samples": progress("Shadow samples logged"),
+        "matured_shadow_outcomes": progress("Matured shadow outcomes"),
+        "forward_observations": progress("Forward observations logged"),
+        "matured_forward_outcomes": progress("Matured forward outcomes"),
+        "shadow_average_r": progress("Shadow average R"),
+        "forward_average_r": progress("Forward average R"),
+        "paper_watch_readiness": readiness,
+        "guardrail": "Shadow/forward accumulated evidence is separate from paper-watch readiness. No broker orders, alerts, or live execution.",
     }
 
 
@@ -535,22 +639,37 @@ def build_eod_payload(
     production, reporting = status_from_artifacts(output_dir)
     if any(not item["ok"] for item in command_results):
         reporting = "DEGRADED"
+    canonical = build_canonical_session_state(output_dir, data_dir, trading_day)
+    canonical_path = write_canonical_session_state(canonical, output_dir, trading_day)
+    if canonical.get("reporting", {}).get("status") in {"WATCH", "FAIL"} and reporting == "GREEN":
+        reporting = "WATCH"
     metrics = research_metrics(samples)
-    return {
+    activity = trading_activity_from_canonical(canonical)
+    legacy_activity = trading_activity(samples, output_dir)
+    if activity.get("autonomous_paper_trades_closed") == "UNKNOWN":
+        activity["autonomous_paper_trades_closed"] = legacy_activity["autonomous_paper_trades_closed"]
+        activity["autonomous_paper_trades_closed_source"] = (
+            "legacy compatibility fallback; canonical validation summary remains UNKNOWN when current schema is unavailable"
+        )
+    payload = {
         "report_type": "eod",
         "report_status": "FINAL",
         "trading_date": trading_day.isoformat(),
         "generated_at_et": generated_at.isoformat(),
         "report_version": EOD_REPORT_VERSION,
+        "report_revision": "CANONICAL_RECONCILED",
+        "canonical_session_state_path": str(canonical_path),
+        "canonical_session_state": canonical,
         "production_status": production,
         "reporting_status": reporting,
         "business_impact": "NO" if production in {"GREEN", "WATCH"} else "YES",
         "operator_action_required": "YES" if reporting in {"DEGRADED", "DOWN"} or production in {"DEGRADED", "DOWN"} else "NO",
-        "trading_activity": trading_activity(samples, output_dir),
+        "validation_summary": validation_summary_from_canonical(canonical),
+        "trading_activity": activity,
         "completed_trades": completed_trade_rows(samples),
         "open_trades": open_trade_rows(samples),
         "research_metrics": metrics,
-        "opening_range_breakout": opening_range_breakout_evidence(output_dir),
+        "opening_range_breakout": opening_range_breakout_from_canonical(canonical),
         "morning_index_orb_manual_paper_watch": morning_index_orb_manual_paper_watch(output_dir),
         "operational_health": operational_health(output_dir, production, reporting),
         "engineering_assessment": engineering_assessment(production, reporting),
@@ -570,6 +689,8 @@ def build_eod_payload(
         "commands_ran": command_results,
         "delivery_method": "macos_notification",
     }
+    payload["reporting_consistency"] = audit_report_consistency(canonical, eod_payload=payload)
+    return payload
 
 
 def operational_health(output_dir: Path, production: str, reporting: str) -> list[dict[str, str]]:
@@ -616,6 +737,37 @@ def opening_range_breakout_markdown(payload: dict[str, Any]) -> str:
     orb = payload.get("opening_range_breakout", {})
     if not isinstance(orb, dict):
         orb = {}
+
+    if "accumulated_shadow_samples" in orb:
+        readiness = orb.get("paper_watch_readiness", {})
+        lines = [
+            f"- Strategy: {orb.get('strategy', 'Opening Range Breakout')}",
+            f"- Collection Mode: {orb.get('collection_mode', 'shadow_only')}",
+            f"- Accumulated Shadow Samples: {orb.get('accumulated_shadow_samples', 'UNKNOWN')}",
+            f"- Accumulated Forward Observations: {orb.get('accumulated_forward_observations', 'UNKNOWN')}",
+            f"- Matured Shadow Outcomes: {orb.get('accumulated_matured_shadow_outcomes', 'UNKNOWN')}",
+            f"- Matured Forward Outcomes: {orb.get('accumulated_matured_forward_outcomes', 'UNKNOWN')}",
+            f"- Paper-Watch Decision: {orb.get('decision', 'UNKNOWN')}",
+            f"- Paper-Watch Next Blocker: {orb.get('next_blocker', 'UNKNOWN')}",
+            f"- Paper-Watch Blocked Checks: {orb.get('blocked_count', 'UNKNOWN')}",
+            f"- Paper-Watch Source: {readiness.get('source', 'UNKNOWN') if isinstance(readiness, dict) else 'UNKNOWN'}",
+        ]
+        for label, key in [
+            ("Shadow Samples", "shadow_samples"),
+            ("Matured Shadow Outcomes", "matured_shadow_outcomes"),
+            ("Forward Observations", "forward_observations"),
+            ("Matured Forward Outcomes", "matured_forward_outcomes"),
+            ("Shadow Average R", "shadow_average_r"),
+            ("Forward Average R", "forward_average_r"),
+        ]:
+            progress = orb.get(key, {})
+            if isinstance(progress, dict) and progress.get("status") != "missing":
+                lines.append(
+                    f"- {label}: {progress.get('current', 0)} / {progress.get('required', 0)} "
+                    f"(remaining {progress.get('remaining', 0)}, status {progress.get('status', 'missing')})"
+                )
+        lines.append(f"- Guardrail: {orb.get('guardrail', 'Shadow-only evidence collection.')}")
+        return "\n".join(lines)
 
     def line(label: str, key: str) -> str:
         metric = orb.get(key, {})
@@ -739,6 +891,7 @@ Operator Action Required: {payload["operator_action_required"]}
 """
 
     activity = payload["trading_activity"]
+    validation = payload.get("validation_summary", {})
     completed = payload["completed_trades"] or []
     open_trades = payload["open_trades"] or []
     metrics = payload["research_metrics"]
@@ -784,6 +937,8 @@ GWALA END-OF-DAY EXECUTIVE REPORT
 ## 1. Executive Summary
 - Production Status: {payload["production_status"]}
 - Reporting Status: {payload["reporting_status"]}
+- Report Revision: {payload.get("report_revision", "ORIGINAL")}
+- Canonical Session State: {payload.get("canonical_session_state_path", "N/A")}
 - Trading Session Completed: Yes
 - Business Impact Incidents: {payload["business_impact"]}
 - Executive Summary (one paragraph): Project Gwala completed the session report from finalized reconciliation state and separated production health from reporting health.
@@ -791,19 +946,36 @@ GWALA END-OF-DAY EXECUTIVE REPORT
 ## 2. Trading Activity
 - Candidates Detected: {activity["candidates_detected"]}
 - Candidates Promoted: {activity["candidates_promoted"]}
+- Current-Candle Allowed: {activity.get("current_candle", "UNKNOWN")}
+- Earlier-Today Allowed: {activity.get("earlier_today", "UNKNOWN")}
+- Paper Gate Ready Final Snapshot: {activity.get("paper_gate_ready_final_snapshot", "UNKNOWN")}
 - Contract Gate Passes: {activity["contract_gate_passes"]}
+- Validation Preview / Import Signal: {activity.get("validation_preview_import_signal", "UNKNOWN")}
+- Official Imports: {activity.get("official_imports", "UNKNOWN")}
 - Autonomous Paper Trades Opened: {activity["autonomous_paper_trades_opened"]}
 - Autonomous Paper Trades Closed: {activity["autonomous_paper_trades_closed"]}
 - Open Paper Trades: {activity["open_paper_trades"]}
 - Official Validation Trade Count: {activity["official_validation_trade_count"]}
 
-## 3. Completed Trades
+## 3. Canonical Validation Summary
+- Total Validation Ledger Rows: {validation.get("total_rows", "UNKNOWN")}
+- Total Completed Official Strategy Observations: {validation.get("completed_official_observations", "UNKNOWN")}
+- New Official Observations Today: {validation.get("new_official_observations_today", "UNKNOWN")}
+- New Completed Official Observations Today: {validation.get("new_completed_observations_today", "UNKNOWN")}
+- Valid Open Official Observations: {validation.get("valid_open_observations", "UNKNOWN")}
+- Invalid / Excluded Rows: {validation.get("invalid_excluded_rows", "UNKNOWN")}
+- Phase 2 Checkpoint: {validation.get("checkpoint", "UNKNOWN")}
+- Independent Market Opportunities: {validation.get("independent_opportunities", "UNKNOWN")} ({validation.get("independent_opportunities_provenance", "UNKNOWN")})
+- Independent Opportunity Provenance: {validation.get("independent_opportunities_reason", "UNKNOWN")}
+- Today's Official R: {validation.get("today_r", "UNKNOWN")}R
+
+## 4. Completed Trades
 {chr(10).join(completed_lines)}
 
-## 4. Open Trades
+## 5. Open Trades
 {chr(10).join(open_lines)}
 
-## 5. Research Metrics
+## 6. Research Metrics
 - Running Win Rate: {metrics["running_win_rate"]}
 - Average R: {metrics["average_r"]}
 - Total Validation Trades: {metrics["total_validation_trades"]}
@@ -812,16 +984,16 @@ GWALA END-OF-DAY EXECUTIVE REPORT
 - Market Regime Breakdown: {metrics["market_regime_breakdown"]}
 - Current Drawdown: {metrics["current_drawdown"]}
 
-## 6. Opening Range Breakout Shadow Evidence
+## 7. Opening Range Breakout Shadow Evidence
 {opening_range_breakout_markdown(payload)}
 
-## 7. Morning Index ORB Manual Paper-Watch
+## 8. Morning Index ORB Manual Paper-Watch
 {morning_index_orb_markdown(payload)}
 
-## 8. Operational Health
+## 9. Operational Health
 {chr(10).join(health_lines)}
 
-## 9. Engineering Assessment
+## 10. Engineering Assessment
 
 1. Did today's evidence expose a production defect? {assessment["production_defect"]}
 2. Did today's evidence expose a reporting defect? {assessment["reporting_defect"]}
@@ -830,21 +1002,26 @@ GWALA END-OF-DAY EXECUTIVE REPORT
 5. If NO, explicitly state:
    "{no_engineering_answer}"
 
-## 10. Research Assessment
+## 11. Research Assessment
 
 - What did today's session teach us? {research["what_did_today_teach_us"]}
 - Which assumptions gained evidence? {research["assumptions_gained_evidence"]}
 - Which assumptions lost evidence? {research["assumptions_lost_evidence"]}
 - What should continue to be observed? {research["continue_to_observe"]}
 
-## 11. Tomorrow's Readiness
+## 12. Tomorrow's Readiness
 
 - Production Ready: {ready["production_ready"]}
 - Reporting Ready: {ready["reporting_ready"]}
 - Required actions before market open: {ready["required_actions_before_market_open"]}
 - Operational concerns: {ready["operational_concerns"]}
 
-## 12. CEO Action Required
+## 13. Reporting Consistency
+
+- Status: {payload.get("reporting_consistency", {}).get("status", "UNKNOWN")}
+- Failures: {payload.get("reporting_consistency", {}).get("failures", [])}
+
+## 14. CEO Action Required
 
 {payload["ceo_action_required"]}
 

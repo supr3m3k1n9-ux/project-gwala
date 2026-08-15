@@ -21,6 +21,9 @@ from config.settings import STRATEGY
 from config.strategy_registry import chart_marker_label_for_setup, strategy_id_for_scanner, strategy_vault_trade_logs
 from execution.paper_trader import build_local_paper_orders, eligible_sizing_rows, orders_to_open_paper_trades
 from reports.refresh_status import build_refresh_status
+from reports.canonical_session_state import audit_report_consistency
+from reports.canonical_session_state import build_canonical_session_state
+from reports.canonical_session_state import write_canonical_session_state
 from reports.system_state import (
     build_system_state,
     current_candidate_state,
@@ -12064,6 +12067,209 @@ class StateAndEndpointTests(unittest.TestCase):
         )
 
 class FounderCommandCenterV1Tests(unittest.TestCase):
+    def write_canonical_regression_artifacts(self, root: Path) -> tuple[Path, Path]:
+        logs = root / "logs"
+        data = root / "data"
+        logs.mkdir()
+        data.mkdir()
+        rows = []
+        for index in range(29):
+            rows.append(
+                {
+                    "sample_date": "2026-08-10",
+                    "entry_time_et": f"10:{index % 6}0",
+                    "source_signal_et": "2026-08-10 10:00",
+                    "candidate_entry_et": "2026-08-10 10:00",
+                    "exit_time_et": "15:55",
+                    "symbol": "SPY",
+                    "setup": "Setup A Long",
+                    "direction": "long",
+                    "sample_status": "completed",
+                    "counts_toward_30": "True",
+                    "counts_toward_live_readiness": "True",
+                    "invalid_for_validation": "",
+                    "outcome_r": "0.25",
+                }
+            )
+        rows.append(
+            {
+                "sample_date": "2026-08-14",
+                "entry_time_et": "10:00",
+                "source_signal_et": "2026-08-14 10:00",
+                "candidate_entry_et": "2026-08-14 10:00",
+                "exit_time_et": "13:35",
+                "symbol": "SPY",
+                "setup": "Setup C Full-Session Long",
+                "direction": "long",
+                "sample_status": "completed",
+                "counts_toward_30": "True",
+                "counts_toward_live_readiness": "True",
+                "invalid_for_validation": "",
+                "outcome_r": "-1.0",
+            }
+        )
+        for index in range(3):
+            rows.append(
+                {
+                    "sample_date": "2026-08-01",
+                    "entry_time_et": "10:00",
+                    "symbol": "SPY",
+                    "setup": "Invalid",
+                    "direction": "long",
+                    "sample_status": "completed",
+                    "counts_toward_30": "True",
+                    "invalid_for_validation": "true",
+                    "outcome_r": "1.0",
+                }
+            )
+        pd.DataFrame(rows).to_csv(data / "paper_validation_samples.csv", index=False)
+        pd.DataFrame(
+            [{"symbol": f"S{i}", "scanner_status": "allowed" if i < 3 else "not_ready", "scan_date": "2026-08-14"} for i in range(24)]
+        ).to_csv(logs / "daily_paper_signal_scanner.csv", index=False)
+        pd.DataFrame(
+            [{"symbol": f"S{i}", "sizing_status": "size_ok" if i < 2 else "not_allowed"} for i in range(24)]
+        ).to_csv(logs / "position_sizing.csv", index=False)
+        pd.DataFrame(
+            [{"sample_status": "study_only", "counts_toward_30": "False"} for _ in range(24)]
+        ).to_csv(logs / "paper_gate_v2.csv", index=False)
+        (logs / "current_candle_capture.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_et": "2026-08-14 15:58:04 EDT",
+                    "scanner_current_allowed": 2,
+                    "scanner_earlier_today_allowed": 1,
+                    "contract_gate_passed": 1,
+                    "validation_import_new_rows": 1,
+                    "orb_shadow_samples": 76,
+                    "orb_forward_observations": 76,
+                    "orb_matured_shadow_outcomes": 72,
+                    "orb_matured_forward_outcomes": 72,
+                    "timing": {
+                        "entry_critical_path_seconds": 163.002,
+                        "entry_budget_seconds": 240.0,
+                        "entry_timing_status": "PASS",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (logs / "production_heartbeat.json").write_text(
+            json.dumps({"status": "GREEN", "experiment_valid_today": True, "heartbeat_date": "2026-08-14", "reason": "ok"}),
+            encoding="utf-8",
+        )
+        (logs / "opening_range_breakout_paper_watch_gate.json").write_text(
+            json.dumps({"decision": "not_ready", "next_blocker": "Shadow samples logged", "blocked_count": 6}),
+            encoding="utf-8",
+        )
+        return logs, data
+
+    def test_canonical_session_state_reconciles_august_14_failure_case(self) -> None:
+        with TemporaryDirectory() as temporary:
+            logs, data = self.write_canonical_regression_artifacts(Path(temporary))
+
+            state = build_canonical_session_state(logs, data, date(2026, 8, 14))
+
+        validation = state["validation"]["metrics"]
+        funnel = state["candidate_funnel"]
+        orb = state["orb"]["accumulated_evidence"]
+        self.assertEqual(validation["total_rows"]["value"], 33)
+        self.assertEqual(validation["valid_completed_observations"]["value"], 30)
+        self.assertEqual(validation["valid_open_observations"]["value"], 0)
+        self.assertEqual(validation["invalid_excluded_rows"]["value"], 3)
+        self.assertEqual(validation["new_completed_observations_today"]["value"], 1)
+        self.assertEqual(validation["checkpoint"]["value"], "30 / 30")
+        self.assertEqual(state["independent_opportunities"]["value"], 21)
+        self.assertEqual(funnel["scanner"]["value"], 24)
+        self.assertEqual(funnel["allowed"]["value"], 3)
+        self.assertEqual(funnel["current_candle"]["value"], 2)
+        self.assertEqual(funnel["size_ok"]["value"], 2)
+        self.assertEqual(funnel["paper_gate_ready_final_snapshot"]["value"], 0)
+        self.assertEqual(funnel["contract_gate_pass"]["value"], 1)
+        self.assertEqual(funnel["official_imports"]["value"], 1)
+        self.assertEqual(orb["shadow_samples"]["value"], 76)
+        self.assertEqual(orb["forward_observations"]["value"], 76)
+        self.assertEqual(orb["matured_shadow_outcomes"]["value"], 72)
+        self.assertEqual(state["production"]["critical_path"]["entry_critical_path_seconds"], 163.002)
+        self.assertEqual(state["phase_state"]["phase_2"], "CHECKPOINT REACHED / FREEZE PENDING")
+        self.assertFalse(state["phase_state"]["cohort_1_frozen"])
+
+    def test_canonical_schema_mismatch_returns_unknown_not_false_zero(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "logs"
+            data = root / "data"
+            logs.mkdir()
+            data.mkdir()
+            pd.DataFrame([{"symbol": "SPY", "outcome": "1.0"}]).to_csv(data / "paper_validation_samples.csv", index=False)
+
+            state = build_canonical_session_state(logs, data, date(2026, 8, 14))
+
+        validation = state["validation"]
+        self.assertEqual(validation["status"], "UNKNOWN")
+        self.assertIn("schema mismatch", validation["reason"])
+        self.assertEqual(validation["metrics"]["valid_completed_observations"]["value"], "UNKNOWN")
+        self.assertNotEqual(validation["metrics"]["valid_completed_observations"]["value"], 0)
+
+    def test_canonical_state_is_durable_and_report_consistency_catches_disagreement(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            state = build_canonical_session_state(logs, data, date(2026, 8, 14))
+
+            path = write_canonical_session_state(state, logs, date(2026, 8, 14))
+            audit = audit_report_consistency(
+                state,
+                eod_payload={
+                    "validation_summary": {
+                        "completed_official_observations": 0,
+                        "new_completed_observations_today": 0,
+                        "checkpoint": "0 / 30",
+                    }
+                },
+            )
+
+            self.assertTrue(path.exists())
+            self.assertTrue((logs / "canonical_session_state.json").exists())
+            self.assertEqual(audit["status"], "FAIL")
+            self.assertEqual(len(audit["failures"]), 3)
+
+    def test_eod_report_consumes_canonical_session_state(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+
+            payload = build_eod_payload(
+                logs,
+                data,
+                date(2026, 8, 14),
+                datetime(2026, 8, 14, 16, 5, tzinfo=MARKET_TZ),
+                runner=lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
+            )
+            markdown = eod_markdown(payload)
+
+        self.assertEqual(payload["report_revision"], "CANONICAL_RECONCILED")
+        self.assertEqual(payload["validation_summary"]["completed_official_observations"], 30)
+        self.assertEqual(payload["validation_summary"]["new_completed_observations_today"], 1)
+        self.assertEqual(payload["trading_activity"]["candidates_detected"], 24)
+        self.assertEqual(payload["trading_activity"]["contract_gate_passes"], 1)
+        self.assertEqual(payload["opening_range_breakout"]["accumulated_shadow_samples"], 76)
+        self.assertEqual(payload["reporting_consistency"]["status"], "PASS")
+        self.assertIn("Total Completed Official Strategy Observations: 30", markdown)
+        self.assertIn("Phase 2 Checkpoint: 30 / 30", markdown)
+
+    def test_command_center_consumes_canonical_founder_metrics(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            with patch.object(run_app, "LOGS_DIR", logs), patch.object(run_app, "RUNTIME_DATA_DIR", data):
+                payload = run_app.founder_command_center_payload()
+
+        self.assertEqual(payload["overview"]["official_validation"], "30 / 30")
+        self.assertEqual(payload["overview"]["current_phase"], "CHECKPOINT REACHED / FREEZE PENDING")
+        self.assertEqual(payload["today"]["new_official_trades"], 1)
+        self.assertEqual(payload["today"]["completed_trades"], 1)
+        self.assertEqual(payload["reporting_consistency"]["status"], "PASS")
+
     def test_validation_scorecard_uses_authoritative_official_ledger(self) -> None:
         with TemporaryDirectory() as temporary:
             samples = Path(temporary) / "paper_validation_samples.csv"
