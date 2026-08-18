@@ -95,6 +95,7 @@ def main() -> None:
         ),
         ("Opening Range Breakout Paper-Watch Gate", [sys.executable, "run_opening_range_breakout_paper_watch_gate.py", "--output-dir", str(args.output_dir)]),
         ("Morning Index ORB Manual Paper-Watch", [sys.executable, "run_morning_index_orb_manual_paper_watch.py", "--output-dir", str(args.output_dir)]),
+        ("Phase 3 Forward Evidence Classifier", [sys.executable, "run_phase3_forward_evidence_classifier.py", "--output-dir", str(args.output_dir)]),
         ("Refresh Status", [sys.executable, "run_refresh_status.py", "--output-dir", str(args.output_dir)]),
         ("System State", [sys.executable, "run_system_state.py", "--output-dir", str(args.output_dir)]),
         ("Dashboard Data Preflight", [sys.executable, "run_dashboard_data_preflight.py", "--output-dir", str(args.output_dir)]),
