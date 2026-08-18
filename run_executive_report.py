@@ -376,6 +376,14 @@ def completed_trade_rows(samples: pd.DataFrame) -> list[dict[str, str]]:
     return rows
 
 
+def completed_trade_rows_for_day(samples: pd.DataFrame, trading_day: date) -> list[dict[str, str]]:
+    completed = completed_official_samples(samples)
+    if completed.empty or "sample_date" not in completed.columns:
+        return []
+    same_day = completed[completed["sample_date"].map(text).eq(trading_day.isoformat())].copy()
+    return completed_trade_rows(same_day)
+
+
 def open_trade_rows(samples: pd.DataFrame) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for _, row in open_official_samples(samples).iterrows():
@@ -572,6 +580,27 @@ def morning_index_orb_manual_paper_watch(output_dir: Path) -> dict[str, Any]:
     }
 
 
+def phase_3_forward_evidence_from_canonical(canonical: dict[str, Any]) -> dict[str, Any]:
+    phase3 = canonical.get("phase_3_forward_evidence", {})
+    return phase3 if isinstance(phase3, dict) else {}
+
+
+def phase_3_daily_conclusion(phase3_forward: dict[str, Any]) -> str:
+    h006 = phase3_forward.get("p3_h006", {}) if isinstance(phase3_forward.get("p3_h006"), dict) else {}
+    qqq = phase3_forward.get("qqq_setup_b_late_day", {}) if isinstance(phase3_forward.get("qqq_setup_b_late_day"), dict) else {}
+    orb = phase3_forward.get("orb", {}) if isinstance(phase3_forward.get("orb"), dict) else {}
+    integrity = phase3_forward.get("integrity", {}) if isinstance(phase3_forward.get("integrity"), dict) else {}
+    if integrity.get("classifier") == "WATCH":
+        return "Forward evidence accounting is WATCH; review classifier reason before treating missing forward evidence as zero."
+    if integrity.get("forward_evidence_loss") == "YES":
+        return "Forward evidence loss was detected; investigate before using today's Phase 3 evidence conclusion."
+    return (
+        "No new P3-H006 or QQQ Setup B late-day forward observations occurred. "
+        f"ORB remains {orb.get('cumulative_completed', 0)} / 20 completed. "
+        "No forward evidence was lost."
+    )
+
+
 def build_opening_payload(output_dir: Path, data_dir: Path, trading_day: date, generated_at: datetime) -> dict[str, Any]:
     samples = read_csv(data_dir / SAMPLES_CSV.name)
     production, reporting = status_from_artifacts(output_dir)
@@ -666,7 +695,10 @@ def build_eod_payload(
         "operator_action_required": "YES" if reporting in {"DEGRADED", "DOWN"} or production in {"DEGRADED", "DOWN"} else "NO",
         "validation_summary": validation_summary_from_canonical(canonical),
         "trading_activity": activity,
-        "completed_trades": completed_trade_rows(samples),
+        "phase_3_forward_evidence": phase_3_forward_evidence_from_canonical(canonical),
+        "completed_trades_today": completed_trade_rows_for_day(samples, trading_day),
+        "completed_trades": completed_trade_rows_for_day(samples, trading_day),
+        "historical_cohort_1": canonical.get("cohort_1", {}),
         "open_trades": open_trade_rows(samples),
         "research_metrics": metrics,
         "opening_range_breakout": opening_range_breakout_from_canonical(canonical),
@@ -674,10 +706,10 @@ def build_eod_payload(
         "operational_health": operational_health(output_dir, production, reporting),
         "engineering_assessment": engineering_assessment(production, reporting),
         "research_assessment": {
-            "what_did_today_teach_us": "Official validation evidence is available only after completed trades are reconciled into accounting.",
-            "assumptions_gained_evidence": "The reporting pipeline can separate production state from reporting reconciliation state.",
+            "what_did_today_teach_us": phase_3_daily_conclusion(phase_3_forward_evidence_from_canonical(canonical)),
+            "assumptions_gained_evidence": "Forward evidence capture status is now separated from frozen Phase 2 validation evidence.",
             "assumptions_lost_evidence": "N/A",
-            "continue_to_observe": "Completed official paper trades, final M5 availability, and accounting synchronization.",
+            "continue_to_observe": "P3-H006, QQQ Setup B late-day, and Morning SPY/QQQ Long ORB forward evidence.",
         },
         "tomorrow_readiness": {
             "production_ready": "YES" if production in {"GREEN", "WATCH"} else "NO",
@@ -825,6 +857,85 @@ def morning_index_orb_markdown(payload: dict[str, Any]) -> str:
     )
 
 
+def phase_3_forward_evidence_markdown(payload: dict[str, Any]) -> str:
+    phase3 = payload.get("phase_3_forward_evidence", {})
+    if not isinstance(phase3, dict) or not phase3:
+        return "- Status: UNKNOWN\n- Reason: Phase 3 forward evidence was not present in canonical session state."
+    h006 = phase3.get("p3_h006", {}) if isinstance(phase3.get("p3_h006"), dict) else {}
+    qqq = phase3.get("qqq_setup_b_late_day", {}) if isinstance(phase3.get("qqq_setup_b_late_day"), dict) else {}
+    orb = phase3.get("orb", {}) if isinstance(phase3.get("orb"), dict) else {}
+    integrity = phase3.get("integrity", {}) if isinstance(phase3.get("integrity"), dict) else {}
+
+    def lane(title: str, row: dict[str, Any]) -> list[str]:
+        return [
+            f"### {title}",
+            f"- New Raw Observations Today: {row.get('new_raw_observations_today', 'UNKNOWN')}",
+            f"- New Independent Opportunities Today: {row.get('new_independent_opportunities_today', 'UNKNOWN')}",
+            f"- Eligible Observations Today: {row.get('eligible_observations_today', 'UNKNOWN')}",
+            f"- Paper Entries Today: {row.get('paper_entries_today', 'UNKNOWN')}",
+            f"- Completed Outcomes Today: {row.get('completed_outcomes_today', 'UNKNOWN')}",
+            f"- Today's R: {row.get('today_r', 'UNKNOWN')}",
+            f"- Cumulative Raw Forward Observations: {row.get('cumulative_raw_forward_observations', 'UNKNOWN')}",
+            f"- Cumulative Independent Opportunities: {row.get('cumulative_independent_opportunities', 'UNKNOWN')}",
+            f"- Cumulative Completed Outcomes: {row.get('cumulative_completed_outcomes', 'UNKNOWN')}",
+            f"- Cumulative R: {row.get('cumulative_r', 'UNKNOWN')}",
+            f"- Status: {row.get('status', 'UNKNOWN')}",
+            f"- Latest Observation: {row.get('latest_observation', '') or 'None'}",
+        ]
+
+    lines = []
+    lines.extend(lane("P3-H006 — SPY Opening-Hour Setup A Long", h006))
+    lines.append("")
+    lines.extend(lane("QQQ Setup B Late-Day", qqq))
+    lines.extend(
+        [
+            "",
+            "### Morning SPY/QQQ Long ORB",
+            f"- Detected Today: {orb.get('detected_today', 'UNKNOWN')}",
+            f"- Qualified Today: {orb.get('qualified_today', 'UNKNOWN')}",
+            f"- Contract Passed Today: {orb.get('contract_passed_today', 'UNKNOWN')}",
+            f"- Paper Entries Today: {orb.get('paper_entries_today', 'UNKNOWN')}",
+            f"- Completed Today: {orb.get('completed_today', 'UNKNOWN')}",
+            f"- Cumulative Completed: {orb.get('cumulative_completed', 'UNKNOWN')}",
+            f"- Target / Runway: {orb.get('target_runway', 'UNKNOWN')}",
+            f"- Average R: {orb.get('average_r', 'UNKNOWN')}",
+            f"- Status: {orb.get('status', 'UNKNOWN')}",
+            "",
+            "### Forward Evidence Integrity",
+            f"- Forward Evidence Classifier: {integrity.get('classifier', 'UNKNOWN')}",
+            f"- Unclassified Qualifying Observations: {integrity.get('unclassified_qualifying_observations', 'UNKNOWN')}",
+            f"- Forward Evidence Loss: {integrity.get('forward_evidence_loss', 'UNKNOWN')}",
+            f"- Pre-Hypothesis Contamination: {integrity.get('pre_hypothesis_contamination', 'UNKNOWN')}",
+            f"- Duplicate Forward Records: {integrity.get('duplicate_forward_records', 'UNKNOWN')}",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def phase_3_portfolio_markdown(payload: dict[str, Any]) -> str:
+    phase3 = payload.get("phase_3_forward_evidence", {})
+    portfolio = phase3.get("portfolio", {}) if isinstance(phase3, dict) and isinstance(phase3.get("portfolio"), dict) else {}
+    if not portfolio:
+        return "- Phase 3 Portfolio: UNKNOWN"
+    return "\n".join(f"- {name}: {state}" for name, state in portfolio.items())
+
+
+def cohort_1_markdown(payload: dict[str, Any]) -> str:
+    cohort = payload.get("historical_cohort_1", {})
+    if not isinstance(cohort, dict):
+        cohort = {}
+    guardrail = cohort.get("guardrail", "Frozen Cohort 1 is historical context, not today's active research objective.")
+    return "\n".join(
+        [
+            f"- Status: {cohort.get('status', 'UNKNOWN')}",
+            f"- Completed Observations: {cohort.get('observations', 'UNKNOWN')} / 30",
+            f"- Independent Opportunities: {cohort.get('independent_opportunities', 'UNKNOWN')}",
+            "- Phase 2: COMPLETE" if cohort.get("status") == "FROZEN" else "- Phase 2: UNKNOWN",
+            f"- Guardrail: {guardrail}",
+        ]
+    )
+
+
 def opening_markdown(payload: dict[str, Any]) -> str:
     blocking = payload.get("blocking_issues") or ["None"]
     open_trades = payload.get("unresolved_open_trades") or []
@@ -892,7 +1003,8 @@ Operator Action Required: {payload["operator_action_required"]}
 
     activity = payload["trading_activity"]
     validation = payload.get("validation_summary", {})
-    completed = payload["completed_trades"] or []
+    phase3_forward = payload.get("phase_3_forward_evidence", {})
+    completed = payload.get("completed_trades_today") or []
     open_trades = payload["open_trades"] or []
     metrics = payload["research_metrics"]
     completed_lines = ["- None"]
@@ -937,11 +1049,13 @@ GWALA END-OF-DAY EXECUTIVE REPORT
 ## 1. Executive Summary
 - Production Status: {payload["production_status"]}
 - Reporting Status: {payload["reporting_status"]}
+- Phase 3 Status: {payload.get("canonical_session_state", {}).get("phase_state", {}).get("phase_3", "UNKNOWN")}
+- Forward Evidence Status: {phase3_forward.get("status", "UNKNOWN") if isinstance(phase3_forward, dict) else "UNKNOWN"}
 - Report Revision: {payload.get("report_revision", "ORIGINAL")}
 - Canonical Session State: {payload.get("canonical_session_state_path", "N/A")}
 - Trading Session Completed: Yes
 - Business Impact Incidents: {payload["business_impact"]}
-- Executive Summary (one paragraph): Project Gwala completed the session report from finalized reconciliation state and separated production health from reporting health.
+- Daily Conclusion: {phase_3_daily_conclusion(phase3_forward if isinstance(phase3_forward, dict) else {})}
 
 ## 2. Trading Activity
 - Candidates Detected: {activity["candidates_detected"]}
@@ -957,7 +1071,16 @@ GWALA END-OF-DAY EXECUTIVE REPORT
 - Open Paper Trades: {activity["open_paper_trades"]}
 - Official Validation Trade Count: {activity["official_validation_trade_count"]}
 
-## 3. Canonical Validation Summary
+## 3. Phase 3 Forward Evidence
+{phase_3_forward_evidence_markdown(payload)}
+
+## 4. Phase 3 Research Portfolio
+{phase_3_portfolio_markdown(payload)}
+
+## 5. Phase 2 — Frozen Cohort 1
+{cohort_1_markdown(payload)}
+
+## 6. Canonical Validation Summary
 - Total Validation Ledger Rows: {validation.get("total_rows", "UNKNOWN")}
 - Total Completed Official Strategy Observations: {validation.get("completed_official_observations", "UNKNOWN")}
 - New Official Observations Today: {validation.get("new_official_observations_today", "UNKNOWN")}
@@ -969,31 +1092,29 @@ GWALA END-OF-DAY EXECUTIVE REPORT
 - Independent Opportunity Provenance: {validation.get("independent_opportunities_reason", "UNKNOWN")}
 - Today's Official R: {validation.get("today_r", "UNKNOWN")}R
 
-## 4. Completed Trades
+## 7. Completed Trades Today
 {chr(10).join(completed_lines)}
 
-## 5. Open Trades
+## 8. Open Trades
 {chr(10).join(open_lines)}
 
-## 6. Research Metrics
-- Running Win Rate: {metrics["running_win_rate"]}
-- Average R: {metrics["average_r"]}
-- Total Validation Trades: {metrics["total_validation_trades"]}
-- Opportunity Frequency: {metrics["opportunity_frequency"]}
-- Strategy Breakdown: {metrics["strategy_breakdown"]}
-- Market Regime Breakdown: {metrics["market_regime_breakdown"]}
-- Current Drawdown: {metrics["current_drawdown"]}
+## 9. Research Metrics
+- Phase 2 Frozen Running Win Rate: {metrics["running_win_rate"]}
+- Phase 2 Frozen Average R: {metrics["average_r"]}
+- Phase 2 Frozen Total Validation Trades: {metrics["total_validation_trades"]}
+- Phase 3 Forward Results: See Phase 3 Forward Evidence section.
+- Validated Edges: {phase3_forward.get("portfolio", {}).get("Validated Edges", "UNKNOWN") if isinstance(phase3_forward, dict) and isinstance(phase3_forward.get("portfolio"), dict) else "UNKNOWN"}
 
-## 7. Opening Range Breakout Shadow Evidence
+## 10. Opening Range Breakout Shadow Evidence
 {opening_range_breakout_markdown(payload)}
 
-## 8. Morning Index ORB Manual Paper-Watch
+## 11. Morning Index ORB Manual Paper-Watch
 {morning_index_orb_markdown(payload)}
 
-## 9. Operational Health
+## 12. Operational Health
 {chr(10).join(health_lines)}
 
-## 10. Engineering Assessment
+## 13. Engineering Assessment
 
 1. Did today's evidence expose a production defect? {assessment["production_defect"]}
 2. Did today's evidence expose a reporting defect? {assessment["reporting_defect"]}
@@ -1002,26 +1123,26 @@ GWALA END-OF-DAY EXECUTIVE REPORT
 5. If NO, explicitly state:
    "{no_engineering_answer}"
 
-## 11. Research Assessment
+## 14. Research Assessment
 
 - What did today's session teach us? {research["what_did_today_teach_us"]}
 - Which assumptions gained evidence? {research["assumptions_gained_evidence"]}
 - Which assumptions lost evidence? {research["assumptions_lost_evidence"]}
 - What should continue to be observed? {research["continue_to_observe"]}
 
-## 12. Tomorrow's Readiness
+## 15. Tomorrow's Readiness
 
 - Production Ready: {ready["production_ready"]}
 - Reporting Ready: {ready["reporting_ready"]}
 - Required actions before market open: {ready["required_actions_before_market_open"]}
 - Operational concerns: {ready["operational_concerns"]}
 
-## 13. Reporting Consistency
+## 16. Reporting Consistency
 
 - Status: {payload.get("reporting_consistency", {}).get("status", "UNKNOWN")}
 - Failures: {payload.get("reporting_consistency", {}).get("failures", [])}
 
-## 14. CEO Action Required
+## 17. CEO Action Required
 
 {payload["ceo_action_required"]}
 

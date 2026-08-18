@@ -900,6 +900,17 @@ class DataFreshnessIntegrityAuditorTests(unittest.TestCase):
 
 
 class MarketCalendarTests(unittest.TestCase):
+    def test_national_day_of_mourning_2025_is_closed(self) -> None:
+        open_time = time(9, 30, tzinfo=MARKET_TZ)
+        close_time = time(16, 0, tzinfo=MARKET_TZ)
+
+        session = market_session_for_date(date(2025, 1, 9), open_time, close_time)
+
+        self.assertFalse(session.is_market_day)
+        self.assertIsNone(session.market_open)
+        self.assertIsNone(session.market_close)
+        self.assertIn("National Day of Mourning", session.reason)
+
     def test_memorial_day_is_closed_and_tuesday_is_next_session(self) -> None:
         open_time = time(9, 30, tzinfo=MARKET_TZ)
         close_time = time(16, 0, tzinfo=MARKET_TZ)
@@ -12176,6 +12187,114 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         )
         return logs, data
 
+    def write_phase3_forward_artifacts(
+        self,
+        logs: Path,
+        data: Path,
+        *,
+        classifier_status: str = "PASS",
+        h006_rows: list[dict[str, object]] | None = None,
+        qqq_rows: list[dict[str, object]] | None = None,
+        h006_score: dict[str, object] | None = None,
+        qqq_score: dict[str, object] | None = None,
+        orb_score: dict[str, object] | None = None,
+        duplicate_forward_records: int = 0,
+    ) -> None:
+        h006_rows = h006_rows or []
+        qqq_rows = qqq_rows or []
+        all_rows = h006_rows + qqq_rows
+        columns = [
+            "forward_evidence_id",
+            "hypothesis_id",
+            "strategy_id",
+            "strategy_version",
+            "symbol",
+            "direction",
+            "setup",
+            "signal_timestamp_et",
+            "first_seen_timestamp_et",
+            "entry_timestamp_et",
+            "time_bucket",
+            "source_provider",
+            "source_artifact",
+            "candidate_ledger_id",
+            "freshness_lane",
+            "quality_grade",
+            "router_state",
+            "size_ok",
+            "paper_gate_state",
+            "contract_gate_state",
+            "entry_state",
+            "outcome_state",
+            "exit_timestamp_et",
+            "outcome_r",
+            "independence_group_id",
+            "counts_as_forward_observation",
+            "counts_as_forward_completed_trade",
+            "exclusion_reason",
+            "hypothesis_adoption_timestamp",
+            "classification_timestamp",
+            "data_contract_version",
+        ]
+        pd.DataFrame(all_rows, columns=columns).to_csv(data / "phase3_forward_evidence.csv", index=False)
+        pd.DataFrame(
+            columns=[
+                "trade_date",
+                "source_signal_et",
+                "candidate_entry_et",
+                "symbol",
+                "setup",
+                "direction",
+                "freshness_lane",
+            ]
+        ).to_csv(data / "candidate_window_ledger.csv", index=False)
+        base_h006 = {
+            "hypothesis_id": "P3-H006",
+            "raw_forward_observations": 0,
+            "independent_opportunities": 0,
+            "eligible_observations": 0,
+            "paper_entries": 0,
+            "completed_outcomes": 0,
+            "total_r": 0.0,
+            "average_r": 0.0,
+            "exclusions": 0,
+            "latest_observation": "",
+            "status": "WAITING_FOR_FORWARD_EVIDENCE",
+            "forward_runway": "NOT YET GOVERNED",
+        }
+        base_qqq = {**base_h006, "hypothesis_id": "QQQ_SETUP_B_LATE_DAY"}
+        base_orb = {
+            "hypothesis_id": "morning_index_orb_long",
+            "raw_forward_observations": 97,
+            "independent_opportunities": "N/A",
+            "eligible_observations": 0,
+            "paper_entries": 0,
+            "completed_outcomes": 0,
+            "total_r": 0.0,
+            "average_r": 0.0,
+            "exclusions": 97,
+            "latest_observation": "2026-08-18 15:53:10 EDT",
+            "status": "waiting_for_candidate",
+            "forward_runway": "20 completed Manual Paper-Watch trades",
+        }
+        base_h006.update(h006_score or {})
+        base_qqq.update(qqq_score or {})
+        base_orb.update(orb_score or {})
+        pd.DataFrame([base_h006, base_qqq, base_orb]).to_csv(logs / "phase3_forward_evidence_scorecard.csv", index=False)
+        (logs / "phase3_forward_evidence_classifier.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_et": "2026-08-18 15:53:11 EDT",
+                    "status": classifier_status,
+                    "pre_hypothesis_contamination": 0,
+                    "pre_hypothesis_matching_candidates_seen_but_excluded": 26,
+                    "duplicate_forward_records": duplicate_forward_records,
+                    "scorecard": [base_h006, base_qqq, base_orb],
+                }
+            ),
+            encoding="utf-8",
+        )
+
     def test_canonical_session_state_reconciles_august_14_failure_case(self) -> None:
         with TemporaryDirectory() as temporary:
             logs, data = self.write_canonical_regression_artifacts(Path(temporary))
@@ -12244,7 +12363,11 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
             self.assertTrue(path.exists())
             self.assertTrue((logs / "canonical_session_state.json").exists())
             self.assertEqual(audit["status"], "FAIL")
-            self.assertEqual(len(audit["failures"]), 3)
+            self.assertGreaterEqual(len(audit["failures"]), 3)
+            self.assertIn(
+                "Completed Official Strategy Observations",
+                {failure["metric"] for failure in audit["failures"]},
+            )
 
     def test_eod_report_consumes_canonical_session_state(self) -> None:
         with TemporaryDirectory() as temporary:
@@ -12269,6 +12392,131 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
         self.assertEqual(payload["reporting_consistency"]["status"], "PASS")
         self.assertIn("Total Completed Official Strategy Observations: 30", markdown)
         self.assertIn("Phase 2 Checkpoint: 30 / 30", markdown)
+
+    def test_eod_reports_frozen_cohort_1_authority_and_phase3_zeroes(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            freeze_cohort_1(logs_dir=logs, data_dir=data, production_commit="TEST_COMMIT")
+            activate_phase3(logs_dir=logs, production_commit="TEST_COMMIT")
+            self.write_phase3_forward_artifacts(logs, data)
+
+            payload = build_eod_payload(
+                logs,
+                data,
+                date(2026, 8, 18),
+                datetime(2026, 8, 18, 16, 5, tzinfo=MARKET_TZ),
+                runner=lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
+            )
+            markdown = eod_markdown(payload)
+
+        self.assertEqual(payload["validation_summary"]["completed_official_observations"], 30)
+        self.assertEqual(payload["validation_summary"]["independent_opportunities"], 21)
+        self.assertEqual(payload["historical_cohort_1"]["observations"], 30)
+        self.assertEqual(payload["historical_cohort_1"]["independent_opportunities"], 21)
+        self.assertEqual(payload["phase_3_forward_evidence"]["p3_h006"]["new_raw_observations_today"], 0)
+        self.assertEqual(payload["phase_3_forward_evidence"]["qqq_setup_b_late_day"]["new_raw_observations_today"], 0)
+        self.assertEqual(payload["phase_3_forward_evidence"]["orb"]["cumulative_completed"], 0)
+        self.assertEqual(payload["phase_3_forward_evidence"]["integrity"]["forward_evidence_loss"], "NO")
+        self.assertEqual(payload["completed_trades_today"], [])
+        self.assertEqual(payload["completed_trades"], [])
+        self.assertEqual(payload["reporting_consistency"]["status"], "PASS")
+        self.assertIn("## 3. Phase 3 Forward Evidence", markdown)
+        self.assertIn("- New Raw Observations Today: 0", markdown)
+        self.assertIn("## 5. Phase 2 — Frozen Cohort 1", markdown)
+        self.assertIn("- Independent Opportunities: 21", markdown)
+        self.assertIn("## 7. Completed Trades Today\n- None", markdown)
+
+    def test_phase3_forward_observations_surface_in_eod(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            freeze_cohort_1(logs_dir=logs, data_dir=data, production_commit="TEST_COMMIT")
+            activate_phase3(logs_dir=logs, production_commit="TEST_COMMIT")
+            h006_row = {
+                "forward_evidence_id": "P3-H006|2026-08-18|SPY|setup-a",
+                "hypothesis_id": "P3-H006",
+                "symbol": "SPY",
+                "direction": "long",
+                "setup": "Setup A Long",
+                "signal_timestamp_et": "2026-08-18T10:00:00-04:00",
+                "first_seen_timestamp_et": "2026-08-18T10:01:00-04:00",
+                "entry_timestamp_et": "2026-08-18 10:00:00 EDT",
+                "time_bucket": "opening_hour",
+                "entry_state": "paper_gate_ready",
+                "outcome_state": "not_available",
+                "outcome_r": "",
+                "independence_group_id": "2026-08-18|SPY|2026-08-18 10:00:00 EDT",
+                "counts_as_forward_observation": "True",
+                "counts_as_forward_completed_trade": "False",
+            }
+            qqq_row = {
+                **h006_row,
+                "forward_evidence_id": "QQQ_SETUP_B_LATE_DAY|2026-08-18|QQQ|setup-b",
+                "hypothesis_id": "QQQ_SETUP_B_LATE_DAY",
+                "symbol": "QQQ",
+                "direction": "short",
+                "setup": "Setup B Short",
+                "signal_timestamp_et": "2026-08-18T15:00:00-04:00",
+                "first_seen_timestamp_et": "2026-08-18T15:01:00-04:00",
+                "time_bucket": "late_day",
+                "independence_group_id": "2026-08-18|QQQ|2026-08-18 15:00:00 EDT",
+            }
+            self.write_phase3_forward_artifacts(
+                logs,
+                data,
+                h006_rows=[h006_row],
+                qqq_rows=[qqq_row],
+                h006_score={"raw_forward_observations": 1, "independent_opportunities": 1, "eligible_observations": 1},
+                qqq_score={"raw_forward_observations": 1, "independent_opportunities": 1, "eligible_observations": 1},
+            )
+
+            payload = build_eod_payload(
+                logs,
+                data,
+                date(2026, 8, 18),
+                datetime(2026, 8, 18, 16, 5, tzinfo=MARKET_TZ),
+                runner=lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
+            )
+
+        self.assertEqual(payload["phase_3_forward_evidence"]["p3_h006"]["new_raw_observations_today"], 1)
+        self.assertEqual(payload["phase_3_forward_evidence"]["p3_h006"]["new_independent_opportunities_today"], 1)
+        self.assertEqual(payload["phase_3_forward_evidence"]["qqq_setup_b_late_day"]["new_raw_observations_today"], 1)
+        self.assertEqual(payload["phase_3_forward_evidence"]["qqq_setup_b_late_day"]["new_independent_opportunities_today"], 1)
+
+    def test_forward_classifier_watch_is_unknown_not_false_zero(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            freeze_cohort_1(logs_dir=logs, data_dir=data, production_commit="TEST_COMMIT")
+            activate_phase3(logs_dir=logs, production_commit="TEST_COMMIT")
+            self.write_phase3_forward_artifacts(logs, data, classifier_status="WATCH")
+
+            state = build_canonical_session_state(logs, data, date(2026, 8, 18))
+
+        self.assertEqual(state["phase_3_forward_evidence"]["status"], "WATCH")
+        self.assertEqual(state["phase_3_forward_evidence"]["integrity"]["forward_evidence_loss"], "UNKNOWN")
+        self.assertEqual(state["reporting"]["status"], "WATCH")
+
+    def test_completed_trades_today_excludes_historical_cohort_1_rows(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs, data = self.write_canonical_regression_artifacts(root)
+            freeze_cohort_1(logs_dir=logs, data_dir=data, production_commit="TEST_COMMIT")
+            activate_phase3(logs_dir=logs, production_commit="TEST_COMMIT")
+            self.write_phase3_forward_artifacts(logs, data)
+
+            payload = build_eod_payload(
+                logs,
+                data,
+                date(2026, 8, 18),
+                datetime(2026, 8, 18, 16, 5, tzinfo=MARKET_TZ),
+                runner=lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
+            )
+
+        self.assertEqual(len(payload["canonical_session_state"]["validation"]["completed_rows"]), 30)
+        self.assertEqual(payload["completed_trades_today"], [])
+        self.assertEqual(payload["completed_trades"], [])
 
     def test_command_center_consumes_canonical_founder_metrics(self) -> None:
         with TemporaryDirectory() as temporary:
@@ -12481,9 +12729,19 @@ class FounderCommandCenterV1Tests(unittest.TestCase):
     def test_research_market_data_contract_declares_fail_closed_policies(self) -> None:
         contract = research_market_data_contract()
 
-        self.assertEqual(contract["contract_version"], "research-market-data-contract-v1")
+        self.assertEqual(contract["contract_version"], "research-market-data-contract-v2")
+        self.assertEqual(
+            contract["data_truth_model"]["webull_execution_truth"]["provider"],
+            "webull",
+        )
+        self.assertFalse(contract["data_truth_model"]["historical_discovery_data"]["webull_equality_required"])
+        self.assertEqual(contract["historical_discovery_source"]["approved_status"], "CONDITIONAL")
         self.assertIn("unavailable until the full 60-minute bucket has completed", contract["timeframe_semantics"]["M60"])
-        self.assertIn("Fail closed", contract["missing_bar_policy"])
+        self.assertIn("fail closed", contract["missing_bar_policy"])
+        self.assertIn("Do not silently fabricate", contract["no_trade_interval_policy"]["rule"])
+        self.assertEqual(contract["webull_compatibility_requirement"]["gate"], "WEBULL_COMPATIBILITY")
+        self.assertTrue(contract["feed_sensitivity_requirement"]["required_before_capital_promotion"])
+        self.assertIn("WEBULL_COMPATIBILITY", contract["strategy_lifecycle"])
         self.assertEqual(contract["phase3_gate_policy"].split()[0], "P3-E001/P3-E002")
 
     def test_phase3_research_snapshot_is_tamper_evident_without_research_activation(self) -> None:

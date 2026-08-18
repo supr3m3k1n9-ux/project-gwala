@@ -24,6 +24,9 @@ UNKNOWN = "UNKNOWN"
 CHECKPOINT_TARGET = 30
 INDEPENDENT_OPPORTUNITY_BASELINE = 20
 INDEPENDENT_OPPORTUNITY_BASELINE_DATE = "2026-08-13"
+P3_H006_ID = "P3-H006"
+QQQ_SETUP_B_ID = "QQQ_SETUP_B_LATE_DAY"
+ORB_ID = "morning_index_orb_long"
 
 
 def truthy(value: object) -> bool:
@@ -63,6 +66,18 @@ def numeric(value: object) -> float | None:
         return float(text)
     except ValueError:
         return None
+
+
+def int_or_unknown(value: object) -> int | str:
+    if value == UNKNOWN:
+        return UNKNOWN
+    text = clean_text(value)
+    if not text:
+        return UNKNOWN
+    try:
+        return int(float(text))
+    except ValueError:
+        return UNKNOWN
 
 
 def metric(
@@ -298,6 +313,197 @@ def derived_independent_opportunities(validation: dict[str, Any], trading_day: d
     )
 
 
+def independent_opportunities_from_authority(validation: dict[str, Any], trading_day: date, freeze: dict[str, Any]) -> dict[str, Any]:
+    if freeze.get("status") == "FROZEN":
+        frozen_value = freeze.get("independent_opportunities", {}).get("value", UNKNOWN)
+        return metric(
+            "Independent Market Opportunities",
+            frozen_value,
+            owner="Governance/Reconciliation",
+            source=str(Path("logs") / "cohorts" / COHORT_VERSION / "cohort_1_snapshot.json"),
+            definition="Frozen Cohort 1 derived/effective independent opportunities from the authoritative freeze snapshot.",
+            session_scope="all-time",
+            status="OK" if frozen_value != UNKNOWN else "UNKNOWN",
+            reason="Frozen Cohort 1 authority overrides pre-freeze baseline derivation.",
+            provenance=freeze.get("independent_opportunities", {}).get("provenance", "derived/effective"),
+        )
+    return derived_independent_opportunities(validation, trading_day)
+
+
+def time_bucket_from_text(value: object) -> str:
+    text = clean_text(value)
+    if not text:
+        return "unknown"
+    time_part = text.split("T")[-1].split(" ")[-2 if text.endswith((" EDT", " EST")) and len(text.split(" ")) > 1 else -1]
+    if "+" in time_part:
+        time_part = time_part.split("+", 1)[0]
+    if "-" in time_part[2:]:
+        time_part = time_part.rsplit("-", 1)[0]
+    pieces = time_part.split(":")
+    try:
+        hour = int(pieces[0])
+        minute = int(pieces[1]) if len(pieces) > 1 else 0
+    except ValueError:
+        return "unknown"
+    if hour < 11:
+        return "opening_hour"
+    if hour > 14 or (hour == 14 and minute >= 30):
+        return "late_day"
+    if hour < 12 or (hour == 12 and minute < 30):
+        return "late_morning"
+    return "midday"
+
+
+def p3_candidate_hypothesis(row: dict[str, str]) -> str:
+    symbol = clean_text(row.get("symbol")).upper()
+    setup = clean_text(row.get("setup")).lower()
+    direction = clean_text(row.get("direction")).lower()
+    bucket = time_bucket_from_text(row.get("source_signal_et") or row.get("candidate_entry_et"))
+    if symbol == "SPY" and setup == "setup a long" and direction == "long" and bucket == "opening_hour":
+        return P3_H006_ID
+    if symbol == "QQQ" and setup == "setup b short" and direction == "short" and bucket == "late_day":
+        return QQQ_SETUP_B_ID
+    return ""
+
+
+def row_session_date(row: dict[str, str]) -> str:
+    for key in ("first_seen_timestamp_et", "signal_timestamp_et", "trade_date", "sample_date"):
+        value = clean_text(row.get(key))
+        if len(value) >= 10:
+            return value[:10]
+    return ""
+
+
+def scorecard_row(scorecard_rows: list[dict[str, str]], hypothesis_id: str) -> dict[str, str]:
+    for row in scorecard_rows:
+        if clean_text(row.get("hypothesis_id")) == hypothesis_id:
+            return row
+    return {}
+
+
+def phase3_forward_row(
+    hypothesis_id: str,
+    *,
+    trading_day: date,
+    scorecard_rows: list[dict[str, str]],
+    ledger_rows: list[dict[str, str]],
+) -> dict[str, Any]:
+    today = trading_day.isoformat()
+    score = scorecard_row(scorecard_rows, hypothesis_id)
+    today_rows = [row for row in ledger_rows if clean_text(row.get("hypothesis_id")) == hypothesis_id and row_session_date(row) == today]
+    today_counted = [row for row in today_rows if truthy(row.get("counts_as_forward_observation"))]
+    today_completed = [row for row in today_rows if truthy(row.get("counts_as_forward_completed_trade"))]
+    today_r_values = [numeric(row.get("outcome_r")) for row in today_completed]
+    today_r_values = [value for value in today_r_values if value is not None]
+    independent_today = {
+        clean_text(row.get("independence_group_id"))
+        for row in today_counted
+        if clean_text(row.get("independence_group_id"))
+    }
+    return {
+        "hypothesis_id": hypothesis_id,
+        "new_raw_observations_today": len(today_rows),
+        "new_independent_opportunities_today": len(independent_today),
+        "eligible_observations_today": len(today_counted),
+        "paper_entries_today": sum(1 for row in today_counted if clean_text(row.get("entry_state")) not in {"", "not_entered", "paper_gate_ready"}),
+        "completed_outcomes_today": len(today_completed),
+        "today_r": round(sum(today_r_values), 4) if today_r_values else 0.0,
+        "exclusions_today": sum(1 for row in today_rows if clean_text(row.get("exclusion_reason"))),
+        "cumulative_raw_forward_observations": int_or_unknown(score.get("raw_forward_observations")),
+        "cumulative_independent_opportunities": int_or_unknown(score.get("independent_opportunities")),
+        "cumulative_completed_outcomes": int_or_unknown(score.get("completed_outcomes")),
+        "cumulative_r": numeric(score.get("total_r")) if clean_text(score.get("total_r")) else UNKNOWN,
+        "status": clean_text(score.get("status")) or UNKNOWN,
+        "latest_observation": clean_text(score.get("latest_observation")),
+    }
+
+
+def phase3_forward_evidence_reconciliation(logs_dir: Path, data_dir: Path, trading_day: date, phase3_active: bool) -> dict[str, Any]:
+    ledger_path = data_dir / "phase3_forward_evidence.csv"
+    scorecard_path = logs_dir / "phase3_forward_evidence_scorecard.csv"
+    classifier_path = logs_dir / "phase3_forward_evidence_classifier.json"
+    candidate_path = data_dir / "candidate_window_ledger.csv"
+    ledger_rows, _, ledger_error = read_csv_rows(ledger_path)
+    scorecard_rows, _, scorecard_error = read_csv_rows(scorecard_path)
+    classifier, classifier_error = read_json(classifier_path)
+    candidate_rows, _, candidate_error = read_csv_rows(candidate_path)
+    status = clean_text(classifier.get("status")) or ("UNKNOWN" if phase3_active else "NOT_ACTIVE")
+    today = trading_day.isoformat()
+    forward_ids = {clean_text(row.get("forward_evidence_id")) for row in ledger_rows if clean_text(row.get("forward_evidence_id"))}
+    unclassified = UNKNOWN
+    if not candidate_error and not ledger_error and status == "PASS":
+        missing = []
+        for row in candidate_rows:
+            if clean_text(row.get("trade_date")) != today:
+                continue
+            hypothesis_id = p3_candidate_hypothesis(row)
+            if not hypothesis_id:
+                continue
+            identity = "|".join(
+                [
+                    clean_text(row.get("trade_date")),
+                    clean_text(row.get("source_signal_et")),
+                    clean_text(row.get("candidate_entry_et")),
+                    clean_text(row.get("symbol")).upper(),
+                    clean_text(row.get("setup")).lower(),
+                    clean_text(row.get("direction")).lower(),
+                    clean_text(row.get("freshness_lane")).lower(),
+                ]
+            )
+            if f"{hypothesis_id}|{identity}" not in forward_ids:
+                missing.append(identity)
+        unclassified = len(set(missing))
+    forward_loss = "UNKNOWN"
+    if isinstance(unclassified, int):
+        forward_loss = "YES" if unclassified else "NO"
+    if status == "WATCH":
+        forward_loss = "UNKNOWN"
+    return {
+        "status": status,
+        "status_reason": clean_text(classifier.get("reason")) or classifier_error or scorecard_error or ledger_error,
+        "source_artifacts": {
+            "ledger": str(ledger_path),
+            "scorecard": str(scorecard_path),
+            "classifier": str(classifier_path),
+            "candidate_ledger": str(candidate_path),
+        },
+        "classifier_generated_at_et": clean_text(classifier.get("generated_at_et")),
+        "p3_h006": phase3_forward_row(P3_H006_ID, trading_day=trading_day, scorecard_rows=scorecard_rows, ledger_rows=ledger_rows),
+        "qqq_setup_b_late_day": phase3_forward_row(QQQ_SETUP_B_ID, trading_day=trading_day, scorecard_rows=scorecard_rows, ledger_rows=ledger_rows),
+        "orb": {
+            "detected_today": int_or_unknown(scorecard_row(scorecard_rows, ORB_ID).get("raw_forward_observations")),
+            "qualified_today": int_or_unknown(scorecard_row(scorecard_rows, ORB_ID).get("eligible_observations")),
+            "contract_passed_today": 0,
+            "paper_entries_today": int_or_unknown(scorecard_row(scorecard_rows, ORB_ID).get("paper_entries")),
+            "completed_today": 0,
+            "cumulative_completed": int_or_unknown(scorecard_row(scorecard_rows, ORB_ID).get("completed_outcomes")),
+            "target_runway": clean_text(scorecard_row(scorecard_rows, ORB_ID).get("forward_runway")) or "20 completed Manual Paper-Watch trades",
+            "average_r": numeric(scorecard_row(scorecard_rows, ORB_ID).get("average_r")) if clean_text(scorecard_row(scorecard_rows, ORB_ID).get("average_r")) else 0.0,
+            "status": clean_text(scorecard_row(scorecard_rows, ORB_ID).get("status")) or UNKNOWN,
+        },
+        "integrity": {
+            "classifier": status,
+            "unclassified_qualifying_observations": unclassified,
+            "forward_evidence_loss": forward_loss,
+            "pre_hypothesis_contamination": classifier.get("pre_hypothesis_contamination", UNKNOWN),
+            "pre_hypothesis_matching_candidates_seen_but_excluded": classifier.get("pre_hypothesis_matching_candidates_seen_but_excluded", UNKNOWN),
+            "duplicate_forward_records": classifier.get("duplicate_forward_records", UNKNOWN),
+        },
+        "portfolio": {
+            "P3-H006": "WAIT FOR FORWARD WEBULL EVIDENCE",
+            "QQQ Setup B late-day": "WAIT FOR FORWARD WEBULL EVIDENCE",
+            "ORB": "SPECIAL FORWARD PROCESS",
+            "P3-H003": "RESEARCH HOLD / EXPLANATORY FINDING",
+            "P3-H007": "SHELVED",
+            "P3-H008": "SHELVED",
+            "P3-H009": "RESEARCH HOLD",
+            "P3-H010": "SHELVED",
+            "P3-H011": "SHELVED",
+            "Historical Research Factory": "IDLE BY DESIGN",
+            "Validated Edges": 0,
+        },
+        "guardrail": "Phase 3 forward evidence reconciliation is read/report-only and does not classify trades independently of the forward classifier.",
+    }
 def candidate_funnel(logs_dir: Path, data_dir: Path, trading_day: date, validation: dict[str, Any]) -> dict[str, Any]:
     scanner_rows, _, scanner_error = read_csv_rows(logs_dir / "daily_paper_signal_scanner.csv")
     sizing_rows, _, sizing_error = read_csv_rows(logs_dir / "position_sizing.csv")
@@ -500,25 +706,39 @@ def metric_contracts() -> list[dict[str, str]]:
         {
             "metric": "Independent Market Opportunities",
             "owner": "Governance/Reconciliation",
-            "authoritative_source": "governance baseline plus derived post-baseline ledger groups",
-            "definition": "Derived/effective count; not a persisted authoritative ledger field yet",
+            "authoritative_source": "frozen Cohort 1 snapshot when frozen; otherwise governance baseline plus derived post-baseline ledger groups",
+            "definition": "Derived/effective count from the authoritative phase state; frozen Cohort 1 is not recomputed after freeze.",
             "schema_version": CANONICAL_SCHEMA_VERSION,
             "session_scope": "all-time",
             "freshness_requirement": "governance baseline and validation ledger",
             "unavailable_behavior": "UNKNOWN with provenance",
+        },
+        {
+            "metric": "Phase 3 Forward Evidence",
+            "owner": "Phase 3/Reconciliation",
+            "authoritative_source": "phase3_forward_evidence.csv + phase3_forward_evidence_scorecard.csv + phase3_forward_evidence_classifier.json",
+            "definition": "Post-adoption forward evidence counts for active Phase 3 lanes; separate from frozen Cohort 1 and historical discovery R.",
+            "schema_version": CANONICAL_SCHEMA_VERSION,
+            "session_scope": "trading-date and all-time",
+            "freshness_requirement": "latest durable classifier artifacts",
+            "unavailable_behavior": "UNKNOWN with reason; never false zero",
         },
     ]
 
 
 def build_canonical_session_state(logs_dir: Path, data_dir: Path, trading_day: date) -> dict[str, Any]:
     validation = validation_reconciliation(data_dir, trading_day)
-    independent = derived_independent_opportunities(validation, trading_day)
+    freeze = load_cohort_1_freeze(logs_dir)
+    phase3 = load_phase3_activation(logs_dir)
+    independent = independent_opportunities_from_authority(validation, trading_day, freeze)
     funnel = candidate_funnel(logs_dir, data_dir, trading_day, validation)
     orb = orb_reconciliation(logs_dir, data_dir, trading_day)
     production = production_reconciliation(logs_dir)
-    freeze = load_cohort_1_freeze(logs_dir)
-    phase3 = load_phase3_activation(logs_dir)
-    reporting_status, reporting_reasons = reporting_status_from_sections(validation, funnel, orb)
+    phase3_forward = phase3_forward_evidence_reconciliation(logs_dir, data_dir, trading_day, phase3.get("phase_3") == "ACTIVE")
+    reporting_status, reporting_reasons = reporting_status_from_sections(validation, funnel, orb, phase3_forward if phase3.get("phase_3") == "ACTIVE" else {})
+    if phase3.get("phase_3") == "ACTIVE" and phase3_forward.get("status") in {"WATCH", "FAIL", "UNKNOWN"} and reporting_status == "GREEN":
+        reporting_status = "WATCH"
+        reporting_reasons = [*reporting_reasons, "Phase 3 forward evidence accounting is not PASS."]
     completed = validation["metrics"]["valid_completed_observations"]["value"]
     checkpoint_reached = completed != UNKNOWN and int(completed) >= CHECKPOINT_TARGET
     cohort_frozen = freeze.get("status") == "FROZEN"
@@ -560,6 +780,7 @@ def build_canonical_session_state(logs_dir: Path, data_dir: Path, trading_day: d
         "independent_opportunities": independent,
         "candidate_funnel": funnel,
         "orb": orb,
+        "phase_3_forward_evidence": phase3_forward,
         "metric_contracts": metric_contracts(),
         "guardrail": "Canonical reconciliation is read/report-only and does not mutate trading, evidence, broker, or phase state.",
     }
@@ -588,6 +809,8 @@ def load_or_build_canonical_session_state(logs_dir: Path, data_dir: Path, tradin
             return build_canonical_session_state(logs_dir, data_dir, trading_day)
         if phase3.get("phase_3") == "ACTIVE" and payload.get("phase_state", {}).get("phase_3") != "ACTIVE":
             return build_canonical_session_state(logs_dir, data_dir, trading_day)
+        if phase3.get("phase_3") == "ACTIVE" and "phase_3_forward_evidence" not in payload:
+            return build_canonical_session_state(logs_dir, data_dir, trading_day)
         return payload
     return build_canonical_session_state(logs_dir, data_dir, trading_day)
 
@@ -602,6 +825,11 @@ def audit_report_consistency(
     canonical_completed = canonical["validation"]["metrics"]["valid_completed_observations"]["value"]
     canonical_today = canonical["validation"]["metrics"]["new_completed_observations_today"]["value"]
     canonical_checkpoint = canonical["validation"]["metrics"]["checkpoint"]["value"]
+    canonical_independent = canonical.get("independent_opportunities", {}).get("value", UNKNOWN)
+    phase3 = canonical.get("phase_3_forward_evidence", {})
+    phase3_h006 = phase3.get("p3_h006", {}) if isinstance(phase3, dict) and isinstance(phase3.get("p3_h006"), dict) else {}
+    phase3_qqq = phase3.get("qqq_setup_b_late_day", {}) if isinstance(phase3, dict) and isinstance(phase3.get("qqq_setup_b_late_day"), dict) else {}
+    phase3_orb = phase3.get("orb", {}) if isinstance(phase3, dict) and isinstance(phase3.get("orb"), dict) else {}
 
     def add(surface: str, metric_name: str, surface_value: object, canonical_value: object) -> None:
         status = "PASS" if str(surface_value) == str(canonical_value) else "FAIL"
@@ -620,6 +848,15 @@ def audit_report_consistency(
         add("EOD Executive Report", "Completed Official Strategy Observations", validation.get("completed_official_observations"), canonical_completed)
         add("EOD Executive Report", "New Completed Official Observations Today", validation.get("new_completed_observations_today"), canonical_today)
         add("EOD Executive Report", "Phase 2 Checkpoint", validation.get("checkpoint"), canonical_checkpoint)
+        add("EOD Executive Report", "Independent Market Opportunities", validation.get("independent_opportunities"), canonical_independent)
+        eod_phase3 = eod_payload.get("phase_3_forward_evidence", {})
+        if isinstance(eod_phase3, dict):
+            eod_h006 = eod_phase3.get("p3_h006", {}) if isinstance(eod_phase3.get("p3_h006"), dict) else {}
+            eod_qqq = eod_phase3.get("qqq_setup_b_late_day", {}) if isinstance(eod_phase3.get("qqq_setup_b_late_day"), dict) else {}
+            eod_orb = eod_phase3.get("orb", {}) if isinstance(eod_phase3.get("orb"), dict) else {}
+            add("EOD Executive Report", "P3-H006 New Forward Observations Today", eod_h006.get("new_raw_observations_today"), phase3_h006.get("new_raw_observations_today"))
+            add("EOD Executive Report", "QQQ Setup B New Forward Observations Today", eod_qqq.get("new_raw_observations_today"), phase3_qqq.get("new_raw_observations_today"))
+            add("EOD Executive Report", "ORB Cumulative Completed", eod_orb.get("cumulative_completed"), phase3_orb.get("cumulative_completed"))
     if command_center_payload:
         validation = command_center_payload.get("validation", {})
         add("Command Center", "Completed Official Strategy Observations", validation.get("completed_trades"), canonical_completed)
