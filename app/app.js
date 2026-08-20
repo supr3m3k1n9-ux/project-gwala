@@ -247,8 +247,14 @@ let commandCenterInboxState = loadCommandCenterInboxState();
 let commandCenterInboxUiState = loadCommandCenterInboxUiState();
 let commandCenterSymbol = "SPY";
 let commandCenterTimeframe = "M30";
-let commandCenterInboxFilter = commandCenterInboxUiState.filter || "All";
+let commandCenterInboxFilter = commandCenterInboxUiState.filter || "ALL";
+if (commandCenterInboxFilter === "All") commandCenterInboxFilter = "ALL";
+let commandCenterInboxPage = Number(commandCenterInboxUiState.page || 1);
+const commandCenterInboxPageSize = 20;
 let commandCenterSelectedInboxId = commandCenterInboxUiState.selectedId || "";
+let commandCenterStrategyStatusFilter = "ALL";
+let commandCenterStrategyFamilyFilter = "ALL";
+let commandCenterSelectedStrategyId = "";
 let commandCenterOpenInboxSnapshot = null;
 let commandCenterRefreshInFlight = false;
 let commandCenterChartRefreshInFlight = false;
@@ -3002,21 +3008,186 @@ function saveCommandCenterInboxUiState() {
   commandCenterInboxUiState = {
     selectedId: commandCenterSelectedInboxId || "",
     filter: commandCenterInboxFilter || "All",
+    page: commandCenterInboxPage || 1,
   };
   localStorage.setItem(commandCenterInboxUiStorageKey, JSON.stringify(commandCenterInboxUiState));
 }
 
 function statusTone(value) {
   const normalized = text(value, "UNAVAILABLE").toUpperCase();
-  if (["PASS", "GREEN", "CLEAN", "CONTINUE", "PROMOTE", "READY", "LATEST COMPLETED CANDLE", "CONNECTED"].includes(normalized)) return "pass";
-  if (["WATCH", "PARTIAL", "YELLOW", "INVESTIGATE", "PROVIDER FINAL"].includes(normalized)) return "watch";
-  if (["FAIL", "RED", "INVALID", "DOWN", "RETIRE", "REDUCE", "STALE", "CONNECTION LOST"].includes(normalized)) return "fail";
+  if (["PASS", "GREEN", "CLEAN", "CONTINUE", "PROMOTE", "READY", "ADVANCE", "VALIDATED EDGE", "LATEST COMPLETED CANDLE", "CONNECTED"].includes(normalized)) return "pass";
+  if (["WATCH", "PARTIAL", "YELLOW", "INVESTIGATE", "READY FOR SCREEN", "PRE-REGISTERED", "WAITING FOR FORWARD EVIDENCE", "FORWARD CANDIDATE", "PROVIDER FINAL"].includes(normalized)) return "watch";
+  if (["FAIL", "RED", "INVALID", "DOWN", "RETIRE", "REDUCE", "SHELVED", "DATA INSUFFICIENT", "DEFINITION INCOMPLETE", "STALE", "CONNECTION LOST"].includes(normalized)) return "fail";
   return "muted";
 }
 
 function statusBadge(value) {
   const label = text(value, "UNAVAILABLE").toUpperCase();
   return `<span class="cc-status ${statusTone(label)}">${escapeHtml(label)}</span>`;
+}
+
+function strategyMetric(value) {
+  if (value === null || value === undefined || value === "") return "UNKNOWN";
+  return String(value);
+}
+
+function strategyMatchesStatus(strategy, filter) {
+  const status = text(strategy.current_status, "UNKNOWN").toUpperCase();
+  const sourceClass = text(strategy.source_class, "").toLowerCase();
+  if (filter === "ALL") return true;
+  if (filter === "ACTIVE RESEARCH") return ["ADVANCE", "INVESTIGATE", "READY FOR SCREEN", "PRE-REGISTERED", "WAITING FOR FORWARD EVIDENCE", "FORWARD CANDIDATE"].includes(status);
+  if (filter === "FORWARD EVIDENCE") return ["FORWARD WEBULL", "PAPER", "TINY LIVE", "LIVE"].includes(text(strategy.forward?.evidence_type, "").toUpperCase());
+  if (filter === "PRE-REGISTERED") return ["PRE-REGISTERED", "READY FOR SCREEN"].includes(status);
+  if (filter === "RESEARCH HOLD") return status === "RESEARCH HOLD";
+  if (filter === "SHELVED") return status === "SHELVED";
+  if (filter === "VALIDATED") return status === "VALIDATED EDGE";
+  if (filter === "EXTERNAL INTAKE") return Boolean(strategy.is_external) || sourceClass.startsWith("external");
+  if (filter === "INTERNAL / ORIGINAL") return Boolean(strategy.is_internal) && !sourceClass.startsWith("external");
+  return status === filter;
+}
+
+function filteredStrategies(summary) {
+  return (summary?.strategies || []).filter((strategy) => {
+    const family = text(strategy.family, "Unclassified");
+    return strategyMatchesStatus(strategy, commandCenterStrategyStatusFilter) && (commandCenterStrategyFamilyFilter === "ALL" || family === commandCenterStrategyFamilyFilter);
+  });
+}
+
+function renderStrategyIndexFilters(summary) {
+  const statusFilters = summary?.filter_groups?.status || ["ALL"];
+  const familyFilters = summary?.filter_groups?.family || ["ALL"];
+  $("cc-strategy-index-status-filters").innerHTML = statusFilters
+    .map(
+      (filter) => `<button type="button" class="${filter === commandCenterStrategyStatusFilter ? "active" : ""}" data-strategy-status-filter="${escapeHtml(filter)}">${escapeHtml(filter)}</button>`,
+    )
+    .join("");
+  $("cc-strategy-index-family-filters").innerHTML = familyFilters
+    .map(
+      (filter) => `<button type="button" class="${filter === commandCenterStrategyFamilyFilter ? "active" : ""}" data-strategy-family-filter="${escapeHtml(filter)}">${escapeHtml(filter.replace(/_/g, " "))}</button>`,
+    )
+    .join("");
+  document.querySelectorAll("[data-strategy-status-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      commandCenterStrategyStatusFilter = button.dataset.strategyStatusFilter || "ALL";
+      commandCenterSelectedStrategyId = "";
+      renderStrategyIndex(summary);
+    });
+  });
+  document.querySelectorAll("[data-strategy-family-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      commandCenterStrategyFamilyFilter = button.dataset.strategyFamilyFilter || "ALL";
+      commandCenterSelectedStrategyId = "";
+      renderStrategyIndex(summary);
+    });
+  });
+}
+
+function renderStrategyDetail(strategy, summary) {
+  if (!strategy) {
+    $("cc-strategy-detail").innerHTML = `<p>No strategy matches the selected filters.</p>`;
+    return;
+  }
+  const detail = strategy.detail || {};
+  const provenance = detail.source_provenance || [];
+  $("cc-strategy-detail").innerHTML = `
+    <header>
+      <div>
+        ${statusBadge(strategy.current_status)}
+        <h4>${escapeHtml(strategy.display_name)}</h4>
+        <p>${escapeHtml(strategy.strategy_intelligence_id)} / ${escapeHtml(strategy.research_hypothesis_id || "N/A")}</p>
+      </div>
+      <span>${escapeHtml(strategy.evidence_type || "SEEN / HYPOTHESIS-GENERATING")}</span>
+    </header>
+    <div class="cc-strategy-detail-grid">
+      <section>
+        <h5>What It Is</h5>
+        <p>${escapeHtml(detail.what_it_is || "UNKNOWN")}</p>
+      </section>
+      <section>
+        <h5>How It Works</h5>
+        <p>${escapeHtml(detail.how_it_works || "UNKNOWN")}</p>
+      </section>
+      <section>
+        <h5>Why It Might Work</h5>
+        <p>${escapeHtml(detail.why_it_might_work || "UNKNOWN")}</p>
+      </section>
+      <section>
+        <h5>Evidence Quality</h5>
+        <p>${escapeHtml(detail.evidence_quality || "UNKNOWN")}</p>
+      </section>
+      <section>
+        <h5>Gwala Evidence</h5>
+        <p>${escapeHtml(detail.gwala_evidence || "UNKNOWN")}</p>
+      </section>
+      <section>
+        <h5>Forward Evidence</h5>
+        <p>${escapeHtml(detail.forward_evidence || "UNKNOWN")}</p>
+      </section>
+      <section>
+        <h5>Risk / Weaknesses</h5>
+        <p>${escapeHtml(detail.risk_weaknesses || "UNKNOWN")}</p>
+      </section>
+      <section>
+        <h5>Current Decision</h5>
+        <p>${escapeHtml(detail.current_decision || "UNKNOWN")}: ${escapeHtml(detail.decision_reason || "UNKNOWN")}</p>
+      </section>
+      <section>
+        <h5>Next Step</h5>
+        <p>${escapeHtml(detail.next_step || "UNKNOWN")}</p>
+      </section>
+      <section>
+        <h5>Source / Provenance</h5>
+        ${
+          provenance.length
+            ? `<ul>${provenance.map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.type)} / ${escapeHtml(item.reference)}</span></li>`).join("")}</ul>`
+            : "<p>UNKNOWN</p>"
+        }
+      </section>
+    </div>
+    <p class="cc-guardrail">${escapeHtml(summary?.guardrail || "")}</p>
+  `;
+}
+
+function renderStrategyIndex(summary) {
+  const strategies = filteredStrategies(summary);
+  const selected =
+    strategies.find((strategy) => strategy.strategy_intelligence_id === commandCenterSelectedStrategyId) || strategies[0] || null;
+  commandCenterSelectedStrategyId = selected?.strategy_intelligence_id || "";
+  const counts = summary?.counts || {};
+  setText(
+    "cc-strategy-index-summary",
+    `${counts.strategies_known ?? 0} known / ${counts.externally_sourced ?? 0} external / ${counts.high_priority ?? 0} high priority`,
+  );
+  renderStrategyIndexFilters(summary);
+  $("cc-strategy-index-table").innerHTML = `
+    <div class="cc-strategy-table-head">
+      <span>Strategy</span><span>Status</span><span>Evidence</span><span>Historical</span><span>Forward</span><span>Next</span>
+    </div>
+    ${strategies
+      .map(
+        (strategy) => `
+          <button type="button" class="cc-strategy-row ${strategy.strategy_intelligence_id === commandCenterSelectedStrategyId ? "selected" : ""}" data-strategy-id="${escapeHtml(strategy.strategy_intelligence_id)}">
+            <span><strong>${escapeHtml(strategy.display_name)}</strong><small>${escapeHtml(strategy.family)} / ${escapeHtml(strategy.subfamily)}</small></span>
+            <span>${statusBadge(strategy.current_status)}</span>
+            <span><strong>${escapeHtml(strategy.evidence_type)}</strong><small>Grade ${escapeHtml(strategy.evidence_grade)}</small></span>
+            <span><strong>${escapeHtml(strategyMetric(strategy.historical?.expectancy_r))}R</strong><small>N ${escapeHtml(strategyMetric(strategy.historical?.observations))} / PF ${escapeHtml(strategyMetric(strategy.historical?.profit_factor))}</small></span>
+            <span><strong>${escapeHtml(strategy.forward?.evidence_type || "UNKNOWN")}</strong><small>Outcomes ${escapeHtml(strategyMetric(strategy.forward?.completed_outcomes))}</small></span>
+            <span><small>${escapeHtml(strategy.next_action || "UNKNOWN")}</small></span>
+          </button>
+        `,
+      )
+      .join("")}
+  `;
+  document.querySelectorAll("[data-strategy-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      commandCenterSelectedStrategyId = button.dataset.strategyId || "";
+      renderStrategyIndex(summary);
+    });
+  });
+  renderStrategyDetail(selected, summary);
+  $("cc-strategy-evidence-labels").innerHTML = (summary?.evidence_type_taxonomy || [])
+    .map((item) => `<article><strong>${escapeHtml(item.type)}</strong><p>${escapeHtml(item.meaning)}</p></article>`)
+    .join("");
 }
 
 function renderCommandCenterOverview(payload) {
@@ -3340,14 +3511,27 @@ function renderCommandCenterInboxReader(selection) {
     <article class="cc-inbox-reader-card">
       <header>
         <div>
-          <span>${escapeHtml(event.category)} / ${escapeHtml(event.timestamp)}</span>
+          <span>${escapeHtml(event.report_kind || event.category)} / ${escapeHtml(event.display_date || event.timestamp)} • ${escapeHtml(event.display_time || "")}</span>
           <h3>${escapeHtml(event.title)}</h3>
           <p>${escapeHtml(event.summary || "")}</p>
         </div>
-        ${statusBadge(event.importance)}
+        <div class="cc-inbox-reader-header-actions">
+          ${statusBadge(event.importance)}
+          <button type="button" data-cc-inbox-copy-report data-cc-inbox-id="${escapeHtml(event.id)}">Copy Report</button>
+          <span id="cc-inbox-copy-feedback" role="status" aria-live="polite"></span>
+        </div>
       </header>
       ${selection.updated ? '<p class="cc-inbox-update-note">Updated version available. This reader is preserving the report version you opened.</p>' : ""}
       <pre id="cc-inbox-reader-content">${escapeHtml(event.content || "No body available.")}</pre>
+      <details class="cc-inbox-technical-details">
+        <summary>Technical Details</summary>
+        <dl>
+          <div><dt>Artifact</dt><dd>${escapeHtml(event.technical_details?.artifact_path || event.path || "UNKNOWN")}</dd></div>
+          <div><dt>Revision</dt><dd>${escapeHtml(event.technical_details?.report_revision || event.revision || "UNKNOWN")}</dd></div>
+          <div><dt>Canonical Source</dt><dd>${escapeHtml(event.technical_details?.canonical_source || "UNKNOWN")}</dd></div>
+          <div><dt>Ordering</dt><dd>${escapeHtml(event.ordering_source || "UNKNOWN")} / ${escapeHtml(event.ordering_timestamp_iso || event.timestamp_iso || "UNKNOWN")}</dd></div>
+        </dl>
+      </details>
       <div class="cc-inbox-actions">
         <button type="button" data-cc-inbox-action="read" data-cc-inbox-id="${escapeHtml(event.id)}">${state.read ? "Unread" : "Read"}</button>
         <button type="button" data-cc-inbox-action="pin" data-cc-inbox-id="${escapeHtml(event.id)}">${state.pinned ? "Unpin" : "Pin"}</button>
@@ -3358,17 +3542,68 @@ function renderCommandCenterInboxReader(selection) {
   `;
 }
 
+async function copyCommandCenterInboxReport(button, events) {
+  const selection = selectedCommandCenterInboxEvent(events);
+  const event = selection?.display || selection?.current;
+  const feedback = $("cc-inbox-copy-feedback");
+  const reportText = event?.content || "";
+  if (!reportText) {
+    if (feedback) feedback.textContent = "Copy failed — select report text manually.";
+    return;
+  }
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+    await navigator.clipboard.writeText(reportText);
+    button.textContent = "Copied ✓";
+    if (feedback) feedback.textContent = "";
+    window.setTimeout(() => {
+      button.textContent = "Copy Report";
+    }, 1800);
+  } catch (error) {
+    console.warn("Command Center report copy failed", error);
+    button.textContent = "Copy Report";
+    if (feedback) feedback.textContent = "Copy failed — select report text manually.";
+  }
+}
+
 function inboxVisibleEvents(events) {
   return events.filter((event) => {
     const state = commandCenterInboxState[event.id] || {};
-    if (commandCenterInboxFilter === "Unread") return !state.read && !state.archived;
-    if (commandCenterInboxFilter === "Archived") return Boolean(state.archived);
-    if (commandCenterInboxFilter === "Important") return event.importance === "Important" && !state.archived;
-    if (["Executive", "Research", "Trading", "Alerts"].includes(commandCenterInboxFilter)) {
-      return event.category === commandCenterInboxFilter && !state.archived;
-    }
-    return !state.archived;
+    const filter = commandCenterInboxFilter;
+    if (filter === "ARCHIVED") return Boolean(state.archived);
+    if (state.archived) return false;
+    if (filter === "ALERTS / ACTION REQUIRED") return event.importance === "Important" || event.category === "Alerts";
+    if (filter === "EXECUTIVE REPORTS") return event.category === "Executive";
+    if (filter === "RESEARCH") return event.category === "Research" || String(event.report_kind || "").toUpperCase().includes("RESEARCH");
+    if (filter === "SYSTEM") return event.category === "System" || event.title === "Production Health";
+    return true;
   });
+}
+
+function renderCommandCenterInboxPagination(targetId, page, totalPages, visibleCount) {
+  const target = $(targetId);
+  if (!target) return;
+  if (!visibleCount) {
+    target.innerHTML = "";
+    return;
+  }
+  target.innerHTML = `
+    <button type="button" data-cc-inbox-page="prev" ${page <= 1 ? "disabled" : ""}>Previous</button>
+    <span>Page ${page} of ${totalPages}</span>
+    <button type="button" data-cc-inbox-page="next" ${page >= totalPages ? "disabled" : ""}>Next</button>
+  `;
+}
+
+function attachCommandCenterInboxPagination(totalPages) {
+  for (const button of document.querySelectorAll("[data-cc-inbox-page]")) {
+    button.addEventListener("click", () => {
+      const action = button.dataset.ccInboxPage;
+      if (action === "prev") commandCenterInboxPage = Math.max(1, commandCenterInboxPage - 1);
+      if (action === "next") commandCenterInboxPage = Math.min(totalPages, commandCenterInboxPage + 1);
+      saveCommandCenterInboxUiState();
+      renderCommandCenterInbox(commandCenterState?.inbox?.events || []);
+    });
+  }
 }
 
 function renderCommandCenterInbox(events = []) {
@@ -3376,27 +3611,33 @@ function renderCommandCenterInbox(events = []) {
   const selection = selectedCommandCenterInboxEvent(events);
   const unread = events.filter((event) => !(commandCenterInboxState[event.id] || {}).read).length;
   setText("cc-inbox-count", unread);
-  $("cc-inbox-filters").innerHTML = ["All", "Unread", "Important", "Executive", "Research", "Trading", "Alerts", "Archived"]
+  $("cc-inbox-filters").innerHTML = ["ALL", "EXECUTIVE REPORTS", "RESEARCH", "SYSTEM", "ALERTS / ACTION REQUIRED", "ARCHIVED"]
     .map((filter) => `<button type="button" class="${filter === commandCenterInboxFilter ? "active" : ""}" data-cc-filter="${escapeHtml(filter)}">${escapeHtml(filter)}</button>`)
     .join("");
   for (const button of document.querySelectorAll("[data-cc-filter]")) {
     button.addEventListener("click", () => {
       commandCenterInboxFilter = button.dataset.ccFilter;
+      commandCenterInboxPage = 1;
       saveCommandCenterInboxUiState();
       renderCommandCenterInbox(commandCenterState?.inbox?.events || []);
     });
   }
   renderCommandCenterInboxReader(selection);
   const visible = inboxVisibleEvents(events);
-  $("cc-inbox-list").innerHTML = visible.length
-    ? visible
+  const totalPages = Math.max(1, Math.ceil(visible.length / commandCenterInboxPageSize));
+  commandCenterInboxPage = Math.min(Math.max(1, commandCenterInboxPage || 1), totalPages);
+  const pageItems = visible.slice((commandCenterInboxPage - 1) * commandCenterInboxPageSize, commandCenterInboxPage * commandCenterInboxPageSize);
+  renderCommandCenterInboxPagination("cc-inbox-pagination-top", commandCenterInboxPage, totalPages, visible.length);
+  renderCommandCenterInboxPagination("cc-inbox-pagination-bottom", commandCenterInboxPage, totalPages, visible.length);
+  $("cc-inbox-list").innerHTML = pageItems.length
+    ? pageItems
         .map((event) => {
           const state = commandCenterInboxState[event.id] || {};
           return `
             <article class="cc-inbox-item ${state.read ? "read" : "unread"} ${event.id === commandCenterSelectedInboxId ? "selected" : ""}">
               <header>
                 <div>
-                  <span>${escapeHtml(event.category)} / ${escapeHtml(event.timestamp)}</span>
+                  <span>${escapeHtml(event.report_kind || event.category)} / ${escapeHtml(event.display_date || event.timestamp)} • ${escapeHtml(event.display_time || "")}</span>
                   <strong>${state.pinned ? "Pinned: " : ""}${escapeHtml(event.title)}</strong>
                 </div>
                 ${statusBadge(event.importance)}
@@ -3412,7 +3653,7 @@ function renderCommandCenterInbox(events = []) {
           `;
         })
         .join("")
-    : '<article class="cc-inbox-item"><strong>No events in this filter.</strong><p>Nothing requires attention here.</p></article>';
+    : `<article class="cc-inbox-item"><strong>${escapeHtml(commandCenterInboxFilter === "ALERTS / ACTION REQUIRED" ? "No Action Required messages." : `No ${titleCase(commandCenterInboxFilter.toLowerCase())} messages.`)}</strong><p>Nothing requires attention here.</p></article>`;
   for (const button of document.querySelectorAll("[data-cc-inbox-action]")) {
     button.addEventListener("click", () => {
       const id = button.dataset.ccInboxId;
@@ -3431,6 +3672,12 @@ function renderCommandCenterInbox(events = []) {
       renderCommandCenterInbox(commandCenterState?.inbox?.events || []);
     });
   }
+  attachCommandCenterInboxPagination(totalPages);
+  for (const button of document.querySelectorAll("[data-cc-inbox-copy-report]")) {
+    button.addEventListener("click", () => {
+      copyCommandCenterInboxReport(button, commandCenterState?.inbox?.events || []);
+    });
+  }
   for (const button of document.querySelectorAll("[data-cc-inbox-close]")) {
     button.addEventListener("click", () => {
       commandCenterSelectedInboxId = "";
@@ -3444,6 +3691,7 @@ function renderCommandCenterInbox(events = []) {
 }
 
 function renderCommandCenterResearch(research) {
+  renderStrategyIndex(research?.research_intelligence || {});
   const cards = [research?.primary, research?.secondary].filter(Boolean);
   $("cc-research-portfolio").innerHTML = cards
     .map(

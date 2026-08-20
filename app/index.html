@@ -137,6 +137,24 @@
             <p>Evidence lanes, decision triggers, and Phase 3 placeholders.</p>
           </div>
         </header>
+        <section class="cc-panel cc-strategy-index-panel">
+          <header>
+            <div>
+              <h3>Strategy Index</h3>
+              <p id="cc-strategy-index-summary">Loading Strategy Intelligence.</p>
+            </div>
+          </header>
+          <div class="cc-strategy-index-controls">
+            <div id="cc-strategy-index-status-filters" class="cc-segmented compact" aria-label="Strategy status filters"></div>
+            <div id="cc-strategy-index-family-filters" class="cc-segmented compact" aria-label="Strategy family filters"></div>
+          </div>
+          <div id="cc-strategy-index-table" class="cc-strategy-index-table"></div>
+          <article id="cc-strategy-detail" class="cc-strategy-detail" aria-live="polite"></article>
+        </section>
+        <section class="cc-panel cc-strategy-taxonomy-panel">
+          <header><h3>Evidence Labels</h3></header>
+          <div id="cc-strategy-evidence-labels" class="cc-taxonomy-grid"></div>
+        </section>
         <div id="cc-research-portfolio" class="cc-research-grid"></div>
         <div id="cc-research-nav" class="cc-research-nav"></div>
         <section class="cc-panel">
@@ -204,7 +222,9 @@
         </header>
         <div id="cc-inbox-filters" class="cc-segmented"></div>
         <div id="cc-inbox-reader" class="cc-inbox-reader"></div>
+        <div id="cc-inbox-pagination-top" class="cc-inbox-pagination"></div>
         <div id="cc-inbox-list" class="cc-inbox-list"></div>
+        <div id="cc-inbox-pagination-bottom" class="cc-inbox-pagination"></div>
       </section>
 
       <section id="cc-system" class="cc-page" hidden aria-label="Command Center system">

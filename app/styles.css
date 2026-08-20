@@ -252,6 +252,123 @@ body {
   margin-top: 14px;
 }
 
+.cc-strategy-index-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.cc-strategy-index-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.cc-strategy-index-table {
+  display: grid;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.cc-strategy-table-head,
+.cc-strategy-row {
+  display: grid;
+  grid-template-columns: minmax(230px, 1.7fr) minmax(130px, 0.9fr) minmax(150px, 1fr) minmax(160px, 1fr) minmax(150px, 1fr) minmax(230px, 1.3fr);
+  gap: 10px;
+  min-width: 1060px;
+  align-items: center;
+}
+
+.cc-strategy-table-head {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.cc-strategy-row {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cc-strategy-row:hover,
+.cc-strategy-row.selected {
+  border-color: var(--accent);
+  background: #172436;
+}
+
+.cc-strategy-row span,
+.cc-strategy-row small {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cc-strategy-row small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.cc-strategy-detail {
+  display: grid;
+  gap: 14px;
+  background: #0b1118;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.cc-strategy-detail header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.cc-strategy-detail h4,
+.cc-strategy-detail h5 {
+  margin: 6px 0;
+}
+
+.cc-strategy-detail-grid,
+.cc-taxonomy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.cc-strategy-detail-grid section,
+.cc-taxonomy-grid article {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  padding: 11px;
+}
+
+.cc-strategy-detail-grid p,
+.cc-taxonomy-grid p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.cc-strategy-detail-grid ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.cc-strategy-detail-grid li {
+  display: grid;
+  gap: 3px;
+}
+
 .cc-vault-card-grid header {
   align-items: flex-start;
 }
@@ -453,6 +570,32 @@ body {
   gap: 12px;
 }
 
+.cc-inbox-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.cc-inbox-pagination button {
+  border: 1px solid var(--border);
+  background: #111923;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 11px;
+  cursor: pointer;
+}
+
+.cc-inbox-pagination button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.cc-inbox-pagination span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .cc-inbox-reader {
   display: grid;
   gap: 10px;
@@ -466,6 +609,35 @@ body {
   border-color: rgba(89, 166, 255, 0.45);
 }
 
+.cc-inbox-reader-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 260px;
+}
+
+.cc-inbox-reader-header-actions button {
+  border: 1px solid var(--border);
+  background: #111923;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.cc-inbox-reader-header-actions button:hover {
+  border-color: var(--accent);
+  background: #172436;
+}
+
+.cc-inbox-reader-header-actions span[role="status"] {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-align: right;
+}
+
 .cc-inbox-reader-card pre {
   min-height: 260px;
   max-height: 58vh;
@@ -476,6 +648,36 @@ body {
   border-radius: 6px;
   padding: 12px;
   color: var(--text);
+}
+
+.cc-inbox-technical-details {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  padding: 10px 12px;
+}
+
+.cc-inbox-technical-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.cc-inbox-technical-details dl {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.cc-inbox-technical-details dt {
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.cc-inbox-technical-details dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
 }
 
 .cc-inbox-update-note {

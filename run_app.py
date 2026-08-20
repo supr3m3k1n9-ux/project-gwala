@@ -16,6 +16,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
 from pathlib import Path
+import re
 import socketserver
 import subprocess
 import sys
@@ -40,6 +41,7 @@ from indicators.trend import add_core_indicators
 from reports.canonical_session_state import audit_report_consistency
 from reports.canonical_session_state import load_or_build_canonical_session_state
 from reports.phase3_activation import load_phase3_activation
+from reports.research_intelligence import build_research_intelligence_summary
 from run_data_freshness_audit import build_audit as build_data_freshness_audit
 from run_data_freshness_audit import write_audit as write_data_freshness_audit
 from run_production_heartbeat import session_context
@@ -816,23 +818,117 @@ def founder_candidate_timeline(logs_dir: Path | None = None, symbol: str = "SPY"
     return events[-40:]
 
 
+def humanize_ceo_text(value: object) -> str:
+    """Return readable CEO-facing text while preserving known technical IDs."""
+
+    raw = text_value(value)
+    if not raw:
+        return ""
+    preserved = {"SPY", "QQQ", "AAPL", "AMD", "META", "MSFT", "NVDA", "TSLA"}
+    if raw in preserved or raw.startswith("P3-"):
+        return raw
+    replacements = {
+        "WAITING_FOR_FORWARD_EVIDENCE": "Waiting for Forward Evidence",
+        "autonomous_local_paper_research": "Autonomous Paper Research",
+        "promoted_subset_qualification": "Waiting for a Qualifying Candidate",
+        "CANONICAL_RECONCILED": "Canonical Reconciled",
+        "end_of_day_exit": "End-of-Day Exit",
+        "stop_loss_5m": "5-Minute Stop Loss",
+        "profit_target_5m": "5-Minute Profit Target",
+    }
+    if raw in replacements:
+        return replacements[raw]
+    words = raw.replace("-", " ").replace("_", " ").split()
+    normalized = []
+    for word in words:
+        upper = word.upper()
+        if upper in preserved or upper.startswith("P3"):
+            normalized.append(upper)
+        elif upper in {"CEO", "EOD", "ORB", "VWAP", "EMA", "API", "VPS"}:
+            normalized.append(upper)
+        elif word.lower() == "5m":
+            normalized.append("5-Minute")
+        else:
+            normalized.append(word[:1].upper() + word[1:].lower())
+    return " ".join(normalized)
+
+
+def report_timestamp_from_path(path: Path, fallback: datetime) -> tuple[datetime, str]:
+    """Prefer canonical report filename timestamps over filesystem mtime."""
+
+    stem = path.stem
+    match = re.search(r"_(20\d{6}T\d{6})([+-]\d{4})_", stem)
+    if match:
+        stamp, offset = match.groups()
+        parsed = datetime.strptime(stamp + offset, "%Y%m%dT%H%M%S%z")
+        return parsed.astimezone(MARKET_TZ), "canonical_report_generation_timestamp"
+    match = re.search(r"(20\d{2})[-_](\d{2})[-_](\d{2})", stem)
+    if match:
+        parsed = datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)), tzinfo=MARKET_TZ)
+        return parsed, "trading_session_date"
+    return fallback, "artifact_modified_time_fallback"
+
+
+def report_display_title(path: Path) -> str:
+    """Return a human-readable subject without renaming the artifact."""
+
+    stem = path.stem.lower()
+    timestamp, _ = report_timestamp_from_path(path, datetime.fromtimestamp(path.stat().st_mtime, tz=MARKET_TZ))
+    date_text = timestamp.strftime("%b %-d, %Y")
+    if "eod" in stem:
+        return f"End-of-Day Executive Report — {date_text}"
+    if "opening" in stem:
+        return f"Opening Executive Report — {date_text}"
+    if "production_heartbeat" in stem:
+        return "Production Health"
+    return humanize_ceo_text(path.stem)
+
+
+def report_kind(path: Path) -> str:
+    stem = path.stem.lower()
+    if "eod" in stem:
+        return "END-OF-DAY EXECUTIVE REPORT"
+    if "opening" in stem:
+        return "OPENING EXECUTIVE REPORT"
+    if "production_heartbeat" in stem:
+        return "PRODUCTION HEALTH"
+    return humanize_ceo_text(path.stem).upper()
+
+
+def report_revision(path: Path) -> str:
+    stem = path.stem.upper()
+    if "FINAL" in stem:
+        return "FINAL"
+    if "CANONICAL" in stem:
+        return "CANONICAL"
+    return "UNKNOWN"
+
+
+def report_preview(lines: list[str]) -> str:
+    text = " ".join(lines[:18])
+    parts = []
+    for label in ["Production", "Phase 3", "CEO Action", "Action", "ORB"]:
+        match = re.search(rf"{label}:?\s+([^•|\\n]+?)(?:\s+-|\s+•|$)", text, flags=re.IGNORECASE)
+        if match:
+            parts.append(f"{label}: {humanize_ceo_text(match.group(1).strip())}")
+    if parts:
+        return " • ".join(parts[:4])
+    return lines[1] if len(lines) > 1 else (lines[0] if lines else "Report archived.")
+
+
 def founder_report_events(logs_dir: Path | None = None) -> list[dict]:
     """Return a normalized read-only executive/report inbox."""
 
     logs = logs_dir or LOGS_DIR
     events: list[dict] = []
-    report_paths = sorted(
-        list(logs.glob("executive_reports/**/*.md")) + list(logs.glob("*executive_report*.md")) + list(logs.glob("production_heartbeat.md")),
-        key=lambda path: path.stat().st_mtime if path.exists() else 0,
-        reverse=True,
-    )
+    report_paths = list(logs.glob("executive_reports/**/*.md")) + list(logs.glob("*executive_report*.md"))
     seen: set[str] = set()
     for path in report_paths:
         if str(path) in seen or not path.exists():
             continue
         seen.add(str(path))
-        updated = datetime.fromtimestamp(path.stat().st_mtime, tz=MARKET_TZ)
-        name = path.stem.replace("_", " ").replace("-", " ").title()
+        fallback_updated = datetime.fromtimestamp(path.stat().st_mtime, tz=MARKET_TZ)
+        updated, ordering_source = report_timestamp_from_path(path, fallback_updated)
         category = "Executive" if "executive" in str(path).lower() else "Alerts"
         try:
             content = path.read_text(encoding="utf-8")
@@ -845,12 +941,25 @@ def founder_report_events(logs_dir: Path | None = None) -> list[dict]:
                 "id": str(uuid.uuid5(uuid.NAMESPACE_URL, str(path))),
                 "timestamp": updated.strftime("%Y-%m-%d %H:%M:%S %Z"),
                 "timestamp_iso": updated.isoformat(),
+                "display_date": updated.strftime("%b %-d, %Y"),
+                "display_time": updated.strftime("%-I:%M %p ET"),
+                "ordering_timestamp_iso": updated.isoformat(),
+                "ordering_source": ordering_source,
                 "category": category,
                 "importance": "Important" if any(word in " ".join(lines[:12]).upper() for word in ("WATCH", "FAIL", "RED", "ACTION")) else "Normal",
-                "title": name,
-                "summary": lines[1] if len(lines) > 1 else (lines[0] if lines else "Report archived."),
+                "title": report_display_title(path),
+                "report_kind": report_kind(path),
+                "summary": report_preview(lines),
+                "revision": report_revision(path),
                 "path": str(path),
-                "content": content[:24000],
+                "technical_details": {
+                    "artifact_path": str(path),
+                    "report_revision": report_revision(path),
+                    "canonical_source": "archived_report_markdown",
+                    "ordering_source": ordering_source,
+                    "timestamp_iso": updated.isoformat(),
+                },
+                "content": content,
             }
         )
     heartbeat = safe_read_json(logs / "production_heartbeat.json")
@@ -860,15 +969,29 @@ def founder_report_events(logs_dir: Path | None = None) -> list[dict]:
             {
                 "id": "production-heartbeat",
                 "timestamp": text_value(heartbeat.get("generated_at_et"), "latest"),
+                "display_date": "Latest",
+                "display_time": text_value(heartbeat.get("generated_at_et"), "latest"),
+                "ordering_timestamp_iso": datetime.now(MARKET_TZ).isoformat(),
+                "ordering_source": "canonical_event_timestamp",
                 "category": "Alerts",
                 "importance": "Important" if text_value(heartbeat.get("status")).upper() not in {"GREEN", "PASS"} else "Normal",
                 "title": "Production Health",
-                "summary": f"Status {text_value(heartbeat.get('status'), 'UNKNOWN')}",
+                "report_kind": "PRODUCTION HEALTH",
+                "summary": f"Production: {humanize_ceo_text(text_value(heartbeat.get('status'), 'UNKNOWN'))}",
+                "revision": "CURRENT",
                 "path": str(logs / "production_heartbeat.json"),
+                "technical_details": {
+                    "artifact_path": str(logs / "production_heartbeat.json"),
+                    "report_revision": "CURRENT",
+                    "canonical_source": "production_heartbeat_json",
+                    "internal_status_code": text_value(heartbeat.get("status"), "UNKNOWN"),
+                    "timestamp": text_value(heartbeat.get("generated_at_et"), "latest"),
+                },
                 "content": json.dumps({k: v for k, v in heartbeat.items() if k != "_path"}, indent=2)[:8000],
             },
         )
-    return events[:60]
+    deduped = {event["id"]: event for event in events}
+    return sorted(deduped.values(), key=lambda event: event.get("ordering_timestamp_iso", ""), reverse=True)[:120]
 
 
 def founder_strategy_vault_cards() -> list[dict]:
@@ -909,6 +1032,7 @@ def founder_research_payload(samples_csv: Path | None = None) -> dict:
     """Return strategy portfolio state without creating new strategy decisions."""
 
     scorecard = founder_validation_scorecard(samples_csv)
+    canonical = founder_canonical_session_state()
     vault_cards = founder_strategy_vault_cards()
     phase3_state = load_phase3_activation(LOGS_DIR)
     phase3_active = phase3_state.get("phase_3") == "ACTIVE"
@@ -1029,6 +1153,7 @@ def founder_research_payload(samples_csv: Path | None = None) -> dict:
             "STRATEGY DRIFT WARNING",
             "PORTFOLIO GAP IDENTIFIED",
         ],
+        "research_intelligence": build_research_intelligence_summary(canonical_session_state=canonical),
     }
 
 
@@ -1046,6 +1171,7 @@ def founder_system_payload(logs_dir: Path | None = None) -> dict:
     artifacts = {
         "Production Health": safe_read_json(logs / "production_heartbeat.json"),
         "Data Freshness": freshness,
+        "Cloudflare Access": safe_read_json(logs / "cloudflare_access_health.json"),
         "Host systemd": safe_read_json(logs / "host_systemd_health.json"),
         "Docker": safe_read_json(logs / "host_docker_health.json"),
         "Host Security": safe_read_json(logs / "host_security_health.json"),
@@ -1066,7 +1192,10 @@ def founder_system_payload(logs_dir: Path | None = None) -> dict:
             {
                 "name": label,
                 "status": status,
-                "detail": text_value(payload.get("red_reason"), text_value(payload.get("message"), text_value(payload.get("_error"), "No current artifact."))),
+                "detail": text_value(
+                    payload.get("red_reason"),
+                    text_value(payload.get("message"), text_value(payload.get("reason"), text_value(payload.get("_error"), "No current artifact."))),
+                ),
                 "path": str(payload.get("_path", "")),
             }
         )
